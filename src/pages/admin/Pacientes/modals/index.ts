@@ -1,0 +1,9 @@
+export { CreatePacienteModal } from './CreatePacienteModal';
+export { EditPacienteModal } from './EditPacienteModal';
+export { CreateEvolucionModal } from './CreateEvolucionModal';
+export { EditEvolucionModal } from './EditEvolucionModal';
+export { ViewEvolucionModal } from './ViewEvolucionModal';
+export { CreateNotaModal } from './CreateNotaModal';
+export { EditNotaModal } from './EditNotaModal';
+export { UploadArchivoModal } from './UploadArchivoModal';
+export { ViewImageModal } from './ViewImageModal';
