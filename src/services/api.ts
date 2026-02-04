@@ -2,6 +2,7 @@ import axios from 'axios';
 import { toast as reactToastify } from 'react-toastify';
 import type { ApiResponse } from '@/types';
 import { getToken, clearAuth } from '@/utils/storage';
+import { showApiErrorToast } from '@/utils/apiErrorToast';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -50,36 +51,19 @@ api.interceptors.response.use(
       }
       // Si es el endpoint de login, no hacer nada aquí, dejar que AuthContext maneje el error
     } else if (error.response?.status === 403) {
-      reactToastify.error('No tienes permisos para realizar esta acción', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      showApiErrorToast('403', 'No tienes permisos para realizar esta acción');
     } else if (error.response?.status === 404) {
-      reactToastify.error('Recurso no encontrado', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      showApiErrorToast('404', 'Recurso no encontrado');
     } else if (error.response?.status >= 500) {
-      reactToastify.error('Error del servidor. Por favor, intenta más tarde', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      showApiErrorToast('server', 'Error del servidor. Por favor, intenta más tarde');
     } else if (error.response?.status === 400) {
       // No mostrar toast para errores 400 (validación)
       // Los componentes manejan estos errores con mensajes más descriptivos
-      // Solo rechazar la promesa para que el componente maneje el error
     } else if (error.response?.status) {
-      // Mostrar el mensaje de error específico del backend para otros errores
-      reactToastify.error(errorMessage, {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      showApiErrorToast('other', errorMessage);
     } else {
-      // Error de red u otro error
-      reactToastify.error('Error de conexión. Verifica tu conexión a internet', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      // Error de red / timeout / servidor no responde (ej. backend dormido)
+      showApiErrorToast('server', 'Error de conexión. Verifica tu conexión o intenta en unos segundos.');
     }
     
     return Promise.reject(error);

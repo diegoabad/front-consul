@@ -11,6 +11,8 @@ export interface ConfiguracionAgenda {
   activo: boolean;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
+  vigencia_desde?: string; // YYYY-MM-DD
+  vigencia_hasta?: string | null; // YYYY-MM-DD, null = vigente
   // Datos relacionados
   profesional_nombre?: string;
   profesional_apellido?: string;
@@ -35,6 +37,7 @@ export interface AgendaFilters {
   profesional_id?: string;
   dia_semana?: number;
   activo?: boolean;
+  vigente?: boolean; // false = incluir histórico (configs con vigencia_hasta en el pasado)
 }
 
 export interface BloqueFilters {
@@ -50,6 +53,8 @@ export interface CreateAgendaData {
   hora_fin: string; // HH:mm format
   duracion_turno_minutos?: number;
   activo?: boolean;
+  /** YYYY-MM-DD desde la que rige (ej. "hoy" del usuario); si no se envía, el servidor usa CURRENT_DATE */
+  vigencia_desde?: string;
 }
 
 export interface UpdateAgendaData extends Partial<CreateAgendaData> {}
@@ -62,6 +67,43 @@ export interface CreateBloqueData {
 }
 
 export interface UpdateBloqueData extends Partial<CreateBloqueData> {}
+
+export interface ExcepcionAgenda {
+  id: string;
+  profesional_id: string;
+  fecha: string; // YYYY-MM-DD
+  hora_inicio: string;
+  hora_fin: string;
+  duracion_turno_minutos: number;
+  observaciones?: string | null;
+  fecha_creacion?: string;
+  fecha_actualizacion?: string;
+  profesional_nombre?: string;
+  profesional_apellido?: string;
+}
+
+export interface ExcepcionAgendaFilters {
+  profesional_id?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
+}
+
+export interface CreateExcepcionAgendaData {
+  profesional_id: string;
+  fecha: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:mm o HH:mm:ss
+  hora_fin: string;
+  duracion_turno_minutos?: number;
+  observaciones?: string | null;
+}
+
+export interface UpdateExcepcionAgendaData {
+  fecha?: string;
+  hora_inicio?: string;
+  hora_fin?: string;
+  duracion_turno_minutos?: number;
+  observaciones?: string | null;
+}
 
 export const agendaService = {
   /**
@@ -77,6 +119,9 @@ export const agendaService = {
     }
     if (filters?.activo !== undefined) {
       params.append('activo', filters.activo.toString());
+    }
+    if (filters?.vigente !== undefined) {
+      params.append('vigente', filters.vigente ? 'true' : 'false');
     }
 
     const response = await api.get<ApiResponse<ConfiguracionAgenda[]>>(
@@ -172,6 +217,26 @@ export const agendaService = {
   },
 
   /**
+   * Guardar horarios de la semana: cierra el periodo vigente y crea nuevas configuraciones (con vigencia).
+   * Solo envía los días que atiende.
+   * fecha_desde: "hoy" del usuario (YYYY-MM-DD) para que la agenda rija desde hoy aunque el servidor esté en otra zona horaria.
+   */
+  guardarHorariosSemana: async (
+    profesionalId: string,
+    horarios: { dia_semana: number; hora_inicio: string; hora_fin: string }[],
+    fechaDesde?: string
+  ): Promise<ConfiguracionAgenda[]> => {
+    const body: { horarios: typeof horarios; fecha_desde?: string } = { horarios };
+    if (fechaDesde) body.fecha_desde = fechaDesde;
+    const response = await api.put<ApiResponse<ConfiguracionAgenda[]>>(
+      `/agenda/profesional/${profesionalId}/horarios-semana`,
+      body
+    );
+    const data = getData(response);
+    return data || [];
+  },
+
+  /**
    * Desactivar configuración de agenda
    */
   deactivateAgenda: async (id: string): Promise<ConfiguracionAgenda> => {
@@ -261,5 +326,67 @@ export const agendaService = {
    */
   deleteBloque: async (id: string): Promise<void> => {
     await api.delete<ApiResponse<void>>(`/agenda/bloques/${id}`);
+  },
+
+  // ========== Días puntuales (excepciones de agenda) ==========
+
+  getAllExcepciones: async (filters?: ExcepcionAgendaFilters): Promise<ExcepcionAgenda[]> => {
+    const params = new URLSearchParams();
+    if (filters?.profesional_id) params.append('profesional_id', filters.profesional_id);
+    if (filters?.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
+    if (filters?.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+    const response = await api.get<ApiResponse<ExcepcionAgenda[]>>(
+      `/agenda/excepciones${params.toString() ? `?${params.toString()}` : ''}`
+    );
+    return getData(response) || [];
+  },
+
+  getExcepcionesByProfesional: async (
+    profesionalId: string,
+    fecha_desde?: string,
+    fecha_hasta?: string
+  ): Promise<ExcepcionAgenda[]> => {
+    const params = new URLSearchParams();
+    if (fecha_desde) params.append('fecha_desde', fecha_desde);
+    if (fecha_hasta) params.append('fecha_hasta', fecha_hasta);
+    const response = await api.get<ApiResponse<ExcepcionAgenda[]>>(
+      `/agenda/excepciones/profesional/${profesionalId}${params.toString() ? `?${params.toString()}` : ''}`
+    );
+    return getData(response) || [];
+  },
+
+  getExcepcionById: async (id: string): Promise<ExcepcionAgenda | null> => {
+    const response = await api.get<ApiResponse<ExcepcionAgenda>>(`/agenda/excepciones/${id}`);
+    return getData(response);
+  },
+
+  createExcepcion: async (data: CreateExcepcionAgendaData): Promise<ExcepcionAgenda> => {
+    const dataWithSeconds = {
+      ...data,
+      hora_inicio: data.hora_inicio.includes(':') && data.hora_inicio.split(':').length === 2 ? `${data.hora_inicio}:00` : data.hora_inicio,
+      hora_fin: data.hora_fin.includes(':') && data.hora_fin.split(':').length === 2 ? `${data.hora_fin}:00` : data.hora_fin,
+    };
+    const response = await api.post<ApiResponse<ExcepcionAgenda>>('/agenda/excepciones', dataWithSeconds);
+    const result = getData(response);
+    if (!result) throw new Error('Error al crear excepción de agenda');
+    return result;
+  },
+
+  updateExcepcion: async (id: string, data: UpdateExcepcionAgendaData): Promise<ExcepcionAgenda> => {
+    const dataWithSeconds: UpdateExcepcionAgendaData = { ...data };
+    if (data.hora_inicio && data.hora_inicio.split(':').length === 2) {
+      (dataWithSeconds as { hora_inicio: string }).hora_inicio = `${data.hora_inicio}:00`;
+    }
+    if (data.hora_fin && data.hora_fin.split(':').length === 2) {
+      (dataWithSeconds as { hora_fin: string }).hora_fin = `${data.hora_fin}:00`;
+    }
+    const response = await api.put<ApiResponse<ExcepcionAgenda>>(`/agenda/excepciones/${id}`, dataWithSeconds);
+    const result = getData(response);
+    if (!result) throw new Error('Error al actualizar excepción de agenda');
+    return result;
+  },
+
+  deleteExcepcion: async (id: string): Promise<void> => {
+    await api.delete<ApiResponse<void>>(`/agenda/excepciones/${id}`);
   },
 };

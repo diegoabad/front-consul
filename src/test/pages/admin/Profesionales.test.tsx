@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
-import AdminProfesionales from '@/pages/admin/Profesionales/List';
+import AdminProfesionales from '@/pages/Profesionales/List';
 import { profesionalesService } from '@/services/profesionales.service';
 import { usuariosService } from '@/services/usuarios.service';
 import { useAuth } from '@/contexts/AuthContext';

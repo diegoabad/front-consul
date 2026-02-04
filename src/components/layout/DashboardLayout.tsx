@@ -27,11 +27,7 @@ export function DashboardLayout() {
     <div className="min-h-screen bg-white">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <DashboardSidebar
-          role={user.rol}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
+        <DashboardSidebar role={user.rol} collapsed={sidebarCollapsed} />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -41,8 +37,8 @@ export function DashboardLayout() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="absolute left-0 top-0 h-full w-64 bg-white border-r border-[#E5E7EB]">
-            <div className="flex items-center justify-end p-2">
+          <div className="absolute left-0 top-0 h-full w-[280px] bg-white border-r border-[#E5E7EB] overflow-hidden">
+            <div className="relative z-10 flex items-center justify-end p-2 border-b border-[#E5E7EB] bg-white">
               <Button
                 variant="ghost"
                 size="icon"
@@ -52,26 +48,23 @@ export function DashboardLayout() {
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            <DashboardSidebar
-              role={user.rol}
-              collapsed={false}
-              onToggle={() => setMobileMenuOpen(false)}
-            />
+            <DashboardSidebar role={user.rol} />
           </div>
         </div>
       )}
 
-      {/* Header */}
+      {/* Header (por encima del sidebar) */}
       <DashboardHeader
         sidebarCollapsed={sidebarCollapsed}
+        onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         onMobileMenuToggle={() => setMobileMenuOpen(true)}
       />
 
       {/* Main Content */}
       <main
         className={cn(
-          'pt-16 min-h-screen transition-all duration-300 bg-white',
-          sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-[280px]'
+          'pt-16 min-h-screen bg-white transition-all duration-300',
+          sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
         )}
       >
         <div className="p-4 md:p-6 lg:p-8 text-[#374151]">

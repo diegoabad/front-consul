@@ -53,8 +53,8 @@ describe('DashboardSidebar', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText('Mi Agenda')).toBeInTheDocument();
     expect(screen.getByText('Pacientes')).toBeInTheDocument();
+    expect(screen.getByText('Especialidad')).toBeInTheDocument();
   });
 
   it('debe mostrar los items del menú para secretaria', () => {

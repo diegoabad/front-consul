@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Mail, Lock, Eye, EyeOff, Loader2, Stethoscope } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -43,33 +43,40 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-purple-50 via-purple-100/50 to-indigo-50">
-      {/* Background decorations */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-purple-200/40 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-200/40 rounded-full blur-3xl" />
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-purple-100/30 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-indigo-100/30 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Capa 1: imagen de fondo en blanco y negro */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: "url('/bg-login.png')",
+          filter: 'grayscale(100%)',
+        }}
+      />
+      {/* Capa 2: degradado azul con opacidad */}
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-[#2563eb]/75 via-[#1d4ed8]/60 to-sky-600/70"
+        aria-hidden
+      />
 
       <div className="w-full max-w-md relative z-10">
-        <div className="bg-white/95 backdrop-blur-xl rounded-[20px] shadow-2xl border border-[#E5E7EB] p-8">
-          {/* Logo/Title */}
+        <div className="bg-white rounded-[20px] shadow-2xl border border-[#E5E7EB] p-10">
+          {/* Logo */}
           <div className="flex flex-col items-center mb-6">
-            <div className="w-16 h-16 mb-3 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center shadow-lg shadow-[#7C3AED]/30">
-              <Stethoscope className="h-8 w-8 text-white stroke-[2.5]" />
+            <div className="h-[80px] max-h-[80px] overflow-hidden flex items-center justify-center w-full">
+              <img
+                src="/logo.png"
+                alt="Cogniar"
+                className="h-[168px] w-auto object-contain"
+              />
             </div>
-            <h1 className="text-[28px] font-bold text-[#111827] text-center tracking-tight font-['Poppins'] leading-tight mb-0">
-              Cogniare
-            </h1>
-            <p className="text-[#6B7280] text-sm mt-1.5 text-center font-['Inter'] mb-0">
+            <p className="text-[#6B7280] text-sm mt-0.5 text-center font-['Inter'] mb-0">
               Sistema de gestión clínica
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-2 mb-3">
               <Label htmlFor="email" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Correo electrónico
               </Label>
@@ -81,14 +88,14 @@ export default function Login() {
                   placeholder="usuario@ejemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 transition-all duration-200"
+                  className="pl-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                   disabled={isLoading}
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 mb-8">
               <Label htmlFor="password" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Contraseña
               </Label>
@@ -100,7 +107,7 @@ export default function Login() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-12 pr-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 transition-all duration-200"
+                  className="pl-12 pr-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                   disabled={isLoading}
                   required
                 />
@@ -121,7 +128,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full h-12 bg-[#7C3AED] hover:bg-[#6D28D9] text-white shadow-lg shadow-[#7C3AED]/30 hover:shadow-xl hover:shadow-[#7C3AED]/40 transition-all duration-200 rounded-[12px] font-semibold font-['Inter'] text-[15px]"
+              className="w-full h-12 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 transition-all duration-200 rounded-[12px] font-semibold font-['Inter'] text-[15px]"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -137,7 +144,7 @@ export default function Login() {
 
           {/* Footer */}
           <p className="text-center text-xs text-[#9CA3AF] mt-6 mb-0 font-['Inter']">
-            © {new Date().getFullYear()} Cogniare. Todos los derechos reservados.
+            © {new Date().getFullYear()} Cogniar. Todos los derechos reservados.
           </p>
         </div>
       </div>

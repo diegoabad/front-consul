@@ -10,21 +10,17 @@ import Login from './pages/Login';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 
-// Unificado: usamos los componentes de admin para todas las rutas (luego lógica por rol)
-import AdminDashboard from './pages/admin/Dashboard';
-import AdminPacientes from './pages/admin/Pacientes/List';
-import PacienteDetail from './pages/admin/Pacientes/Detail';
-import AdminPagos from './pages/admin/Pagos/List';
-import AdminUsuarios from './pages/admin/Usuarios/List';
-import AdminPerfil from './pages/admin/Perfil/List';
-import AdminAgendas from './pages/admin/Agendas/List';
-import AdminTurnos from './pages/admin/Turnos/List';
-import AdminEspecialidades from './pages/admin/Especialidades/List';
-import AdminObrasSociales from './pages/admin/ObrasSociales/List';
-
-// Profesional: agenda propia y config (vista específica)
-import ProfesionalAgenda from './pages/profesional/Agenda/List';
-import ProfesionalAgendaConfig from './pages/profesional/Agenda/Config';
+// Páginas unificadas (lógica por rol dentro de cada componente)
+import Dashboard from './pages/Dashboard';
+import PacientesList from './pages/Pacientes/List';
+import PacienteDetail from './pages/Pacientes/Detail';
+import PagosList from './pages/Pagos/List';
+import UsuariosList from './pages/Usuarios/List';
+import PerfilList from './pages/Perfil/List';
+import AgendasList from './pages/Agendas/List';
+import TurnosList from './pages/Turnos/List';
+import EspecialidadesList from './pages/Especialidades/List';
+import ObrasSocialesList from './pages/ObrasSociales/List';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,18 +43,16 @@ function App() {
             {/* Rutas protegidas: un solo layout, rutas unificadas */}
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
-                <Route path="/dashboard" element={<AdminDashboard />} />
-                <Route path="/contrato" element={<AdminPagos />} />
-                <Route path="/agendas" element={<AdminAgendas />} />
-                <Route path="/agenda" element={<ProfesionalAgenda />} />
-                <Route path="/agenda/config" element={<ProfesionalAgendaConfig />} />
-                <Route path="/turnos" element={<AdminTurnos />} />
-                <Route path="/pacientes" element={<AdminPacientes />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/contrato" element={<PagosList />} />
+                <Route path="/agendas" element={<AgendasList />} />
+                <Route path="/turnos" element={<TurnosList />} />
+                <Route path="/pacientes" element={<PacientesList />} />
                 <Route path="/pacientes/:id" element={<PacienteDetail />} />
-                <Route path="/usuarios" element={<AdminUsuarios />} />
-                <Route path="/especialidades" element={<AdminEspecialidades />} />
-                <Route path="/obras-sociales" element={<AdminObrasSociales />} />
-                <Route path="/perfil" element={<AdminPerfil />} />
+                <Route path="/usuarios" element={<UsuariosList />} />
+                <Route path="/especialidades" element={<EspecialidadesList />} />
+                <Route path="/obras-sociales" element={<ObrasSocialesList />} />
+                <Route path="/perfil" element={<PerfilList />} />
               </Route>
 
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

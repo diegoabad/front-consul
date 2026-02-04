@@ -38,4 +38,19 @@ export const authService = {
     }
     return data;
   },
+
+  /** Actualizar perfil propio (nombre, apellido, email, telefono) */
+  updateProfile: async (data: { nombre?: string; apellido?: string; email?: string; telefono?: string | null }): Promise<User> => {
+    const response = await api.patch<ApiResponse<User>>('/auth/profile', data);
+    const result = getData(response);
+    if (!result) {
+      throw new Error('Error al actualizar perfil');
+    }
+    return result;
+  },
+
+  /** Cambiar contraseña del usuario autenticado */
+  updateMyPassword: async (newPassword: string, confirmPassword: string): Promise<void> => {
+    await api.patch<ApiResponse<void>>('/auth/profile/password', { newPassword, confirmPassword });
+  },
 };

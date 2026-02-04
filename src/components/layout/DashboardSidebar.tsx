@@ -6,11 +6,9 @@ import {
   UserCog,
   CreditCard,
   Calendar,
-  ChevronLeft,
   GraduationCap,
   Building2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
@@ -25,10 +23,12 @@ interface MenuItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
+const SIDEBAR_WIDTH_EXPANDED = 280;
+const SIDEBAR_WIDTH_COLLAPSED = 72;
+
 interface DashboardSidebarProps {
   role: UserRole;
-  collapsed: boolean;
-  onToggle: () => void;
+  collapsed?: boolean;
 }
 
 interface SidebarMenuConfig {
@@ -57,7 +57,6 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
     ],
     afterSeparator: [
-      { title: 'Agendas', url: '/agenda', icon: Calendar },
       { title: 'Especialidad', url: '/especialidades', icon: GraduationCap },
       { title: 'Obra social', url: '/obras-sociales', icon: Building2 },
     ],
@@ -90,23 +89,17 @@ function renderNavItem(
       to={item.url}
       className={cn(
         'flex items-center rounded-[10px] transition-all duration-200 text-[15px] font-medium relative group',
-        collapsed
-          ? 'justify-center px-0 py-3 w-full'
-          : 'gap-3 px-4 py-3',
+        collapsed ? 'justify-center px-0 py-3 w-full' : 'gap-3 px-4 py-3',
         isActive
-          ? 'bg-[#EDE9FE] text-[#7C3AED] shadow-sm'
+          ? 'bg-[#dbeafe] text-[#2563eb] shadow-sm'
           : 'text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151]'
       )}
     >
       {isActive && !collapsed && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#7C3AED] rounded-r-full" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#2563eb] rounded-r-full" />
       )}
       <Icon
-        className={cn(
-          'h-5 w-5 shrink-0 stroke-[2] transition-transform duration-200',
-          collapsed ? 'mx-auto' : '',
-          !isActive && 'group-hover:scale-110'
-        )}
+        className={cn('h-5 w-5 shrink-0 stroke-[2] transition-transform duration-200', collapsed ? 'mx-auto' : '', !isActive && 'group-hover:scale-110')}
       />
       {!collapsed && <span className="truncate">{item.title}</span>}
     </NavLink>
@@ -125,62 +118,34 @@ function renderNavItem(
   return linkContent;
 }
 
-export function DashboardSidebar({
-  role,
-  collapsed,
-  onToggle
-}: DashboardSidebarProps) {
+export function DashboardSidebar({ role, collapsed = false }: DashboardSidebarProps) {
   const location = useLocation();
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
   const { beforeSeparator, afterSeparator } = config;
-
   return (
     <aside
       className={cn(
         'fixed left-0 top-0 z-40 h-screen bg-white transition-all duration-300 flex flex-col border-r border-[#E5E7EB] shadow-sm overflow-hidden',
-        collapsed ? 'w-16' : 'w-[280px]'
+        collapsed ? 'w-[72px]' : 'w-[280px]'
       )}
     >
-      {/* Logo Section */}
-      <div className={cn(
-        'flex items-center justify-between h-20 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB]',
-        collapsed ? 'px-0 justify-center' : 'px-4'
-      )}>
-        {!collapsed && (
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center overflow-hidden shadow-lg shadow-[#7C3AED]/20 hover:shadow-xl hover:shadow-[#7C3AED]/30 transition-all duration-200">
-              <span className="text-white font-bold text-lg font-['Poppins']">CG</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-[#111827] text-base leading-tight font-['Poppins']">Cogniare</span>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center mx-auto overflow-hidden shadow-lg shadow-[#7C3AED]/20 hover:shadow-xl hover:shadow-[#7C3AED]/30 transition-all duration-200">
-            <span className="text-white font-bold text-sm font-['Poppins']">CG</span>
-          </div>
-        )}
-      </div>
+      {/* Espacio para que el menú no quede bajo la barra superior */}
+      <div className="h-16 flex-shrink-0" aria-hidden />
 
       {/* Menu Items */}
-      <nav className={cn(
-        'flex-1 py-6 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[#E5E7EB] scrollbar-track-transparent',
-        collapsed ? 'px-2' : 'px-3'
-      )}>
+      <nav
+        className={cn(
+          'flex-1 py-6 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-[#E5E7EB] scrollbar-track-transparent',
+          collapsed ? 'px-2' : 'px-3'
+        )}
+      >
         <TooltipProvider delayDuration={300} skipDelayDuration={0}>
           <div className="space-y-1">
             {beforeSeparator.map((item) => renderNavItem(item, location, collapsed))}
           </div>
           {afterSeparator.length > 0 && (
             <>
-              <div
-                className={cn(
-                  'border-t border-[#E5E7EB] my-3',
-                  collapsed ? 'mx-2' : 'mx-1'
-                )}
-                aria-hidden
-              />
+              <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
               <div className="space-y-1">
                 {afterSeparator.map((item) => renderNavItem(item, location, collapsed))}
               </div>
@@ -188,42 +153,8 @@ export function DashboardSidebar({
           )}
         </TooltipProvider>
       </nav>
-
-      {/* Toggle Button */}
-      <div className={cn(
-        'border-t border-[#E5E7EB]',
-        collapsed ? 'p-2' : 'p-2'
-      )}>
-        {collapsed ? (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onToggle}
-                  className="w-full justify-center px-0 text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] transition-all duration-200"
-                >
-                  <ChevronLeft className="h-5 w-5 transition-transform duration-300 ease-out shrink-0 rotate-180" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={12} className="bg-[#111827] text-white border-[#111827] [&>p]:text-white">
-                <p>Expandir menú</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggle}
-            className="w-full justify-start px-2 text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] transition-all duration-200"
-          >
-            <ChevronLeft className="h-5 w-5 transition-transform duration-300 ease-out shrink-0" />
-            <span className="ml-2 text-[15px] font-medium">Colapsar</span>
-          </Button>
-        )}
-      </div>
     </aside>
   );
 }
+
+export { SIDEBAR_WIDTH_EXPANDED, SIDEBAR_WIDTH_COLLAPSED };

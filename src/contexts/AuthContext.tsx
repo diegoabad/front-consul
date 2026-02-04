@@ -17,6 +17,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -112,6 +113,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      if (hasActiveSession()) {
+        const profile = await authService.getProfile();
+        setUserState(profile);
+        setUser(profile);
+      }
+    } catch (error) {
+      console.error('Error al actualizar perfil en contexto:', error);
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -120,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         logout,
+        refreshUser,
       }}
     >
       {children}

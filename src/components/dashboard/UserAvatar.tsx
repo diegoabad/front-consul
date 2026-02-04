@@ -18,7 +18,7 @@ const sizeClasses = {
 const avatarColors = [
   'bg-blue-500 text-white',
   'bg-green-500 text-white',
-  'bg-purple-500 text-white',
+  'bg-blue-500 text-white',
   'bg-orange-500 text-white',
   'bg-cyan-500 text-white',
 ];
@@ -62,7 +62,7 @@ export function UserAvatar({
     <div
       className={cn(
         'rounded-full flex items-center justify-center font-semibold text-white shadow-md',
-        colorClass || 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED]',
+        colorClass || 'bg-gradient-to-br from-[#0ea5e9] to-[#2563eb]',
         sizeClasses[size],
         className
       )}

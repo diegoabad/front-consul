@@ -15,11 +15,13 @@ import { cn } from '@/lib/utils';
 
 interface DashboardHeaderProps {
   sidebarCollapsed: boolean;
+  onSidebarToggle: () => void;
   onMobileMenuToggle: () => void;
 }
 
 export function DashboardHeader({
   sidebarCollapsed,
+  onSidebarToggle,
   onMobileMenuToggle,
 }: DashboardHeaderProps) {
   const { user, logout } = useAuth();
@@ -41,28 +43,45 @@ export function DashboardHeader({
   };
 
   return (
-    <header
-      className={cn(
-        'fixed top-0 right-0 z-30 h-16 bg-white border-b border-[#E5E7EB] flex items-center justify-between px-6 transition-all duration-300 shadow-sm',
-        sidebarCollapsed ? 'left-16' : 'left-[280px]',
-        'max-lg:left-0'
-      )}
-    >
-      {/* Mobile menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="lg:hidden text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-[10px] transition-all duration-200"
-        onClick={onMobileMenuToggle}
+    <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-[#E5E7EB] flex items-center shadow-sm overflow-hidden">
+      {/* Zona izquierda: hamburguesa fijo (pl-4); cuando colapsado la zona crece para que el logo quepa a tamaño completo */}
+      <div
+        className={cn(
+          'hidden lg:flex items-center flex-shrink-0 transition-all duration-300 pl-4',
+          sidebarCollapsed ? 'w-[100px]' : 'w-[280px]'
+        )}
       >
-        <Menu className="h-5 w-5 stroke-[2]" />
-      </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-[10px] transition-all duration-200 h-10 w-10 flex-shrink-0"
+          onClick={onSidebarToggle}
+          aria-label={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+        >
+          <Menu className="h-5 w-5 stroke-[2]" />
+        </Button>
+        <img
+          src="/logo.png"
+          alt="Cogniar"
+          className="h-[98px] w-auto min-w-[341px] object-contain flex-shrink-0 object-left"
+        />
+      </div>
 
-      {/* Spacer for desktop */}
-      <div className="hidden lg:block" />
+      {/* Mobile: hamburguesa para abrir overlay */}
+      <div className="flex items-center pl-4 lg:hidden w-[72px] flex-shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-[10px] transition-all duration-200 h-10 w-10"
+          onClick={onMobileMenuToggle}
+          aria-label="Abrir menú"
+        >
+          <Menu className="h-5 w-5 stroke-[2]" />
+        </Button>
+      </div>
 
-      {/* Right side */}
-      <div className="flex items-center gap-3">
+      {/* Espacio flexible + zona derecha */}
+      <div className="flex-1 flex items-center justify-end pr-4 md:pr-6 min-w-0 gap-3">
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
