@@ -1,3 +1,4 @@
+import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,8 +7,11 @@ import { profesionalesService } from '@/services/profesionales.service';
 import { turnosService } from '@/services/turnos.service';
 import { pagosService } from '@/services/pagos.service';
 import { Users, Stethoscope, Calendar, FileText, DollarSign } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminDashboard() {
+  const { user } = useAuth();
+  if (user?.rol !== 'administrador') return <Navigate to="/turnos" replace />;
   const { data: pacientes } = useQuery({
     queryKey: ['pacientes'],
     queryFn: () => pacientesService.getAll(),

@@ -44,6 +44,12 @@ const ROLES = [
   { value: 'secretaria', label: 'Secretaria' },
 ];
 
+/** Secretaria solo puede crear/editar usuarios con rol secretaria o profesional (no administrador). */
+const ROLES_SECRETARIA = [
+  { value: 'secretaria', label: 'Secretaria' },
+  { value: 'profesional', label: 'Profesional' },
+];
+
 const estadoOptions = [
   { value: 'todos', label: 'Todos los estados' },
   { value: 'true', label: 'Activos' },
@@ -666,6 +672,18 @@ export default function AdminUsuarios() {
   const canActivate = hasPermission(user, 'usuarios.activar');
   const canDeactivate = hasPermission(user, 'usuarios.desactivar');
 
+  // Secretarias no pueden editar/desactivar/eliminar administradores. Nadie puede eliminarse o desactivarse a sí mismo.
+  const canEditUsuario = (usuario: User) =>
+    canUpdate && !(user?.rol === 'secretaria' && usuario.rol === 'administrador');
+  const canToggleActivateUsuario = (usuario: User) =>
+    (canActivate || canDeactivate) &&
+    usuario.id !== user?.id &&
+    !(user?.rol === 'secretaria' && usuario.rol === 'administrador');
+  const canDeleteUsuario = (usuario: User) =>
+    canDelete &&
+    usuario.id !== user?.id &&
+    !(user?.rol === 'secretaria' && usuario.rol === 'administrador');
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -797,7 +815,7 @@ export default function AdminUsuarios() {
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Estado
                 </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] text-right w-[140px]">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[140px]">
                   Acciones
                 </TableHead>
               </TableRow>
@@ -825,7 +843,7 @@ export default function AdminUsuarios() {
                   <TableCell className="text-right">
                     <TooltipProvider>
                       <div className="flex items-center justify-end gap-1">
-                        {canUpdate && (
+                        {canEditUsuario(usuario) && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -842,7 +860,7 @@ export default function AdminUsuarios() {
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        {(canActivate || canDeactivate) && (
+                        {canToggleActivateUsuario(usuario) && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -863,7 +881,7 @@ export default function AdminUsuarios() {
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        {canDelete && (
+                        {canDeleteUsuario(usuario) && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -1079,7 +1097,7 @@ export default function AdminUsuarios() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl">
-                    {ROLES.map((rol) => (
+                    {(user?.rol === 'secretaria' ? ROLES_SECRETARIA : ROLES).map((rol) => (
                       <SelectItem key={rol.value} value={rol.value} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         {rol.label}
                       </SelectItem>
@@ -1572,7 +1590,7 @@ export default function AdminUsuarios() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl">
-                    {ROLES.map((rol) => (
+                    {(user?.rol === 'secretaria' ? ROLES_SECRETARIA : ROLES).map((rol) => (
                       <SelectItem key={rol.value} value={rol.value} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         {rol.label}
                       </SelectItem>

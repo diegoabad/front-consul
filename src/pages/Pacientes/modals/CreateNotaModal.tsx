@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,11 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StickyNote, Loader2, User, Plus, FileText } from 'lucide-react';
-import { profesionalesService } from '@/services/profesionales.service';
-import { usuariosService } from '@/services/usuarios.service';
-import { useQuery } from '@tanstack/react-query';
 import type { CreateNotaData } from '@/services/notas.service';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -41,33 +37,8 @@ export function CreateNotaModal({
 }: CreateNotaModalProps) {
   const { user } = useAuth();
   const [formData, setFormData] = useState<CreateNotaData>(initialFormData);
-  const [selectedUsuarioId, setSelectedUsuarioId] = useState<string>('');
 
-  // Obtener todos los usuarios activos
-  const { data: usuarios = [] } = useQuery({
-    queryKey: ['usuarios', 'for-notas'],
-    queryFn: () => usuariosService.getAll({ activo: true }),
-    enabled: open,
-  });
-
-  // Obtener profesionales para mapear especialidades
-  const { data: profesionales = [] } = useQuery({
-    queryKey: ['profesionales', 'for-notas-mapping'],
-    queryFn: () => profesionalesService.getAll({ bloqueado: false }),
-    enabled: open,
-  });
-
-  // Crear un mapa de usuario_id -> profesional para obtener especialidades
-  // Usar useMemo para recalcular cuando cambien los profesionales
-  const profesionalPorUsuario = useMemo(() => {
-    return new Map(
-      profesionales.map(prof => [prof.usuario_id, prof])
-    );
-  }, [profesionales]);
-
-  // Si el usuario logueado es profesional, pre-seleccionarlo
-  const isProfesional = user?.rol === 'profesional';
-
+  // Siempre fijar el usuario logueado como creador de la nota (todos los roles)
   useEffect(() => {
     if (open) {
       setFormData(prev => ({
@@ -75,33 +46,18 @@ export function CreateNotaModal({
         paciente_id: pacienteId,
         usuario_id: user?.id || '',
       }));
-      setSelectedUsuarioId(user?.id || '');
     } else {
-      // Limpiar cuando se cierra el modal
       setFormData(initialFormData);
-      setSelectedUsuarioId('');
     }
   }, [open, pacienteId, user?.id]);
-
-  // Si el usuario es profesional, pre-seleccionarlo automáticamente
-  useEffect(() => {
-    if (open && isProfesional && user?.id) {
-      setFormData(prev => ({
-        ...prev,
-        usuario_id: user.id,
-      }));
-      setSelectedUsuarioId(user.id);
-    }
-  }, [open, isProfesional, user?.id]);
 
   const handleSubmit = async () => {
     try {
       const dataToSubmit: CreateNotaData = {
-        paciente_id: formData.paciente_id,
-        usuario_id: formData.usuario_id,
+        paciente_id: pacienteId,
+        usuario_id: user?.id || '',
         contenido: formData.contenido.trim(),
       };
-      
       await onSubmit(dataToSubmit);
       setFormData(initialFormData);
       onOpenChange(false);
@@ -115,9 +71,7 @@ export function CreateNotaModal({
     onOpenChange(false);
   };
 
-  // Validar formulario: necesita profesional_id y contenido
-  // También considerar si está creando profesional (en ese caso, esperar a que termine)
-  const isFormValid = formData.usuario_id && formData.contenido.trim();
+  const isFormValid = !!user?.id && formData.contenido.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,41 +96,15 @@ export function CreateNotaModal({
         {/* Contenido sin scroll */}
         <div className="flex-1 min-h-0 h-full px-8 pt-6 pb-4 flex flex-col">
           {/* Sección: Información Básica */}
+          {/* Creador fijo: siempre el usuario logueado (no se puede cambiar) */}
           <div className="space-y-3 flex-shrink-0 mb-6">
-            <Label htmlFor="usuario" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+            <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
               <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Usuario
-              <span className="text-[#EF4444]">*</span>
+              Creador de la nota
             </Label>
-            <Select
-              value={selectedUsuarioId || undefined}
-              onValueChange={(value) => {
-                // El value siempre será un usuario_id
-                setSelectedUsuarioId(value);
-                setFormData(prev => ({ ...prev, usuario_id: value }));
-              }}
-              disabled={isProfesional}
-            >
-              <SelectTrigger className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
-                <SelectValue placeholder="Seleccionar usuario" />
-              </SelectTrigger>
-              <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                {usuarios.map((usuario) => {
-                  const profesional = profesionalPorUsuario.get(usuario.id);
-                  
-                  // Mostrar todos los usuarios usando usuario.id como value
-                  return (
-                    <SelectItem 
-                      key={usuario.id} 
-                      value={usuario.id} 
-                      className="rounded-[8px] font-['Inter'] text-[15px] py-3"
-                    >
-                      {usuario.nombre} {usuario.apellido} {profesional?.especialidad ? `- ${profesional.especialidad}` : ''}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            <div className="h-[52px] flex items-center px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
+              {user ? `${user.nombre} ${user.apellido}` : '—'}
+            </div>
           </div>
 
           {/* Sección: Contenido */}

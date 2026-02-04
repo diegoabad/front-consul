@@ -689,7 +689,7 @@ export default function AdminAgendas() {
                     <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                       Estado
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] text-right w-[120px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[120px]">
                       Acciones
                     </TableHead>
                   </TableRow>
@@ -929,7 +929,7 @@ export default function AdminAgendas() {
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Fecha</TableHead>
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Horario</TableHead>
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Duración</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] text-right w-[70px]">Acciones</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[70px]">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -967,7 +967,7 @@ export default function AdminAgendas() {
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Desde</TableHead>
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Hasta</TableHead>
                             <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Motivo</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] text-right w-[70px]">Acciones</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[70px]">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>

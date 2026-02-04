@@ -132,4 +132,47 @@ export const pacientesService = {
     }
     return result;
   },
+
+  /**
+   * Listar profesionales asignados a un paciente
+   */
+  getAsignaciones: async (pacienteId: string): Promise<AsignacionPacienteProfesional[]> => {
+    const response = await api.get<ApiResponse<AsignacionPacienteProfesional[]>>(
+      `/pacientes/${pacienteId}/asignaciones`
+    );
+    const data = getData(response);
+    return data || [];
+  },
+
+  /**
+   * Asignar un profesional al paciente
+   */
+  addAsignacion: async (pacienteId: string, profesional_id: string): Promise<AsignacionPacienteProfesional[]> => {
+    const response = await api.post<ApiResponse<AsignacionPacienteProfesional[]>>(
+      `/pacientes/${pacienteId}/asignaciones`,
+      { profesional_id }
+    );
+    const data = getData(response);
+    return data || [];
+  },
+
+  /**
+   * Quitar asignación de un profesional al paciente
+   */
+  removeAsignacion: async (pacienteId: string, profesionalId: string): Promise<void> => {
+    await api.delete<ApiResponse<void>>(`/pacientes/${pacienteId}/asignaciones/${profesionalId}`);
+  },
 };
+
+export interface AsignacionPacienteProfesional {
+  id: string;
+  paciente_id: string;
+  profesional_id: string;
+  asignado_por_usuario_id: string | null;
+  fecha_asignacion: string;
+  paciente_nombre?: string;
+  paciente_apellido?: string;
+  profesional_nombre: string;
+  profesional_apellido: string;
+  profesional_especialidad?: string;
+}

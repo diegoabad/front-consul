@@ -4,7 +4,13 @@ import type { ApiResponse } from '@/types';
 import { getToken, clearAuth } from '@/utils/storage';
 import { showApiErrorToast } from '@/utils/apiErrorToast';
 
+// Vite solo expone variables que empiezan con VITE_. En Netlify la variable DEBE llamarse exactamente VITE_API_URL.
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Diagnóstico: abrí la consola del navegador (F12 → Console). Si en producción ves "http://localhost:5000/api", la variable no se leyó en el build (nombre o redeploy).
+if (typeof window !== 'undefined') {
+  console.info('[Consultorio] API base:', API_URL);
+}
 
 const api = axios.create({
   baseURL: API_URL,

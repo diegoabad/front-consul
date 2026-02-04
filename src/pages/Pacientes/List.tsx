@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ import {
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import {
   Search, Plus, Eye, Edit, Trash2, Phone,
-  User, Loader2, UserCheck, UserX
+  User, Loader2, UserCheck, UserX, UserPlus
 } from 'lucide-react';
 import {
   Tooltip,
@@ -34,7 +34,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { pacientesService, type CreatePacienteData } from '@/services/pacientes.service';
+import { pacientesService, type CreatePacienteData, type AsignacionPacienteProfesional } from '@/services/pacientes.service';
+import { profesionalesService } from '@/services/profesionales.service';
 import type { Paciente } from '@/types';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
@@ -63,6 +64,13 @@ export default function AdminPacientes() {
   const [pacienteToDelete, setPacienteToDelete] = useState<Paciente | null>(null);
   const [pacienteToActivate, setPacienteToActivate] = useState<Paciente | null>(null);
   const [pacienteToDeactivate, setPacienteToDeactivate] = useState<Paciente | null>(null);
+  const [showAsignarModal, setShowAsignarModal] = useState(false);
+  const [pacienteForAsignar, setPacienteForAsignar] = useState<Paciente | null>(null);
+  const [searchAsignarLista, setSearchAsignarLista] = useState('');
+  const [selectedProfesionalIdLista, setSelectedProfesionalIdLista] = useState<string | null>(null);
+  const [asignarDropdownOpenLista, setAsignarDropdownOpenLista] = useState(false);
+  const asignandoRef = useRef(false);
+  const asignarModalJustOpenedRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch pacientes
@@ -292,6 +300,60 @@ export default function AdminPacientes() {
   const canDelete = hasPermission(user, 'pacientes.eliminar');
   const canActivate = hasPermission(user, 'pacientes.activar');
   const canDeactivate = hasPermission(user, 'pacientes.desactivar');
+  const canAsignarProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
+
+  const { data: asignacionesLista = [], refetch: refetchAsignacionesLista } = useQuery({
+    queryKey: ['paciente-asignaciones', pacienteForAsignar?.id],
+    queryFn: () => pacientesService.getAsignaciones(pacienteForAsignar!.id),
+    enabled: !!showAsignarModal && !!pacienteForAsignar?.id,
+  });
+
+  const { data: profesionalesLista = [] } = useQuery({
+    queryKey: ['profesionales-list'],
+    queryFn: () => profesionalesService.getAll({ activo: true }),
+    enabled: showAsignarModal,
+  });
+
+  const addAsignacionListaMutation = useMutation({
+    mutationFn: (profesional_id: string) =>
+      pacientesService.addAsignacion(pacienteForAsignar!.id, profesional_id),
+    onSuccess: (nuevaListaAsignaciones) => {
+      if (pacienteForAsignar?.id) {
+        queryClient.setQueryData(['paciente-asignaciones', pacienteForAsignar.id], nuevaListaAsignaciones ?? []);
+      }
+      reactToastify.success('Profesional asignado correctamente', { position: 'top-right', autoClose: 3000 });
+    },
+    onError: async (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string }; status?: number } };
+      reactToastify.error(err?.response?.data?.message ?? 'Error al asignar profesional', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      if (err?.response?.status === 400 && pacienteForAsignar?.id) {
+        await queryClient.invalidateQueries({ queryKey: ['paciente-asignaciones', pacienteForAsignar.id] });
+        refetchAsignacionesLista();
+      }
+    },
+  });
+
+  const removeAsignacionListaMutation = useMutation({
+    mutationFn: (profesionalId: string) =>
+      pacientesService.removeAsignacion(pacienteForAsignar!.id, profesionalId),
+    onSuccess: async () => {
+      if (pacienteForAsignar?.id) {
+        await queryClient.invalidateQueries({ queryKey: ['paciente-asignaciones', pacienteForAsignar.id] });
+        refetchAsignacionesLista();
+      }
+      reactToastify.success('Asignación eliminada correctamente', { position: 'top-right', autoClose: 3000 });
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      reactToastify.error(err?.response?.data?.message ?? 'Error al quitar asignación', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    },
+  });
 
   return (
     <div className="space-y-8">
@@ -385,7 +447,7 @@ export default function AdminPacientes() {
                 <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Estado
                 </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] text-right w-[100px]">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[100px]">
                   Acciones
                 </TableHead>
               </TableRow>
@@ -463,6 +525,26 @@ export default function AdminPacientes() {
                             <p className="text-white">Ver Detalles</p>
                           </TooltipContent>
                         </Tooltip>
+                        {canAsignarProfesionales && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setPacienteForAsignar(paciente);
+                                  setShowAsignarModal(true);
+                                }}
+                                className="h-8 w-8 rounded-[8px] hover:bg-[#ede9fe] transition-all duration-200 text-[#7c3aed] hover:text-[#6d28d9]"
+                              >
+                                <UserPlus className="h-4 w-4 stroke-[2]" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">Asignar profesionales</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         {canUpdate && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -480,7 +562,7 @@ export default function AdminPacientes() {
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        {paciente.activo && canDeactivate && (
+                        {paciente.activo && canDeactivate && user?.rol !== 'profesional' && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -500,7 +582,7 @@ export default function AdminPacientes() {
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        {!paciente.activo && canActivate && (
+                        {!paciente.activo && canActivate && user?.rol !== 'profesional' && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -520,7 +602,7 @@ export default function AdminPacientes() {
                             </TooltipContent>
                           </Tooltip>
                         )}
-                        {canDelete && (
+                        {canDelete && user?.rol !== 'profesional' && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -669,6 +751,176 @@ export default function AdminPacientes() {
         onConfirm={handleConfirmDelete}
         isLoading={isSubmitting}
       />
+
+      {/* Modal Asignar profesionales (desde listado) */}
+      <Dialog
+        open={showAsignarModal}
+        onOpenChange={(open) => {
+          setShowAsignarModal(open);
+          if (open) {
+            asignarModalJustOpenedRef.current = true;
+          } else {
+            setPacienteForAsignar(null);
+            setSearchAsignarLista('');
+            setSelectedProfesionalIdLista(null);
+            setAsignarDropdownOpenLista(false);
+            asignandoRef.current = false;
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-[1000px] min-h-[640px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/30">
+                <UserPlus className="h-7 w-7 text-white stroke-[2.5]" />
+              </div>
+              <div>
+                <DialogTitle className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                  Asignar profesionales a {pacienteForAsignar ? `${pacienteForAsignar.nombre} ${pacienteForAsignar.apellido}` : 'paciente'}
+                </DialogTitle>
+                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1.5 mb-0">
+                  Solo los profesionales asignados al paciente podrán verlo y generar evoluciones, notas y subir archivos.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="px-8 pt-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* Arriba: Agregar profesional (input + botón) */}
+            <div className="flex-shrink-0 space-y-2">
+              <label className="text-[14px] font-medium text-[#374151] font-['Inter']">
+                Agregar profesional
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Input
+                    type="text"
+                    placeholder="Buscar por nombre o especialidad..."
+                    value={searchAsignarLista}
+                    onChange={(e) => { setSearchAsignarLista(e.target.value); if (!e.target.value.trim()) setSelectedProfesionalIdLista(null); }}
+                    onFocus={() => {
+                      if (asignarModalJustOpenedRef.current) {
+                        asignarModalJustOpenedRef.current = false;
+                        return;
+                      }
+                      setAsignarDropdownOpenLista(true);
+                    }}
+                    onBlur={() => setTimeout(() => setAsignarDropdownOpenLista(false), 200)}
+                    className="h-11 rounded-[10px] border-[1.5px] border-[#D1D5DB] font-['Inter'] text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  />
+                  {(asignarDropdownOpenLista || searchAsignarLista.trim().length > 0) && profesionalesLista
+                    .filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id))
+                    .filter((p) => {
+                      const q = searchAsignarLista.trim().toLowerCase();
+                      if (!q) return true;
+                      const nombre = `${p.nombre ?? ''} ${p.apellido ?? ''}`.toLowerCase();
+                      const esp = (p.especialidad ?? '').toLowerCase();
+                      return nombre.includes(q) || esp.includes(q);
+                    }).length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-[260px] overflow-y-auto rounded-[10px] border border-[#E5E7EB] bg-white shadow-lg py-1">
+                      {profesionalesLista
+                        .filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id))
+                        .filter((p) => {
+                          const q = searchAsignarLista.trim().toLowerCase();
+                          const nombre = `${p.nombre ?? ''} ${p.apellido ?? ''}`.toLowerCase();
+                          const esp = (p.especialidad ?? '').toLowerCase();
+                          return nombre.includes(q) || esp.includes(q);
+                        })
+                        .map((p) => {
+                          const label = `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}`;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedProfesionalIdLista(p.id);
+                                setSearchAsignarLista(label);
+                              }}
+                              className={`w-full text-left px-4 py-2.5 text-[14px] font-['Inter'] hover:bg-[#F3F4F6] transition-colors ${selectedProfesionalIdLista === p.id ? 'bg-[#dbeafe] text-[#2563eb]' : 'text-[#374151]'}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedProfesionalIdLista || addAsignacionListaMutation.isPending || !pacienteForAsignar) return;
+                    asignandoRef.current = true;
+                    addAsignacionListaMutation.mutate(selectedProfesionalIdLista, {
+                      onSettled: () => {
+                        asignandoRef.current = false;
+                        setSelectedProfesionalIdLista(null);
+                        setSearchAsignarLista('');
+                      },
+                    });
+                  }}
+                  disabled={!selectedProfesionalIdLista || addAsignacionListaMutation.isPending || !pacienteForAsignar}
+                  className="h-11 px-5 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] shrink-0"
+                >
+                  Asignar
+                </Button>
+              </div>
+              {profesionalesLista.filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id)).length === 0 && (
+                <p className="text-[13px] text-[#6B7280] font-['Inter']">Todos los profesionales están asignados.</p>
+              )}
+            </div>
+
+            {/* Abajo: Profesionales asignados (la lista puede ir en 2 columnas cuando hay espacio) */}
+            <div className="flex flex-col flex-1 min-h-0 mt-6">
+              <h4 className="text-[14px] font-semibold text-[#374151] font-['Inter'] mb-0 flex-shrink-0">
+                Profesionales asignados
+              </h4>
+              <div className="flex-1 min-h-0 overflow-y-auto rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 mt-2 flex flex-col">
+                {asignacionesLista.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center min-h-[120px]">
+                    <p className="text-[13px] text-[#6B7280] font-['Inter'] py-4 px-3 text-center mb-0">
+                      Ningún profesional asignado
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {asignacionesLista.map((a: AsignacionPacienteProfesional) => (
+                      <li key={a.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-[8px] bg-white border border-[#E5E7EB]">
+                        <span className="text-[13px] font-medium text-[#374151] font-['Inter'] truncate">
+                          {a.profesional_nombre} {a.profesional_apellido}{a.profesional_especialidad ? ` - ${a.profesional_especialidad}` : ''}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#FEE2E2] rounded-[6px] h-8 px-2 text-[12px] shrink-0"
+                          onClick={() => removeAsignacionListaMutation.mutate(a.profesional_id)}
+                          disabled={removeAsignacionListaMutation.isPending}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1 stroke-[2]" />
+                          Quitar
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
+            <Button
+              variant="outline"
+              onClick={() => { setShowAsignarModal(false); setPacienteForAsignar(null); }}
+              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#2563eb] text-[#2563eb] font-medium font-['Inter'] text-[15px] hover:bg-[#dbeafe] hover:border-[#2563eb] transition-all duration-200"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import 'react-toastify/dist/ReactToastify.css';
 // Pages
 import Login from './pages/Login';
 import ProtectedRoute from './components/common/ProtectedRoute';
+import DefaultRedirect from './components/common/DefaultRedirect';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 
 // Páginas unificadas (lógica por rol dentro de cada componente)
@@ -55,7 +56,7 @@ function App() {
                 <Route path="/perfil" element={<PerfilList />} />
               </Route>
 
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/" element={<DefaultRedirect />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/login" replace />} />

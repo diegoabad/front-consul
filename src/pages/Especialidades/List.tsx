@@ -250,7 +250,7 @@ data: {
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Estado
                 </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] text-right w-[120px]">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[120px]">
                   Acciones
                 </TableHead>
               </TableRow>

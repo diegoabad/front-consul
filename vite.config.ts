@@ -3,8 +3,18 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vite.dev/config/
+// En dev: NO inyectamos aquí; Vite lee .env y expone VITE_API_URL. En build (Netlify) sí inyectamos desde process.env.
+const isBuild = process.argv.includes('build');
+const apiUrl = (process.env.VITE_API_URL || process.env.API_URL || '').trim();
+if (isBuild) {
+  console.log('[Vite build] API URL:', apiUrl || '(vacío → el front usará localhost en producción)');
+}
+
 export default defineConfig({
   plugins: [react()],
+  define: isBuild
+    ? { 'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl) }
+    : {},
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

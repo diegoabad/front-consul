@@ -53,24 +53,23 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
   },
   profesional: {
     beforeSeparator: [
+      { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
     ],
-    afterSeparator: [
-      { title: 'Especialidad', url: '/especialidades', icon: GraduationCap },
-      { title: 'Obra social', url: '/obras-sociales', icon: Building2 },
-    ],
+    afterSeparator: [],
   },
   secretaria: {
     beforeSeparator: [
-      { title: 'Paciente', url: '/pacientes', icon: Users },
+      { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
+      { title: 'Pacientes', url: '/pacientes', icon: Users },
     ],
     afterSeparator: [
       { title: 'Agendas', url: '/agendas', icon: Calendar },
       { title: 'Usuarios', url: '/usuarios', icon: UserCog },
-      { title: 'Especialidad', url: '/especialidades', icon: GraduationCap },
-      { title: 'Obra social', url: '/obras-sociales', icon: Building2 },
+      { title: 'Especialidades', url: '/especialidades', icon: GraduationCap },
+      { title: 'Obras Sociales', url: '/obras-sociales', icon: Building2 },
     ],
   },
 };

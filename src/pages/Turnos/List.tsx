@@ -275,6 +275,17 @@ export default function AdminTurnos() {
     queryFn: () => profesionalesService.getAll({ activo: true }),
   });
 
+  const isProfesional = user?.rol === 'profesional';
+  const profesionalLogueado = useMemo(
+    () => profesionales.find((p: { usuario_id?: string }) => p.usuario_id === user?.id),
+    [profesionales, user?.id]
+  );
+
+  // Profesional: fijar filtro a su propio id y no permitir cambiar
+  useEffect(() => {
+    if (isProfesional && profesionalLogueado?.id) setProfesionalFilter(profesionalLogueado.id);
+  }, [isProfesional, profesionalLogueado?.id]);
+
   // Fetch turnos con filtros
   const filters = useMemo(() => {
     const f: Record<string, string | undefined> = {};
@@ -1162,7 +1173,7 @@ export default function AdminTurnos() {
         </div>
       </div>
 
-      {/* Filtros: profesional y estado (mismo diseño que Usuarios / Pacientes) */}
+      {/* Filtros: profesional y estado (mismo diseño que Usuarios / Pacientes). Profesional: solo ve los suyos, selector oculto. */}
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1171,6 +1182,11 @@ export default function AdminTurnos() {
                 <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
                 Profesional
               </label>
+              {isProfesional ? (
+                <div className="h-12 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[15px] text-[#374151]">
+                  {profesionalLogueado ? `${profesionalLogueado.nombre} ${profesionalLogueado.apellido}` : 'Cargando...'}
+                </div>
+              ) : (
               <Select value={profesionalFilter || undefined} onValueChange={setProfesionalFilter}>
                 <SelectTrigger className="h-12 border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3">
                   <SelectValue placeholder="Seleccionar profesional" />
@@ -1191,6 +1207,7 @@ export default function AdminTurnos() {
                   ))}
                 </SelectContent>
               </Select>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
@@ -1399,7 +1416,7 @@ export default function AdminTurnos() {
                     <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[18%] min-w-[90px] max-w-[150px]">
                       Motivo
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 text-right w-[120px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[120px]">
                       Acciones
                     </TableHead>
                   </TableRow>
@@ -2519,7 +2536,7 @@ export default function AdminTurnos() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={isSubmitting || !profesionalFilter || diaCompletamenteBloqueadoCreate}
+                disabled={isSubmitting || !profesionalFilter || diaCompletamenteBloqueadoCreate || !createFormData.paciente_id}
                 className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {isSubmitting ? (

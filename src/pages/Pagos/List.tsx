@@ -230,29 +230,44 @@ export default function AdminPagos() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [payDatePickerOpen]);
 
-  // Fetch todos los pagos
-  const { data: allPagos = [], isLoading: isLoadingAll } = useQuery({
-    queryKey: ['pagos', 'all'],
-    queryFn: () => pagosService.getAll(),
-  });
-
-  // Fetch pagos pendientes
-  const { data: pendingPagos = [], isLoading: isLoadingPending } = useQuery({
-    queryKey: ['pagos', 'pending'],
-    queryFn: () => pagosService.getPending(),
-  });
-
-  // Fetch pagos vencidos
-  const { data: overduePagos = [], isLoading: isLoadingOverdue } = useQuery({
-    queryKey: ['pagos', 'overdue'],
-    queryFn: () => pagosService.getOverdue(),
-  });
-
-  // Fetch profesionales para contrato y para crear pago
+  // Fetch profesionales para contrato y para crear pago (y para saber profesional logueado si es rol profesional)
   const { data: profesionales = [], isLoading: isLoadingProfesionales } = useQuery({
     queryKey: ['profesionales', 'all'],
     queryFn: () => profesionalesService.getAll(),
   });
+
+  const isProfesional = user?.rol === 'profesional';
+  const profesionalLogueado = useMemo(
+    () => profesionales.find((p: Profesional) => p.usuario_id === user?.id),
+    [profesionales, user?.id]
+  );
+  const profesionalIdForFilter = isProfesional ? profesionalLogueado?.id : null;
+
+  // Fetch todos los pagos (si es profesional, solo los suyos)
+  const { data: allPagos = [], isLoading: isLoadingAll } = useQuery({
+    queryKey: ['pagos', 'all', profesionalIdForFilter ?? 'all'],
+    queryFn: () =>
+      profesionalIdForFilter
+        ? pagosService.getAll({ profesional_id: profesionalIdForFilter })
+        : pagosService.getAll(),
+    enabled: !isProfesional || !!profesionalLogueado,
+  });
+
+  // Fetch pagos pendientes (admin: endpoint; profesional: derivado de allPagos)
+  const { data: pendingPagosFromApi = [], isLoading: isLoadingPending } = useQuery({
+    queryKey: ['pagos', 'pending'],
+    queryFn: () => pagosService.getPending(),
+    enabled: !isProfesional,
+  });
+  const pendingPagos = isProfesional ? allPagos.filter((p) => p.estado === 'pendiente') : pendingPagosFromApi;
+
+  // Fetch pagos vencidos (admin: endpoint; profesional: derivado de allPagos)
+  const { data: overduePagosFromApi = [], isLoading: isLoadingOverdue } = useQuery({
+    queryKey: ['pagos', 'overdue'],
+    queryFn: () => pagosService.getOverdue(),
+    enabled: !isProfesional,
+  });
+  const overduePagos = isProfesional ? allPagos.filter((p) => p.estado === 'vencido') : overduePagosFromApi;
 
   // Filtrar pagos por estado para las tabs
   const pagosByEstado = useMemo(() => {
@@ -263,6 +278,17 @@ export default function AdminPagos() {
       todos: allPagos,
     };
   }, [allPagos, pendingPagos, overduePagos]);
+
+  // Profesional: fijar filtro a su propio id y no permitir cambiar
+  useEffect(() => {
+    if (isProfesional && profesionalLogueado?.id) setFilterProfesionalId(profesionalLogueado.id);
+  }, [isProfesional, profesionalLogueado?.id]);
+
+  // Lista de profesionales para contratos: si es profesional solo ve el suyo
+  const profesionalesParaContrato = useMemo(
+    () => (isProfesional && profesionalLogueado ? [profesionalLogueado] : profesionales),
+    [isProfesional, profesionalLogueado, profesionales]
+  );
 
   // Filtrar por profesional y estado
   const filteredPagos = useMemo(() => {
@@ -493,7 +519,7 @@ export default function AdminPagos() {
     await eliminarContratoMutation.mutateAsync(contratoToEliminar.id);
   };
 
-  const isLoading = isLoadingAll || isLoadingPending || isLoadingOverdue;
+  const isLoading = isProfesional ? isLoadingAll : (isLoadingAll || isLoadingPending || isLoadingOverdue);
   const canCreate = hasPermission(user, 'pagos.crear');
   const canMarkPaid = hasPermission(user, 'pagos.marcar_pagado');
   const canUpdatePago = hasPermission(user, 'pagos.actualizar');
@@ -584,7 +610,7 @@ export default function AdminPagos() {
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando contratos...</p>
               </CardContent>
             </Card>
-          ) : profesionales.length === 0 ? (
+          ) : profesionalesParaContrato.length === 0 ? (
             <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -596,10 +622,11 @@ export default function AdminPagos() {
             </Card>
           ) : (
             <ContratosTable
-              profesionales={profesionales}
+              profesionales={profesionalesParaContrato}
               formatCurrency={formatCurrency}
               onEdit={handleOpenEditContrato}
               onEliminar={(p) => { setContratoToEliminar(p); setShowEliminarContratoConfirm(true); }}
+              canEditContrato={!isProfesional}
             />
           )}
         </TabsContent>
@@ -607,7 +634,8 @@ export default function AdminPagos() {
         <TabsContent value="pagos" className="mt-0 space-y-6">
           <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl">
+              <div className={`grid gap-6 max-w-2xl ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {!isProfesional && (
                 <div className="space-y-2">
                   <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Profesionales</Label>
                   <Select value={filterProfesionalId} onValueChange={setFilterProfesionalId}>
@@ -627,6 +655,7 @@ export default function AdminPagos() {
                     </SelectContent>
                   </Select>
                 </div>
+                )}
                 <div className="space-y-2">
                   <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Estado</Label>
                   <Select value={activeTab} onValueChange={setActiveTab}>
@@ -1110,9 +1139,10 @@ interface ContratosTableProps {
   formatCurrency: (amount: number | string) => string;
   onEdit: (p: Profesional) => void;
   onEliminar: (p: Profesional) => void;
+  canEditContrato?: boolean;
 }
 
-function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar }: ContratosTableProps) {
+function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, canEditContrato = true }: ContratosTableProps) {
   const tieneContrato = (p: Profesional) =>
     (p.fecha_inicio_contrato && p.fecha_inicio_contrato.trim() !== '') || (p.monto_mensual != null && p.monto_mensual > 0);
 
@@ -1126,7 +1156,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar }: C
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Fecha inicio</TableHead>
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Monto</TableHead>
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Período</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 text-right w-[120px]">Acciones</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-[120px]">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1158,6 +1188,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar }: C
                 {p.monto_mensual != null && p.monto_mensual > 0 ? periodoLabel : '—'}
               </TableCell>
               <TableCell className="py-4 text-right">
+                {canEditContrato && (
                 <TooltipProvider>
                   <div className="flex items-center justify-end gap-1">
                     <Tooltip>
@@ -1194,6 +1225,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar }: C
                     )}
                   </div>
                 </TooltipProvider>
+                )}
               </TableCell>
             </TableRow>
           );})}
@@ -1254,7 +1286,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
             <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
               Método
             </TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] text-right w-[160px]">
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[160px]">
               Acciones
             </TableHead>
           </TableRow>

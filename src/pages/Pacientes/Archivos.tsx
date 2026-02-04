@@ -20,6 +20,7 @@ import type { Archivo, Profesional } from '@/types';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { UploadArchivoModal, ViewImageModal } from './modals';
 
 interface PacienteArchivosProps {
@@ -112,6 +113,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedArchivo, setSelectedArchivo] = useState<Archivo | null>(null);
+  const [archivoToDelete, setArchivoToDelete] = useState<Archivo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Obtener el profesional asociado al usuario logueado si es profesional
@@ -214,10 +216,14 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('¿Está seguro de eliminar este archivo?')) {
-      await deleteMutation.mutateAsync(id);
-    }
+  const handleDeleteClick = (archivo: Archivo) => {
+    setArchivoToDelete(archivo);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!archivoToDelete) return;
+    await deleteMutation.mutateAsync(archivoToDelete.id);
+    setArchivoToDelete(null);
   };
 
   const handleView = (archivo: Archivo) => {
@@ -376,7 +382,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
-                            onClick={() => handleDelete(archivo.id)}
+                            onClick={() => handleDeleteClick(archivo)}
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 rounded-[8px] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
@@ -413,6 +419,24 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
           archivo={selectedArchivo}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!archivoToDelete}
+        onOpenChange={(open) => { if (!open) setArchivoToDelete(null); }}
+        title="Eliminar archivo"
+        description={
+          archivoToDelete ? (
+            <>
+              ¿Está seguro de que desea eliminar el archivo <span className="font-semibold text-[#374151]">{archivoToDelete.nombre_archivo}</span>? Esta acción no se puede deshacer.
+            </>
+          ) : (
+            ''
+          )
+        }
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteMutation.isPending}
+        confirmLabel="Eliminar"
+      />
     </div>
   );
 }
