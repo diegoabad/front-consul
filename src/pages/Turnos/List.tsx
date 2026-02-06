@@ -1,6 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -29,8 +28,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { 
-  Calendar, CalendarPlus, Clock, User, Eye, X, Plus, 
-  Loader2, Filter, FileText, Stethoscope, ChevronLeft, ChevronRight, Search, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
+  Calendar, CalendarPlus, User, Eye, X, Plus, 
+  Loader2, Filter, Stethoscope, ChevronLeft, ChevronRight, Search, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import { turnosService, type CreateTurnoData, type CancelTurnoData, type UpdateTurnoData } from '@/services/turnos.service';
@@ -76,7 +75,7 @@ function formatDni(dni: string | number | undefined | null): string {
 
 /** Clases del SelectTrigger de estado: hover y flecha según color del estado (sin violeta) */
 function getEstadoSelectTriggerClass(estado: string): string {
-  const base = "h-5 w-auto max-w-[140px] min-w-0 rounded-full border shadow-none font-['Inter'] text-[13px] py-px pl-2 pr-7 text-left focus:outline-none [&>svg]:!right-1.5 [&>svg]:!h-3 [&>svg]:!w-3";
+  const base = "h-7 min-h-0 py-0 leading-tight w-auto max-w-[140px] min-w-0 rounded-full border shadow-none font-['Inter'] text-[12px] pl-2 pr-7 text-left focus:outline-none [&>svg]:!right-1.5 [&>svg]:!h-3 [&>svg]:!w-3";
   switch (estado) {
     case 'confirmado':
       return `${base} bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] hover:border-[#6EE7B7] focus:border-[#6EE7B7] focus:ring-2 focus:ring-[#065F46]/20 [&>svg]:!text-[#065F46]`;
@@ -94,7 +93,7 @@ function getEstadoSelectTriggerClass(estado: string): string {
 }
 
 function getEstadoBadge(estado: string, className = '') {
-  const base = 'rounded-full px-3 py-px text-xs font-medium ' + className;
+  const base = 'rounded-full px-2.5 py-0.5 leading-tight text-[11px] font-medium inline-flex items-center ' + className;
   switch (estado) {
     case 'confirmado':
       return (
@@ -142,13 +141,6 @@ function sumarMinutos(hora: string, minutos: number): string {
   const nh = Math.floor(total / 60) % 24;
   const nm = total % 60;
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
-}
-
-/** Diferencia en minutos entre dos horas "HH:mm" (fin - inicio). */
-function minutosEntre(inicio: string, fin: string): number {
-  const [h1, m1] = inicio.split(':').map(Number);
-  const [h2, m2] = fin.split(':').map(Number);
-  return (h2 ?? 0) * 60 + (m2 ?? 0) - ((h1 ?? 0) * 60 + (m1 ?? 0));
 }
 
 /** Genera opciones de hora desde inicio hasta fin (excluyendo fin) cada N minutos */
@@ -202,12 +194,13 @@ export default function AdminTurnos() {
   const [bloqueDatePickerHastaOpen, setBloqueDatePickerHastaOpen] = useState(false);
   const [bloqueDatePickerDesdeMonth, setBloqueDatePickerDesdeMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [bloqueDatePickerHastaMonth, setBloqueDatePickerHastaMonth] = useState<Date>(() => startOfMonth(new Date()));
-  const [bloqueDesdeAnchor, setBloqueDesdeAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
-  const [bloqueHastaAnchor, setBloqueHastaAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
+  const [_bloqueDesdeAnchor, setBloqueDesdeAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
+  const [_bloqueHastaAnchor, setBloqueHastaAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
   const bloqueDesdeButtonRef = useRef<HTMLButtonElement>(null);
   const bloqueHastaButtonRef = useRef<HTMLButtonElement>(null);
 
   const [showDiaPuntualModal, setShowDiaPuntualModal] = useState(false);
+  const [diaPuntualDatePickerOpen, setDiaPuntualDatePickerOpen] = useState(false);
   const [diaPuntualForm, setDiaPuntualForm] = useState<CreateExcepcionAgendaData & { profesional_id: string }>({
     profesional_id: '',
     fecha: format(new Date(), 'yyyy-MM-dd'),
@@ -264,6 +257,9 @@ export default function AdminTurnos() {
   const [pendingCreatePayload, setPendingCreatePayload] = useState<CreateTurnoData | null>(null);
   const [showCreateAgendaModalFromTurnos, setShowCreateAgendaModalFromTurnos] = useState(false);
   const [showGestionarAgendaModalFromTurnos, setShowGestionarAgendaModalFromTurnos] = useState(false);
+  const handleGestionarAgendaClose = useCallback((open: boolean) => {
+    if (!open) setShowGestionarAgendaModalFromTurnos(false);
+  }, []);
   const navigate = useNavigate();
 
   // Fetch profesionales
@@ -277,6 +273,14 @@ export default function AdminTurnos() {
     () => profesionales.find((p: { usuario_id?: string }) => p.usuario_id === user?.id),
     [profesionales, user?.id]
   );
+
+  const [searchParams] = useSearchParams();
+
+  // Al entrar con ?profesional=id (ej. desde Agendas "Ir a la agenda"), preseleccionar ese profesional en Turnos
+  useEffect(() => {
+    const id = searchParams.get('profesional');
+    if (id) setProfesionalFilter(id);
+  }, [searchParams]);
 
   // Profesional: fijar filtro a su propio id y no permitir cambiar
   useEffect(() => {
@@ -741,6 +745,7 @@ export default function AdminTurnos() {
 
   useEffect(() => {
     if (showDiaPuntualModal && profesionalFilter) {
+      setDiaPuntualDatePickerOpen(false);
       setDiaPuntualForm((prev) => ({
         ...prev,
         profesional_id: profesionalFilter,
@@ -1267,7 +1272,6 @@ export default function AdminTurnos() {
   };
 
   const canCreate = hasPermission(user, 'turnos.crear');
-  const canCancel = hasPermission(user, 'turnos.cancelar');
   const canUpdate = hasPermission(user, 'turnos.actualizar');
   const canDelete = hasPermission(user, 'turnos.eliminar');
 
@@ -1323,27 +1327,27 @@ export default function AdminTurnos() {
   const monthTitleCapitalized = monthTitle.charAt(0).toUpperCase() + monthTitle.slice(1);
 
   return (
-    <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)]">
+    <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)] justify-start">
       {/* Modal: profesional sin agenda — ¿Querés crearla? */}
       <Dialog open={showSinAgendaModal} onOpenChange={setShowSinAgendaModal}>
         <DialogContent
-          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2"
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2 max-lg:max-w-[92vw] max-lg:px-5"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <DialogHeader className="mb-0">
-            <DialogTitle className="pr-14 mb-0">Sin agenda configurada</DialogTitle>
+            <DialogTitle className="pr-14 mb-0 text-[22px] max-lg:text-[20px]">¿Querés crear tu agenda?</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5 my-3">
-            <DialogDescription>
+          <div className="flex flex-col gap-1.5 mt-3 mb-0">
+            <DialogDescription className="text-base max-lg:text-[14px] mb-0">
               Para poder ver y gestionar turnos necesitás definir tus horarios de atención. ¿Querés crearla ahora?
             </DialogDescription>
           </div>
-          <DialogFooter className="mt-0">
+          <DialogFooter className="mt-0 flex-row justify-end max-lg:flex-col max-lg:gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={() => setShowSinAgendaModal(false)}
-              className="rounded-[10px] border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB] focus:outline-none focus:ring-0"
+              className="rounded-[10px] border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB] focus:outline-none focus:ring-0 max-lg:order-1 max-lg:w-full"
             >
               No
             </Button>
@@ -1353,7 +1357,7 @@ export default function AdminTurnos() {
                 setShowSinAgendaModal(false);
                 setShowCreateAgendaModalFromTurnos(true);
               }}
-              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5"
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 max-lg:order-2 max-lg:w-full"
             >
               Sí, crear agenda
             </Button>
@@ -1397,7 +1401,8 @@ export default function AdminTurnos() {
         </DialogContent>
       </Dialog>
 
-      {/* Header: título y botones */}
+      {/* Header + Filtros: agrupados arriba con poco espacio entre sí */}
+      <div className="flex flex-col gap-3 max-lg:gap-2">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1430,7 +1435,7 @@ export default function AdminTurnos() {
             {isLoading ? 'Cargando...' : `${filteredTurnos.length} ${filteredTurnos.length === 1 ? 'turno' : 'turnos'} del día seleccionado`}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 max-lg:hidden">
           {profesionalFilter && (
             <>
               <Button
@@ -1461,7 +1466,7 @@ export default function AdminTurnos() {
                   className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
                   {deleteExcepcionMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <Calendar className="h-5 w-5 mr-2 stroke-[2]" />}
-                  Eliminar fecha especial
+                  Deshabilitar día
                 </Button>
               ) : (
                 <Button
@@ -1480,7 +1485,7 @@ export default function AdminTurnos() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-block">
+                  <span className="inline-block max-lg:hidden">
                     <Button
                       onClick={() => setShowCreateModal(true)}
                       disabled={!profesionalFilter || diaCompletamenteBloqueadoListado}
@@ -1504,22 +1509,22 @@ export default function AdminTurnos() {
         </div>
       </div>
 
-      {/* Filtros: profesional y estado (mismo diseño que Usuarios / Pacientes). Profesional: solo ve los suyos, selector oculto. */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+      {/* Filtros: profesional y estado */}
+      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
+        <CardContent className="p-6 max-lg:p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-lg:gap-3">
+            <div className="space-y-2 max-lg:space-y-1">
+              <label className="text-[14px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                 Profesional
               </label>
               {isProfesional ? (
-                <div className="h-12 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[15px] text-[#374151]">
+                <div className="h-12 max-lg:h-8 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[15px] max-lg:text-[13px] text-[#374151]">
                   {profesionalLogueado ? `${formatDisplayText(profesionalLogueado.nombre)} ${formatDisplayText(profesionalLogueado.apellido)}` : 'Cargando...'}
                 </div>
               ) : (
               <Select value={profesionalFilter || undefined} onValueChange={setProfesionalFilter}>
-                <SelectTrigger className="h-12 border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3">
+                <SelectTrigger className="h-12 max-lg:h-8 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5">
                   <SelectValue placeholder="Seleccionar profesional" />
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
@@ -1528,11 +1533,11 @@ export default function AdminTurnos() {
                       key={opt.value}
                       value={opt.value}
                       disabled={!opt.tieneAgenda}
-                      className="font-['Inter']"
+                      className="font-['Inter'] text-[13px]"
                     >
                       <span className="truncate">{opt.label}</span>
                       {!opt.tieneAgenda && (
-                        <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Debe crear agenda</span>
+                        <span className="ml-1.5 text-[11px] text-[#6B7280] whitespace-nowrap">— Sin agenda</span>
                       )}
                     </SelectItem>
                   ))}
@@ -1540,18 +1545,18 @@ export default function AdminTurnos() {
               </Select>
               )}
             </div>
-            <div className="space-y-2">
-              <label className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Filter className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+            <div className="space-y-2 max-lg:space-y-1">
+              <label className="text-[14px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                <Filter className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                 Estado
               </label>
               <Select value={estadoFilter} onValueChange={setEstadoFilter}>
-                <SelectTrigger className="h-12 border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3">
+                <SelectTrigger className="h-12 max-lg:h-8 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
                   {estadoOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="font-['Inter']">
+                    <SelectItem key={opt.value} value={opt.value} className="font-['Inter'] text-[13px]">
                       {opt.label}
                     </SelectItem>
                   ))}
@@ -1561,14 +1566,15 @@ export default function AdminTurnos() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* Layout: Calendario izquierda | Turnos derecha */}
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         {/* Calendario - lado izquierdo: solo alto del contenido (números) */}
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm lg:w-[320px] flex-shrink-0 self-start">
+        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm w-full lg:w-[320px] flex-shrink-0 self-start mb-0">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins']">
+              <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins'] mb-0">
                 {monthTitleCapitalized}
               </h2>
               <div className="flex gap-1">
@@ -1666,25 +1672,42 @@ export default function AdminTurnos() {
 
         {/* Turnos del día - lado derecho: ocupa todo el alto disponible */}
         <Card className="border-0 rounded-[16px] shadow-none hover:!shadow-none hover:!translate-y-0 flex-1 min-w-0 flex flex-col min-h-0">
-          <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-auto">
-            <div className="px-6 py-4 border-b border-[#E5E7EB] mb-4">
+          <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-auto max-lg:pb-12">
+            <div className="px-6 py-4 border-b border-[#E5E7EB] mb-4 max-lg:px-4 max-lg:py-3">
+              {(() => {
+                const excepcionDiaListado = profesionalFilter && fechaFilter ? excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter) : null;
+                const showBloqueadoIcon = profesionalFilter && (diaCompletamenteBloqueadoListado || bloquesDelDiaListado.length > 0);
+                const showDiaPuntualIcon = profesionalFilter && excepcionDiaListado && !diaCompletamenteBloqueadoListado;
+                return (
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins'] mb-0">
-                  {selectedDate
-                    ? `Turnos del ${format(selectedDate, "d 'de' MMMM", { locale: es }).replace(/\s+(\w+)$/, (_, month) => ' ' + month.charAt(0).toUpperCase() + month.slice(1))}`
-                    : 'Turnos'}
-                  {selectedDate && profesionalFilter ? (
-                    horarioDelDiaListado ? (
-                      <span className="font-normal text-[#6B7280]"> ({horarioDelDiaListado.min} - {horarioDelDiaListado.max})</span>
-                    ) : (
-                      <span className="font-normal text-[#9CA3AF]"> (Sin horario para este día)</span>
-                    )
+                {/* Parent: título + horario y chips en la misma línea */}
+                <div className="flex items-center flex-nowrap gap-2 min-w-0 flex-1">
+                  <h2 className="text-[18px] max-lg:text-[14px] font-semibold text-[#111827] font-['Poppins'] mb-0 leading-tight min-w-0">
+                    {selectedDate
+                      ? `Turnos del ${format(selectedDate, "d 'de' MMMM", { locale: es }).replace(/\s+(\w+)$/, (_, month) => ' ' + month.charAt(0).toUpperCase() + month.slice(1))}`
+                      : 'Turnos'}
+                    {selectedDate && profesionalFilter ? (
+                      horarioDelDiaListado ? (
+                        <span className="font-normal text-[#6B7280] text-[13px] max-lg:text-[12px]"> ({horarioDelDiaListado.min} - {horarioDelDiaListado.max})</span>
+                      ) : (
+                        <span className="font-normal text-[#9CA3AF] text-[13px] max-lg:text-[12px]"> (Sin horario para este día)</span>
+                      )
+                    ) : null}
+                  </h2>
+                  {/* Mobile/tablet: icono redondo o espaciador invisible para mantener el mismo espacio */}
+                  {showBloqueadoIcon || showDiaPuntualIcon ? (
+                    <span className={`lg:hidden shrink-0 w-8 h-8 rounded-full flex items-center justify-center border ${showBloqueadoIcon ? 'bg-[#E5E7EB] text-[#4B5563] border-[#D1D5DB]' : 'bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7]'}`}>
+                      {showBloqueadoIcon ? <Lock className="h-4 w-4 stroke-[2]" /> : <CalendarPlus className="h-4 w-4 stroke-[2]" />}
+                    </span>
+                  ) : profesionalFilter ? (
+                    <span className="lg:hidden shrink-0 w-8 h-8 rounded-full invisible" aria-hidden="true" />
                   ) : null}
-                </h2>
+                </div>
+                {/* Desktop: badges o espaciador invisible para mantener el mismo espacio */}
                 {profesionalFilter && diaCompletamenteBloqueadoListado && (
                   <Badge
                     variant="secondary"
-                    className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
+                    className="max-lg:hidden shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
                   >
                     <Lock className="h-3.5 w-3.5 mr-1.5 stroke-[2] inline-block" />
                     {motivoBloqueoDiaListado ? `Bloqueado - ${motivoBloqueoDiaListado}` : 'Bloqueado'}
@@ -1693,7 +1716,7 @@ export default function AdminTurnos() {
                 {profesionalFilter && bloquesDelDiaListado.length > 0 && !diaCompletamenteBloqueadoListado && (
                   <Badge
                     variant="secondary"
-                    className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
+                    className="max-lg:hidden shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
                   >
                     <Lock className="h-3.5 w-3.5 mr-1.5 stroke-[2] inline-block" />
                     {(() => {
@@ -1703,18 +1726,52 @@ export default function AdminTurnos() {
                     })()}
                   </Badge>
                 )}
-                {profesionalFilter && fechaFilter && (() => {
-                  const excepcionDia = excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter);
-                  return excepcionDia ? (
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#D1FAE5] text-[#065F46] border border-[#6EE7B7] hover:bg-[#D1FAE5] ml-1"
-                    >
-                      {excepcionDia.observaciones?.trim() ? `Día puntual - ${excepcionDia.observaciones.trim()}` : 'Día puntual'}
-                    </Badge>
-                  ) : null;
-                })()}
+                {profesionalFilter && fechaFilter && excepcionDiaListado ? (
+                  <Badge
+                    variant="secondary"
+                    className="max-lg:hidden shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#D1FAE5] text-[#065F46] border border-[#6EE7B7] hover:bg-[#D1FAE5] ml-1"
+                  >
+                    {excepcionDiaListado.observaciones?.trim() ? `Día puntual - ${excepcionDiaListado.observaciones.trim()}` : 'Día puntual'}
+                  </Badge>
+                ) : null}
+                {/* Espaciador invisible en desktop cuando no hay ningún badge */}
+                {profesionalFilter && !diaCompletamenteBloqueadoListado && bloquesDelDiaListado.length === 0 && !(fechaFilter && excepcionDiaListado) && (
+                  <span className="max-lg:hidden shrink-0 w-20 h-8 invisible" aria-hidden="true" />
+                )}
               </div>
+                );
+              })()}
+              {/* En mobile: Bloquear / Habilitar día / Eliminar fecha como texto debajo del título */}
+              {profesionalFilter && fechaFilter && (
+                <div className="max-lg:flex max-lg:flex-wrap max-lg:gap-x-4 max-lg:gap-y-1 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
+                    disabled={bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending}
+                    className="text-[13px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] hover:underline disabled:opacity-50 disabled:no-underline"
+                  >
+                    {bloquesDelDiaListado.length > 0 ? (deleteBloqueMutation.isPending ? 'Desbloqueando...' : 'Desbloquear') : 'Bloquear'}
+                  </button>
+                  {excepcionDelDiaSeleccionado ? (
+                    <button
+                      type="button"
+                      onClick={handleEliminarFechaEspecial}
+                      disabled={deleteExcepcionMutation.isPending}
+                      className="text-[13px] font-medium font-['Inter'] text-red-600 hover:text-red-700 hover:underline disabled:opacity-50"
+                    >
+                      {deleteExcepcionMutation.isPending ? 'Deshabilitando...' : 'Deshabilitar día'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowDiaPuntualModal(true)}
+                      className="text-[13px] font-medium font-['Inter'] text-[#2563eb] hover:text-[#1d4ed8] hover:underline"
+                    >
+                      Habilitar día
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {isLoading ? (
               <div className="p-16 text-center">
@@ -1722,16 +1779,10 @@ export default function AdminTurnos() {
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando turnos...</p>
               </div>
             ) : !profesionalFilter ? (
-              <div className="p-16 text-center">
-                <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
-                  <Calendar className="h-10 w-10 text-[#2563eb] stroke-[2]" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
+              <div className="p-16 text-center max-lg:p-8">
+                <h3 className="text-lg max-lg:text-[15px] font-semibold mb-0 text-[#374151] font-['Inter']">
                   Seleccione un profesional
                 </h3>
-                <p className="text-[#6B7280] font-['Inter'] text-[15px] max-w-[320px] mx-auto">
-                  Elija un profesional en el filtro superior para ver el calendario y los turnos del día.
-                </p>
               </div>
             ) : !fechaFilter ? (
               <div className="p-16 text-center">
@@ -1747,33 +1798,25 @@ export default function AdminTurnos() {
               </div>
             ) : filteredTurnos.length === 0 ? (
               <div className="p-16 text-center">
-                <h3 className="text-lg font-semibold mb-6 text-[#374151] font-['Inter']">
+                <h3 className="text-lg max-lg:text-[15px] font-semibold mb-0 text-[#374151] font-['Inter']">
                   No hay turnos este día
                 </h3>
-                {canCreate && !diaCompletamenteBloqueadoListado && (
-                  <Button
-                    onClick={() => setShowCreateModal(true)}
-                    className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 rounded-[12px] px-6 py-3 h-auto font-medium"
-                  >
-                    <Plus className="h-5 w-5 mr-2 stroke-[2]" />
-                    Nuevo Turno
-                  </Button>
-                )}
               </div>
             ) : (
-              <Table className="table-fixed w-full">
+              <div className="max-lg:overflow-x-auto">
+              <Table className="table-fixed w-full min-w-[640px]">
                 <TableHeader>
                   <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[18%] min-w-[110px] whitespace-nowrap">
-                      Hora
+                    <TableHead className="font-['Inter'] font-medium text-[13px] max-lg:text-[12px] text-[#374151] py-3 max-lg:py-2 w-[20%] min-w-[130px] whitespace-nowrap">
+                      Horario
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[46%] min-w-0">
+                    <TableHead className="font-['Inter'] font-medium text-[13px] max-lg:text-[12px] text-[#374151] py-3 max-lg:py-2 w-[38%] min-w-[200px]">
                       Paciente
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[16%] min-w-[100px]">
+                    <TableHead className="font-['Inter'] font-medium text-[13px] max-lg:text-[12px] text-[#374151] py-3 max-lg:py-2 w-[22%] min-w-[135px]">
                       Estado
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[20%] min-w-[100px] text-center">
+                    <TableHead className="font-['Inter'] font-medium text-[13px] max-lg:text-[12px] text-[#374151] py-3 max-lg:py-2 w-[20%] min-w-[130px] text-center">
                       Acciones
                     </TableHead>
                   </TableRow>
@@ -1784,14 +1827,14 @@ export default function AdminTurnos() {
                       key={turno.id}
                       className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                     >
-                      <TableCell className="py-3 font-['Inter'] text-[15px] text-[#374151] whitespace-nowrap w-[18%]">
+                      <TableCell className="py-3 font-['Inter'] text-[14px] text-[#374151] whitespace-nowrap w-[20%] min-w-[130px]">
                         <span className="font-medium">
                           {format(new Date(turno.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(turno.fecha_hora_fin), 'HH:mm', { locale: es })}
                         </span>
                       </TableCell>
-                      <TableCell className="py-3 w-[46%] min-w-0">
+                      <TableCell className="py-3 w-[38%] min-w-[200px]">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-[#374151] font-['Inter'] text-[15px] truncate block">
+                          <span className="font-medium text-[#374151] font-['Inter'] text-[14px] truncate block">
                             {turno.paciente_nombre} {turno.paciente_apellido}
                             {turno.paciente_dni ? ` (${formatDni(turno.paciente_dni)})` : ''}
                           </span>
@@ -1811,7 +1854,7 @@ export default function AdminTurnos() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="py-3 w-[16%]">
+                      <TableCell className="py-3 w-[22%] min-w-[135px]">
                         {canUpdate ? (
                           <Select
                             value={turno.estado}
@@ -1835,8 +1878,8 @@ export default function AdminTurnos() {
                           getEstadoBadge(turno.estado)
                         )}
                       </TableCell>
-                      <TableCell className="py-3 w-[20%] text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <TableCell className="py-3 w-[20%] min-w-[130px] text-center">
+                        <div className="flex items-center justify-center gap-2">
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1847,9 +1890,9 @@ export default function AdminTurnos() {
                                     setSelectedTurno(turno);
                                     setShowDetailModal(true);
                                   }}
-                                  className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#374151]"
+                                  className="h-9 w-9 rounded-[8px] hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#374151]"
                                 >
-                                  <Eye className="h-4 w-4 stroke-[2]" />
+                                  <Eye className="h-5 w-5 stroke-[2]" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
@@ -1864,9 +1907,9 @@ export default function AdminTurnos() {
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => navigate(`/pacientes/${turno.paciente_id}`)}
-                                  className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#374151]"
+                                  className="h-9 w-9 rounded-[8px] hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#374151]"
                                 >
-                                  <User className="h-4 w-4 stroke-[2]" />
+                                  <User className="h-5 w-5 stroke-[2]" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
@@ -1883,9 +1926,9 @@ export default function AdminTurnos() {
                                     size="icon"
                                     onClick={() => handleDelete(turno)}
                                     disabled={deleteMutation.isPending}
-                                    className="h-8 w-8 rounded-[8px] text-[#EF4444] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
+                                    className="h-9 w-9 rounded-[8px] text-[#EF4444] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
                                   >
-                                    <Trash2 className="h-4 w-4 stroke-[2]" />
+                                    <Trash2 className="h-5 w-5 stroke-[2]" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
@@ -1900,53 +1943,76 @@ export default function AdminTurnos() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
 
+      {/* Botón flotante Nuevo turno (solo mobile/tablet; en desktop se usa el botón del header) */}
+      {canCreate && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                disabled={!profesionalFilter || diaCompletamenteBloqueadoListado}
+                aria-label="Nuevo turno"
+                className="lg:hidden fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/40 hover:shadow-xl hover:scale-105 transition-all duration-200 p-0 disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
+              >
+                <Plus className="h-6 w-6 stroke-[2]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="font-['Inter']">
+              <p>
+                {!profesionalFilter
+                  ? 'Seleccione un profesional para crear turnos'
+                  : diaCompletamenteBloqueadoListado
+                    ? 'El día está bloqueado'
+                    : 'Nuevo turno'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
       {/* Modal Bloquear agenda / horario */}
       <Dialog open={showBloqueModal} onOpenChange={(open) => { setShowBloqueModal(open); if (!open) setAbrioModalParaDesbloquear(false); }}>
         <DialogContent
-          className="max-w-[900px] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden"
-          onInteractOutside={(e) => {
-            const target = e.target as Node;
-            const calendar = document.querySelector('[data-bloque-calendar-portal]');
-            if (calendar?.contains(target)) e.preventDefault();
-          }}
+          className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden"
         >
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+          <DialogHeader className="relative z-[60] px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-white flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 max-lg:hidden">
                 <Lock className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Bloquear agenda / horario
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                  Bloquear agenda
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Marca períodos en los que no se podrán asignar turnos (vacaciones, ausencias, etc.)
+                  Marca períodos en los que no se podrán asignar turnos.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <div className="px-8 py-6 space-y-5 overflow-y-auto">
+          <div
+            className="px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5 overflow-y-auto flex-1 min-h-0"
+          >
             <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Profesional
               </Label>
-              <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
+              <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151]">
                 {(() => {
                   const p = profesionales.find((pr) => pr.id === profesionalFilter);
                   return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
                 })()}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4 max-lg:gap-3">
               <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Desde
                 </Label>
                 <div className="relative">
@@ -1957,16 +2023,11 @@ export default function AdminTurnos() {
                       const willOpen = !bloqueDatePickerDesdeOpen;
                       if (willOpen) {
                         setBloqueDatePickerHastaOpen(false);
-                        setBloqueHastaAnchor(null);
-                        const rect = bloqueDesdeButtonRef.current?.getBoundingClientRect();
-                        if (rect) setBloqueDesdeAnchor({ bottom: rect.bottom, left: rect.left, width: rect.width });
                         setBloqueDatePickerDesdeMonth(bloqueForm.fecha_inicio ? startOfMonth(new Date(bloqueForm.fecha_inicio + 'T12:00:00')) : startOfMonth(new Date()));
-                      } else {
-                        setBloqueDesdeAnchor(null);
                       }
                       setBloqueDatePickerDesdeOpen(willOpen);
                     }}
-                    className="h-[52px] w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
+                    className="h-[52px] max-lg:h-10 w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
                   >
                     <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                     <span className="text-[#374151]">
@@ -1974,11 +2035,77 @@ export default function AdminTurnos() {
                     </span>
                     <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${bloqueDatePickerDesdeOpen ? 'rotate-90' : ''}`} />
                   </button>
+                  {bloqueDatePickerDesdeOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                          {format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => subMonths(m, 1))}>
+                            <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => addMonths(m, 1))}>
+                            <ChevronRight className="h-4 w-4 stroke-[2]" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center">
+                        {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                          <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                        ))}
+                        {(() => {
+                          const monthStart = bloqueDatePickerDesdeMonth;
+                          const monthEnd = endOfMonth(monthStart);
+                          const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+                          const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                          const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                          const today = startOfDay(new Date());
+                          const selectedDate = bloqueForm.fecha_inicio ? new Date(bloqueForm.fecha_inicio + 'T12:00:00') : null;
+                          const horaActualCal = format(new Date(), 'HH:mm');
+                          const hoyYaPasóHorario = horaFinHoyAgenda != null && horaActualCal >= horaFinHoyAgenda;
+                          return days.map((day) => {
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            const isCurrentMonth = isSameMonth(day, bloqueDatePickerDesdeMonth);
+                            const isPast = isBefore(day, today);
+                            const isLaborable = getAgendaForDate(dateStr).length > 0;
+                            const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
+                            const isDisabled = isPast || !isLaborable || isHoyYaLegó;
+                            const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                            return (
+                              <button
+                                key={day.toISOString()}
+                                type="button"
+                                disabled={isDisabled}
+                                onClick={() => {
+                                  if (isDisabled) return;
+                                  const newInicio = dateStr;
+                                  setBloqueForm((f) => {
+                                    const finActual = f.fecha_fin;
+                                    const newFin = !finActual || new Date(newInicio) > new Date(finActual) ? newInicio : finActual;
+                                    return { ...f, fecha_inicio: newInicio, fecha_fin: newFin };
+                                  });
+                                  setBloqueDatePickerDesdeMonth(startOfMonth(day));
+                                  setBloqueDatePickerDesdeOpen(false);
+                                }}
+                                className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                  ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                                  ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
+                                  ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                                  ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                              >
+                                {format(day, 'd')}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Hasta
                 </Label>
                 <div className="relative">
@@ -1989,16 +2116,11 @@ export default function AdminTurnos() {
                       const willOpen = !bloqueDatePickerHastaOpen;
                       if (willOpen) {
                         setBloqueDatePickerDesdeOpen(false);
-                        setBloqueDesdeAnchor(null);
-                        const rect = bloqueHastaButtonRef.current?.getBoundingClientRect();
-                        if (rect) setBloqueHastaAnchor({ bottom: rect.bottom, left: rect.left, width: rect.width });
                         setBloqueDatePickerHastaMonth(bloqueForm.fecha_fin ? startOfMonth(new Date(bloqueForm.fecha_fin + 'T12:00:00')) : startOfMonth(new Date()));
-                      } else {
-                        setBloqueHastaAnchor(null);
                       }
                       setBloqueDatePickerHastaOpen(willOpen);
                     }}
-                    className="h-[52px] w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
+                    className="h-[52px] max-lg:h-10 w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
                   >
                     <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                     <span className="text-[#374151]">
@@ -2006,6 +2128,70 @@ export default function AdminTurnos() {
                     </span>
                     <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${bloqueDatePickerHastaOpen ? 'rotate-90' : ''}`} />
                   </button>
+                  {bloqueDatePickerHastaOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                          {format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => subMonths(m, 1))}>
+                            <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => addMonths(m, 1))}>
+                            <ChevronRight className="h-4 w-4 stroke-[2]" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center">
+                        {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                          <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                        ))}
+                        {(() => {
+                          const monthStart = bloqueDatePickerHastaMonth;
+                          const monthEnd = endOfMonth(monthStart);
+                          const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+                          const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                          const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                          const today = startOfDay(new Date());
+                          const selectedDate = bloqueForm.fecha_fin ? new Date(bloqueForm.fecha_fin + 'T12:00:00') : null;
+                          const fechaDesde = bloqueForm.fecha_inicio ? startOfDay(new Date(bloqueForm.fecha_inicio + 'T12:00:00')) : null;
+                          const horaActualCal = format(new Date(), 'HH:mm');
+                          const hoyYaPasóHorario = horaFinHoyAgenda != null && horaActualCal >= horaFinHoyAgenda;
+                          return days.map((day) => {
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            const isCurrentMonth = isSameMonth(day, bloqueDatePickerHastaMonth);
+                            const isPast = isBefore(day, today);
+                            const isLaborable = getAgendaForDate(dateStr).length > 0;
+                            const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
+                            const beforeDesde = fechaDesde ? isBefore(day, fechaDesde) : false;
+                            const isDisabled = isPast || !isLaborable || isHoyYaLegó || beforeDesde;
+                            const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                            return (
+                              <button
+                                key={day.toISOString()}
+                                type="button"
+                                disabled={isDisabled}
+                                onClick={() => {
+                                  if (isDisabled) return;
+                                  setBloqueForm((f) => ({ ...f, fecha_fin: dateStr }));
+                                  setBloqueDatePickerHastaMonth(startOfMonth(day));
+                                  setBloqueDatePickerHastaOpen(false);
+                                }}
+                                className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                  ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                                  ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
+                                  ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                                  ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                              >
+                                {format(day, 'd')}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2016,63 +2202,59 @@ export default function AdminTurnos() {
                 onCheckedChange={(checked) => setBloqueForm((f) => ({ ...f, todo_el_dia: !!checked }))}
                 className="border-[#2563eb] data-[state=checked]:bg-[#2563eb]"
               />
-              <Label htmlFor="todo_el_dia_bloque" className="text-[15px] font-['Inter'] text-[#374151] cursor-pointer mb-0">
+              <Label htmlFor="todo_el_dia_bloque" className="text-[15px] max-lg:text-[14px] font-['Inter'] text-[#374151] cursor-pointer mb-0">
                 Todo el día (o todos los días completos)
               </Label>
             </div>
+            {!bloqueForm.todo_el_dia && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Franjas horarias</Label>
-                {!bloqueForm.todo_el_dia && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBloqueForm((f) => ({ ...f, franjas: [...f.franjas, { hora_inicio: '14:00', hora_fin: '17:00' }] }))}
-                    className="rounded-[10px] font-['Inter'] border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Agregar franja
-                  </Button>
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-[15px] max-lg:text-[14px] font-medium text-[#374151] font-['Inter']">Franjas horarias</Label>
+                <button
+                  type="button"
+                  onClick={() => setBloqueForm((f) => ({ ...f, franjas: [...f.franjas, { hora_inicio: '14:00', hora_fin: '17:00' }] }))}
+                  className="rounded-[10px] font-['Inter'] text-[14px] max-lg:text-[13px] border border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] px-3 py-1.5 lg:px-3 lg:py-1.5 max-lg:border-0 max-lg:bg-transparent max-lg:px-0 max-lg:py-0 max-lg:text-[#2563eb] max-lg:hover:underline max-lg:hover:bg-transparent"
+                >
+                  <Plus className="h-4 w-4 mr-1 inline-block max-lg:hidden" />
+                  Agregar franja
+                </button>
               </div>
-              {!bloqueForm.todo_el_dia && (
-                <div className="space-y-2">
-                  {bloqueForm.franjas.map((fr, idx) => (
-                    <div key={idx} className="flex items-center gap-2 flex-wrap">
-                      <Input
-                        type="time"
-                        value={fr.hora_inicio}
-                        onChange={(e) => setBloqueForm((f) => ({
-                          ...f,
-                          franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_inicio: e.target.value } : x),
-                        }))}
-                        className="h-[44px] w-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                      />
-                      <span className="text-[#6B7280] font-['Inter']">a</span>
-                      <Input
-                        type="time"
-                        value={fr.hora_fin}
-                        onChange={(e) => setBloqueForm((f) => ({
-                          ...f,
-                          franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_fin: e.target.value } : x),
-                        }))}
-                        className="h-[44px] w-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setBloqueForm((f) => ({ ...f, franjas: f.franjas.filter((_, i) => i !== idx) }))}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-[8px] h-9"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="space-y-2">
+                {bloqueForm.franjas.map((fr, idx) => (
+                  <div key={idx} className="flex items-center gap-2 flex-wrap">
+                    <Input
+                      type="time"
+                      value={fr.hora_inicio}
+                      onChange={(e) => setBloqueForm((f) => ({
+                        ...f,
+                        franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_inicio: e.target.value } : x),
+                      }))}
+                      className="h-[44px] max-lg:h-10 flex-1 min-w-[100px] max-w-[160px] max-lg:min-w-0 max-lg:max-w-none max-lg:flex-[1] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px]"
+                    />
+                    <span className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px] shrink-0">a</span>
+                    <Input
+                      type="time"
+                      value={fr.hora_fin}
+                      onChange={(e) => setBloqueForm((f) => ({
+                        ...f,
+                        franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_fin: e.target.value } : x),
+                      }))}
+                      className="h-[44px] max-lg:h-10 flex-1 min-w-[100px] max-w-[160px] max-lg:min-w-0 max-lg:max-w-none max-lg:flex-[1] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px]"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBloqueForm((f) => ({ ...f, franjas: f.franjas.filter((_, i) => i !== idx) }))}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-[8px] h-9 shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
+            )}
             <div className="space-y-3">
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Motivo (opcional)</Label>
               <Input
@@ -2080,16 +2262,16 @@ export default function AdminTurnos() {
                 placeholder="Ej: Vacaciones, licencia, capacitación"
                 value={bloqueForm.motivo}
                 onChange={(e) => setBloqueForm((f) => ({ ...f, motivo: e.target.value }))}
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
               />
             </div>
 
           </div>
-          <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0 flex-wrap">
+          <DialogFooter className="px-8 max-lg:px-4 py-6 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 flex-wrap max-lg:flex-col mt-0">
             <Button
               variant="outline"
               onClick={() => { setShowBloqueModal(false); setAbrioModalParaDesbloquear(false); setShowDesbloquearTodoConfirm(false); }}
-              className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto"
+              className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full"
             >
               Cancelar
             </Button>
@@ -2100,14 +2282,14 @@ export default function AdminTurnos() {
                   onClick={() => setShowDesbloquearTodoConfirm(true)}
                   disabled={deleteBloqueMutation.isPending}
                   variant="outline"
-                  className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 focus-visible:ring-offset-0"
+                  className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 focus-visible:ring-offset-0"
                 >
                   Desbloquear todo
                 </Button>
                 <Button
                   onClick={handleSubmitBloque}
                   disabled={isSubmittingBloque}
-                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
+                  className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white max-lg:w-full shadow-md shadow-[#2563eb]/20"
                 >
                   {isSubmittingBloque ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Editar
@@ -2117,7 +2299,7 @@ export default function AdminTurnos() {
               <Button
                 onClick={handleSubmitBloque}
                 disabled={isSubmittingBloque}
-                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
+                className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white max-lg:w-full shadow-md shadow-[#2563eb]/20"
               >
                 {isSubmittingBloque ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Bloquear
@@ -2155,59 +2337,60 @@ export default function AdminTurnos() {
 
       {/* Modal Habilitar día puntual */}
       <Dialog open={showDiaPuntualModal} onOpenChange={setShowDiaPuntualModal}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+        <DialogContent className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="relative z-[60] px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-white flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 max-lg:hidden">
                 <CalendarPlus className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Habilitar día puntual
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Agregá una fecha en que el profesional atiende (ej. un día que no suele trabajar)
+                  Agregá una fecha en que el profesional atiende.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <div className="px-8 py-6 space-y-5 overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
+          <div className="px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5 overflow-y-auto flex-1 min-h-0">
+            <div className="grid grid-cols-1 gap-4 max-lg:gap-3">
               <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 h-6">
-                  <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Profesional
                 </Label>
-                <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
+                <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151]">
                   {(() => {
                     const p = profesionales.find((pr) => pr.id === profesionalFilter);
                     return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
                   })()}
                 </div>
               </div>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 h-6">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <div className="space-y-3 w-full">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Fecha
                 </Label>
-                <div className="h-[52px] [&_button]:h-full [&_button]:min-h-0 flex">
+                <div className="h-[52px] max-lg:h-10 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
                   <DatePicker
                     value={diaPuntualForm.fecha}
                     onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
                     placeholder="Seleccionar fecha"
-                    className="h-[52px] w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                    className="h-[52px] max-lg:h-10 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                    open={diaPuntualDatePickerOpen}
+                    onOpenChange={setDiaPuntualDatePickerOpen}
+                    inline
                   />
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
                 <Input
                   type="time"
                   value={diaPuntualForm.hora_inicio}
                   onChange={(e) => setDiaPuntualForm((f) => ({ ...f, hora_inicio: e.target.value }))}
-                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                 />
               </div>
               <div className="space-y-3">
@@ -2216,28 +2399,28 @@ export default function AdminTurnos() {
                   type="time"
                   value={diaPuntualForm.hora_fin}
                   onChange={(e) => setDiaPuntualForm((f) => ({ ...f, hora_fin: e.target.value }))}
-                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-                />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración (min)</Label>
-                <Input
-                  type="number"
-                  min={5}
-                  max={480}
-                  value={diaPuntualForm.duracion_turno_minutos ?? 30}
-                  onChange={(e) => setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
-                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                 />
               </div>
             </div>
+            <div className="space-y-3">
+              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración (min)</Label>
+              <Input
+                type="number"
+                min={5}
+                max={480}
+                value={diaPuntualForm.duracion_turno_minutos ?? 30}
+                onChange={(e) => setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
+                className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+              />
+            </div>
           </div>
-          <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0">
-            <Button variant="outline" onClick={() => setShowDiaPuntualModal(false)} className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto">
+          <DialogFooter className="mt-0 px-8 max-lg:px-4 py-6 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 max-lg:flex-col">
+            <Button variant="outline" onClick={() => setShowDiaPuntualModal(false)} className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full">
               Cancelar
             </Button>
             <Button
-              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
+              className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 max-lg:w-full"
               disabled={createExcepcionMutation.isPending || !diaPuntualForm.profesional_id || !diaPuntualForm.fecha}
               onClick={() => {
                 const { profesional_id, fecha, hora_inicio, hora_fin, duracion_turno_minutos } = diaPuntualForm;
@@ -2256,151 +2439,6 @@ export default function AdminTurnos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Calendarios del modal Bloquear: renderizados en portal para que no se corten */}
-      {bloqueDatePickerDesdeOpen && bloqueDesdeAnchor && createPortal(
-        <div
-          data-bloque-calendar-portal
-          className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto"
-          style={{ position: 'fixed', top: bloqueDesdeAnchor.bottom + 8, left: bloqueDesdeAnchor.left, width: bloqueDesdeAnchor.width }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-              {format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-            </span>
-            <div className="flex gap-1">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => subMonths(m, 1))}>
-                <ChevronLeft className="h-4 w-4 stroke-[2]" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => addMonths(m, 1))}>
-                <ChevronRight className="h-4 w-4 stroke-[2]" />
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-            ))}
-            {(() => {
-              const monthStart = bloqueDatePickerDesdeMonth;
-              const monthEnd = endOfMonth(monthStart);
-              const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-              const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-              const days = eachDayOfInterval({ start: calStart, end: calEnd });
-              const today = startOfDay(new Date());
-              const selectedDate = bloqueForm.fecha_inicio ? new Date(bloqueForm.fecha_inicio + 'T12:00:00') : null;
-              const horaActualCal = format(new Date(), 'HH:mm');
-              const hoyYaPasóHorario = horaFinHoyAgenda != null && horaActualCal >= horaFinHoyAgenda;
-              return days.map((day) => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const isCurrentMonth = isSameMonth(day, bloqueDatePickerDesdeMonth);
-                const isPast = isBefore(day, today);
-                const isLaborable = getAgendaForDate(dateStr).length > 0;
-                const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
-                const isDisabled = isPast || !isLaborable || isHoyYaLegó;
-                const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                return (
-                  <button
-                    key={day.toISOString()}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => {
-                      if (isDisabled) return;
-                      const newInicio = dateStr;
-                      setBloqueForm((f) => {
-                        const finActual = f.fecha_fin;
-                        const newFin = !finActual || new Date(newInicio) > new Date(finActual) ? newInicio : finActual;
-                        return { ...f, fecha_inicio: newInicio, fecha_fin: newFin };
-                      });
-                      setBloqueDatePickerDesdeMonth(startOfMonth(day));
-                      setBloqueDatePickerDesdeOpen(false);
-                      setBloqueDesdeAnchor(null);
-                    }}
-                    className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                      ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
-                      ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                      ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                  >
-                    {format(day, 'd')}
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        </div>,
-        document.body
-      )}
-      {bloqueDatePickerHastaOpen && bloqueHastaAnchor && createPortal(
-        <div
-          data-bloque-calendar-portal
-          className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto"
-          style={{ position: 'fixed', top: bloqueHastaAnchor.bottom + 8, left: bloqueHastaAnchor.left, width: bloqueHastaAnchor.width }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-              {format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-            </span>
-            <div className="flex gap-1">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => subMonths(m, 1))}>
-                <ChevronLeft className="h-4 w-4 stroke-[2]" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => addMonths(m, 1))}>
-                <ChevronRight className="h-4 w-4 stroke-[2]" />
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-            ))}
-            {(() => {
-              const monthStart = bloqueDatePickerHastaMonth;
-              const monthEnd = endOfMonth(monthStart);
-              const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-              const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-              const days = eachDayOfInterval({ start: calStart, end: calEnd });
-              const today = startOfDay(new Date());
-              const selectedDate = bloqueForm.fecha_fin ? new Date(bloqueForm.fecha_fin + 'T12:00:00') : null;
-              const fechaDesde = bloqueForm.fecha_inicio ? startOfDay(new Date(bloqueForm.fecha_inicio + 'T12:00:00')) : null;
-              const horaActualCal = format(new Date(), 'HH:mm');
-              const hoyYaPasóHorario = horaFinHoyAgenda != null && horaActualCal >= horaFinHoyAgenda;
-              return days.map((day) => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const isCurrentMonth = isSameMonth(day, bloqueDatePickerHastaMonth);
-                const isPast = isBefore(day, today);
-                const isLaborable = getAgendaForDate(dateStr).length > 0;
-                const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
-                const beforeDesde = fechaDesde ? isBefore(day, fechaDesde) : false;
-                const isDisabled = isPast || !isLaborable || isHoyYaLegó || beforeDesde;
-                const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                return (
-                  <button
-                    key={day.toISOString()}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => {
-                      if (isDisabled) return;
-                      setBloqueForm((f) => ({ ...f, fecha_fin: dateStr }));
-                      setBloqueDatePickerHastaMonth(startOfMonth(day));
-                      setBloqueDatePickerHastaOpen(false);
-                      setBloqueHastaAnchor(null);
-                    }}
-                    className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                      ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
-                      ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                      ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                  >
-                    {format(day, 'd')}
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        </div>,
-        document.body
-      )}
 
       {/* Modal Crear Turno */}
       <Dialog
@@ -2427,14 +2465,14 @@ export default function AdminTurnos() {
           }
         }}
       >
-        <DialogContent className="max-w-[900px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+        <DialogContent className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 max-lg:hidden">
                 <Plus className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Nuevo Turno
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
@@ -2444,20 +2482,19 @@ export default function AdminTurnos() {
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5">
             {!profesionalFilter ? (
               <p className="text-[#6B7280] font-['Inter'] text-[15px] bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] px-4 py-3">
                 Seleccione un profesional en el filtro de la página para crear turnos en su agenda.
               </p>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Profesional
                     </Label>
-                    <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
+                    <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151] w-full">
                       {(() => {
                         const p = profesionales.find((pr) => pr.id === profesionalFilter);
                         return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
@@ -2465,9 +2502,8 @@ export default function AdminTurnos() {
                     </div>
                   </div>
 
-                  <div className="space-y-3" ref={createDatePickerRef}>
-                    <Label htmlFor="create-fecha" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <div className="space-y-3 w-full" ref={createDatePickerRef}>
+                    <Label htmlFor="create-fecha" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Fecha
                     </Label>
                     <div className="relative">
@@ -2478,7 +2514,7 @@ export default function AdminTurnos() {
                           setCreateDatePickerOpen((o) => !o);
                           if (!createDatePickerOpen) setCreateDatePickerMonth(createFecha ? startOfMonth(new Date(createFecha + 'T12:00:00')) : startOfMonth(new Date()));
                         }}
-                        className="h-[52px] w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
+                        className="h-[52px] max-lg:h-10 w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
                       >
                         <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                         <span className="text-[#374151]">
@@ -2568,10 +2604,9 @@ export default function AdminTurnos() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label htmlFor="create-hora-inicio" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    <Label htmlFor="create-hora-inicio" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Hora inicio
                     </Label>
                     <Select
@@ -2585,10 +2620,10 @@ export default function AdminTurnos() {
                       }
                       onValueChange={(v) => setCreateHoraInicio(v)}
                     >
-                      <SelectTrigger id="create-hora-inicio" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20">
+                      <SelectTrigger id="create-hora-inicio" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
                         <SelectValue placeholder="Hora inicio" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
                         {opcionesHoraInicioConEstado.map((opt) => (
                           <SelectItem
                             key={opt.value}
@@ -2596,12 +2631,10 @@ export default function AdminTurnos() {
                             disabled={opt.bloqueado}
                             className={
                               opt.bloqueado
-                                ? 'text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
                                 : opt.ocupado
-                                  ? 'text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
-                                  : rangoHorarioCreate.min !== undefined
-                                    ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]'
-                                    : undefined
+                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                  : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
                             }
                           >
                             {opt.label}
@@ -2611,9 +2644,6 @@ export default function AdminTurnos() {
                     </Select>
                     {rangoHorarioCreate.min !== undefined ? (
                       <>
-                        <p className="text-[13px] text-[#6B7280] font-['Inter']">
-                          Duración: {minutosEntre(createHoraInicio, createHoraFin)} min
-                        </p>
                         {!diaCompletamenteBloqueadoCreate && esHoyCreate && opcionesHoraInicioTodas.length === 0 && (
                           <p className="text-[13px] text-[#92400E] font-['Inter']">
                             No hay más horarios disponibles hoy. Seleccione otra fecha.
@@ -2628,8 +2658,7 @@ export default function AdminTurnos() {
                   </div>
 
                   <div className="space-y-3">
-                    <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Hora fin
                     </Label>
                     <Select
@@ -2643,10 +2672,10 @@ export default function AdminTurnos() {
                       }
                       onValueChange={(v) => setCreateHoraFin(v)}
                     >
-                      <SelectTrigger id="create-hora-fin" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20">
+                      <SelectTrigger id="create-hora-fin" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
                         <SelectValue placeholder="Hora fin" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
                         {opcionesHoraFinConEstado.map((opt) => (
                           <SelectItem
                             key={opt.value}
@@ -2654,12 +2683,10 @@ export default function AdminTurnos() {
                             disabled={opt.bloqueado}
                             className={
                               opt.bloqueado
-                                ? 'text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
                                 : opt.ocupado
-                                  ? 'text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
-                                  : rangoHorarioCreate.min !== undefined
-                                    ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]'
-                                    : undefined
+                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                  : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
                             }
                           >
                             {opt.label}
@@ -2671,12 +2698,11 @@ export default function AdminTurnos() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label htmlFor="create-paciente-dni" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <Label htmlFor="create-paciente-dni" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                     Paciente
                   </Label>
                   {createFormData.paciente_id && pacienteFound ? (
-                    <div className="flex items-center gap-3 h-[52px] px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
+                    <div className="flex items-center gap-3 h-[52px] max-lg:h-10 px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151]">
                       <span className="flex-1">
                         {formatDisplayText(pacienteFound.nombre)} {formatDisplayText(pacienteFound.apellido)} - DNI: {formatDni(pacienteFound.dni)}
                       </span>
@@ -2770,29 +2796,40 @@ export default function AdminTurnos() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex gap-2">
-                          <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280] stroke-[2] pointer-events-none" />
-                            <Input
-                              id="create-paciente-dni"
-                              type="text"
-                              inputMode="numeric"
-                              value={pacienteDniInput}
-                              onChange={(e) => setPacienteDniInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                              onKeyDown={(e) => e.key === 'Enter' && handleBuscarPacientePorDni()}
-                              placeholder="Ingrese DNI (6 a 8 dígitos)"
-                              className="h-[52px] pl-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-                            />
-                          </div>
-                          <Button
+                        <div className="relative flex-1">
+                          <Input
+                            id="create-paciente-dni"
+                            type="text"
+                            inputMode="numeric"
+                            value={pacienteDniInput}
+                            onChange={(e) => setPacienteDniInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                            onKeyDown={(e) => e.key === 'Enter' && handleBuscarPacientePorDni()}
+                            placeholder="DNI (6 a 8 dígitos)"
+                            className="h-10 pl-4 pr-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                          />
+                          <button
                             type="button"
-                            variant="outline"
-                            onClick={handleBuscarPacientePorDni}
-                            disabled={!pacienteDniInput.trim() || pacienteDniInput.trim().length < 6 || isSearchingPaciente}
-                            className="h-[52px] px-4 rounded-[10px] border-[#D1D5DB] font-['Inter'] shrink-0"
+                            onClick={() => {
+                              if (pacienteFound) {
+                                setCreateFormData((prev) => ({ ...prev, paciente_id: '' }));
+                                setPacienteFound(null);
+                                setPacienteDniInput('');
+                              } else {
+                                handleBuscarPacientePorDni();
+                              }
+                            }}
+                            disabled={pacienteFound ? false : (!pacienteDniInput.trim() || pacienteDniInput.trim().length < 6 || isSearchingPaciente)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-[6px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] disabled:opacity-50 disabled:pointer-events-none"
+                            aria-label={pacienteFound ? 'Limpiar y buscar otro' : 'Buscar paciente por DNI'}
                           >
-                            {isSearchingPaciente ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Buscar'}
-                          </Button>
+                            {isSearchingPaciente ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : pacienteFound ? (
+                              <X className="h-4 w-4 stroke-[2]" />
+                            ) : (
+                              <Search className="h-4 w-4 stroke-[2]" />
+                            )}
+                          </button>
                         </div>
                       )}
                     </>
@@ -2800,8 +2837,7 @@ export default function AdminTurnos() {
                 </div>
 
             <div className="space-y-3">
-              <Label htmlFor="create-motivo" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <Label htmlFor="create-motivo" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Motivo
               </Label>
               <Input
@@ -2809,26 +2845,26 @@ export default function AdminTurnos() {
                 value={createFormData.motivo}
                 onChange={(e) => setCreateFormData({ ...createFormData, motivo: e.target.value })}
                 placeholder="Motivo de la consulta"
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
               />
             </div>
               </>
             )}
           </div>
 
-          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3 flex-shrink-0 mt-0">
-            <div className="flex gap-3">
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end gap-3 max-lg:gap-2 flex-shrink-0 mt-0">
+            <div className="flex gap-3 max-lg:flex-col max-lg:w-full">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateModal(false)}
-                className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                className="h-[48px] max-lg:h-10 px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] max-lg:text-[14px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCreate}
                 disabled={isSubmitting || !profesionalFilter || diaCompletamenteBloqueadoCreate || !createFormData.paciente_id}
-                className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {isSubmitting ? (
                   <>
@@ -2847,90 +2883,61 @@ export default function AdminTurnos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Ver detalle (solo lectura, mismo layout que crear) */}
+      {/* Modal Ver detalle del turno */}
       <Dialog open={showDetailModal} onOpenChange={(open) => { setShowDetailModal(open); if (!open) setSelectedTurno(null); }}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
-                <Eye className="h-6 w-6 text-white stroke-[2]" />
-              </div>
-              <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Detalle del turno
-                </DialogTitle>
-                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Información del turno (solo lectura)
-                </DialogDescription>
-              </div>
-            </div>
+        <DialogContent className="max-w-[500px] w-[95vw] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0 px-8 max-lg:px-4 pt-6 pb-2 border-b border-[#E5E7EB] mb-0">
+            <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
+              Detalle del turno
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 pt-3 pb-3 space-y-4">
             {selectedTurno && (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                      Profesional
-                    </Label>
-                    <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                      {(() => {
-                        const p = profesionales.find((pr) => pr.id === selectedTurno.profesional_id);
-                        return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : (selectedTurno.profesional_nombre ? `${formatDisplayText(selectedTurno.profesional_nombre)} ${formatDisplayText(selectedTurno.profesional_apellido || '')}` : '—');
-                      })()}
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                      Fecha
-                    </Label>
-                    <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                      {format(new Date(selectedTurno.fecha_hora_inicio), 'dd/MM/yyyy', { locale: es })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                      Hora inicio
-                    </Label>
-                    <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                      {format(new Date(selectedTurno.fecha_hora_inicio), 'HH:mm', { locale: es })}
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                      Hora fin
-                    </Label>
-                    <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                      {format(new Date(selectedTurno.fecha_hora_fin), 'HH:mm', { locale: es })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                    Paciente
-                  </Label>
-                  <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
+                <div className="space-y-2">
+                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Paciente</Label>
+                  <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
                     {selectedTurno.paciente_nombre} {selectedTurno.paciente_apellido}
                     {selectedTurno.paciente_dni ? ` (${formatDni(selectedTurno.paciente_dni)})` : ''}
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                    Motivo
-                  </Label>
-                  <div className="min-h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 py-3 font-['Inter'] text-[16px] text-[#374151]">
+                <div className="space-y-2">
+                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Fecha</Label>
+                  <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
+                    {format(new Date(selectedTurno.fecha_hora_inicio), 'dd/MM/yyyy', { locale: es })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
+                    <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
+                      {format(new Date(selectedTurno.fecha_hora_inicio), 'HH:mm', { locale: es })}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Hora fin</Label>
+                    <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
+                      {format(new Date(selectedTurno.fecha_hora_fin), 'HH:mm', { locale: es })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Profesional</Label>
+                  <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
+                    {(() => {
+                      const p = profesionales.find((pr) => pr.id === selectedTurno.profesional_id);
+                      return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : (selectedTurno.profesional_nombre ? `${formatDisplayText(selectedTurno.profesional_nombre)} ${formatDisplayText(selectedTurno.profesional_apellido || '')}` : '—');
+                    })()}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Motivo</Label>
+                  <div className="min-h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 py-2.5 font-['Inter'] text-[15px] text-[#374151]">
                     {selectedTurno.motivo || '—'}
                   </div>
                 </div>
@@ -2938,21 +2945,11 @@ export default function AdminTurnos() {
             )}
           </div>
 
-          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3">
-            {canCancel && selectedTurno && selectedTurno.estado !== 'cancelado' && selectedTurno.estado !== 'completado' && (
-              <Button
-                variant="outline"
-                onClick={() => { setShowDetailModal(false); setCancelData({ razon_cancelacion: '' }); setShowCancelModal(true); }}
-                className="h-[52px] px-6 rounded-[12px] border-[#EF4444] text-[#EF4444] hover:bg-[#FEE2E2] font-['Inter']"
-              >
-                <X className="h-4 w-4 mr-2 stroke-[2]" />
-                Cancelar turno
-              </Button>
-            )}
+          <DialogFooter className="flex-shrink-0 flex-row justify-end gap-0 px-8 max-lg:px-4 py-3 border-t border-[#E5E7EB] mt-0">
             <Button
               variant="outline"
               onClick={() => { setShowDetailModal(false); setSelectedTurno(null); }}
-              className="h-[52px] px-6 rounded-[12px] border-[#D1D5DB] font-['Inter']"
+              className="rounded-[10px] border border-[#D1D5DB] font-['Inter'] text-[15px] px-6 h-10"
             >
               Cerrar
             </Button>
@@ -2971,14 +2968,14 @@ export default function AdminTurnos() {
 
       {/* Modal Cancelar Turno */}
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
-        <DialogContent className="max-w-[600px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl">
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB]">
+        <DialogContent className="max-w-[600px] w-[95vw] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl max-lg:p-4">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB]">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#EF4444] to-[#DC2626] flex items-center justify-center shadow-lg shadow-[#EF4444]/20">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#EF4444] to-[#DC2626] flex items-center justify-center shadow-lg shadow-[#EF4444]/20 max-lg:hidden">
                 <X className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Cancelar Turno
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
@@ -3019,11 +3016,11 @@ export default function AdminTurnos() {
             </div>
           </div>
 
-          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3">
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end gap-3 max-lg:gap-2">
             <Button
               variant="outline"
               onClick={() => setShowCancelModal(false)}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] max-lg:text-[14px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
             >
               No Cancelar
             </Button>
@@ -3031,7 +3028,7 @@ export default function AdminTurnos() {
               variant="destructive"
               onClick={handleCancelSubmit}
               disabled={isSubmitting}
-              className="h-[48px] px-8 rounded-[12px] font-semibold font-['Inter'] text-[15px]"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-8 rounded-[12px] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px]"
             >
               {isSubmitting ? (
                 <>
@@ -3049,22 +3046,24 @@ export default function AdminTurnos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modales de agenda: mismo uso que en página Agendas (componentes independientes, mismo árbol) */}
-      <GestionarAgendaModal
-        open={showGestionarAgendaModalFromTurnos}
-        onOpenChange={setShowGestionarAgendaModalFromTurnos}
-        profesionalId={profesionalLogueado?.id ?? ''}
-        profesionalNombre={profesionalLogueado?.nombre ?? ''}
-        profesionalApellido={profesionalLogueado?.apellido ?? ''}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
-      />
+      {/* Modal Gestionar agenda: solo montar cuando está abierto para evitar bucle Radix Presence */}
+      {showGestionarAgendaModalFromTurnos && profesionalLogueado && (
+        <GestionarAgendaModal
+          open={true}
+          onOpenChange={handleGestionarAgendaClose}
+          profesionalId={profesionalLogueado.id}
+          profesionalNombre={profesionalLogueado.nombre ?? ''}
+          profesionalApellido={profesionalLogueado.apellido ?? ''}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+        />
+      )}
       <CreateAgendaModal
         open={showCreateAgendaModalFromTurnos}
         onOpenChange={(open) => {
           setShowCreateAgendaModalFromTurnos(open);
           if (!open) queryClient.invalidateQueries({ queryKey: ['agendas'] });
         }}
-        presetProfesionalId={profesionalLogueado?.id}
+        presetProfesionalId={profesionalLogueado?.id ?? ''}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
       />
     </div>

@@ -12,11 +12,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Paperclip, Loader2, User, Upload, X, FileText } from 'lucide-react';
-import { profesionalesService } from '@/services/profesionales.service';
+import { usuariosService } from '@/services/usuarios.service';
 import { useQuery } from '@tanstack/react-query';
 import type { CreateArchivoData } from '@/services/archivos.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDisplayText } from '@/lib/utils';
+import type { User as UserType } from '@/types';
+
+const rolLabel: Record<UserType['rol'], string> = {
+  administrador: 'Administrador',
+  profesional: 'Profesional',
+  secretaria: 'Secretaria',
+};
 
 interface UploadArchivoModalProps {
   open: boolean;
@@ -28,7 +35,7 @@ interface UploadArchivoModalProps {
 
 const initialFormData = {
   paciente_id: '',
-  profesional_id: '',
+  usuario_id: '',
   descripcion: '',
   archivo: null as File | null,
 };
@@ -44,40 +51,30 @@ export function UploadArchivoModal({
   const [formData, setFormData] = useState(initialFormData);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: profesionales = [] } = useQuery({
-    queryKey: ['profesionales', 'for-archivos'],
-    queryFn: () => profesionalesService.getAll({ bloqueado: false }),
+  const { data: usuarios = [] } = useQuery({
+    queryKey: ['usuarios', 'for-archivos'],
+    queryFn: () => usuariosService.getAll({ activo: true }),
     enabled: open,
   });
 
-  // Buscar el profesional asociado al usuario logueado si es profesional
-  const profesionalLogueado = profesionales.find(p => p.usuario_id === user?.id);
-  const isProfesional = user?.rol === 'profesional';
+  const isAdmin = user?.rol === 'administrador';
 
+  // Al abrir: resetear y marcar usuario actual (no-admin tiene preselección; admin elige)
   useEffect(() => {
     if (open) {
+      const usuarioActualId = !isAdmin && user?.id ? user.id : '';
       setFormData(prev => ({
         ...prev,
         paciente_id: pacienteId,
+        usuario_id: usuarioActualId,
       }));
     } else {
-      // Resetear el formulario cuando se cierra el modal
       setFormData({
         ...initialFormData,
         paciente_id: pacienteId,
       });
     }
-  }, [open, pacienteId]);
-
-  // Actualizar profesional_id cuando se carguen los profesionales y el usuario sea profesional
-  useEffect(() => {
-    if (open && isProfesional && profesionalLogueado) {
-      setFormData(prev => ({
-        ...prev,
-        profesional_id: profesionalLogueado.id,
-      }));
-    }
-  }, [open, isProfesional, profesionalLogueado]);
+  }, [open, pacienteId, isAdmin, user?.id]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -98,12 +95,12 @@ export function UploadArchivoModal({
   };
 
   const handleSubmit = async () => {
-    if (!formData.archivo) return;
+    if (!formData.archivo || !formData.usuario_id) return;
     
     try {
       const dataToSubmit: CreateArchivoData = {
         paciente_id: pacienteId,
-        profesional_id: formData.profesional_id,
+        usuario_id: formData.usuario_id,
         descripcion: formData.descripcion?.trim() || undefined,
         archivo: formData.archivo,
       };
@@ -139,22 +136,19 @@ export function UploadArchivoModal({
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
-  const isFormValid = formData.profesional_id && formData.archivo;
+  const isFormValid = !!formData.archivo && !!formData.usuario_id;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[900px] h-[90vh] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
         {/* Header fijo */}
-        <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+        <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-5 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/30">
-              <Paperclip className="h-7 w-7 text-white stroke-[2.5]" />
-            </div>
-            <div>
-              <DialogTitle className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-[32px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                 Subir Archivo
               </DialogTitle>
-              <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1.5 mb-0">
+              <DialogDescription className="text-base max-lg:text-sm text-[#6B7280] font-['Inter'] mt-1.5 mb-0 max-lg:mt-1">
                 Subir un nuevo archivo para este paciente
               </DialogDescription>
             </div>
@@ -163,25 +157,29 @@ export function UploadArchivoModal({
 
         {/* Contenido - usando flex */}
         <div className="flex-1 min-h-0 px-8 pt-6 pb-4 flex flex-col space-y-6">
-          {/* Sección: Información Básica */}
+          {/* Sección: Usuario (solo admin puede cambiar; el resto tiene siempre el usuario actual) */}
           <div className="space-y-3 flex-shrink-0">
-            <Label htmlFor="profesional" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+            <Label htmlFor="usuario" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
               <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Profesional
+              Usuario
               <span className="text-[#EF4444]">*</span>
             </Label>
             <Select
-              value={formData.profesional_id}
-              onValueChange={(value) => setFormData({ ...formData, profesional_id: value })}
-              disabled={isProfesional}
+              value={formData.usuario_id}
+              onValueChange={(value) => setFormData({ ...formData, usuario_id: value })}
+              disabled={!isAdmin}
             >
-              <SelectTrigger className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
-                <SelectValue placeholder="Seleccionar profesional" />
+              <SelectTrigger id="usuario" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
+                <SelectValue placeholder="Seleccionar usuario" />
               </SelectTrigger>
               <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                {profesionales.map((prof) => (
-                  <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                    {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)} {prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}
+                {usuarios.map((u) => (
+                  <SelectItem
+                    key={u.id}
+                    value={u.id}
+                    className="rounded-[8px] font-['Inter'] text-[15px] py-3"
+                  >
+                    {formatDisplayText(u.nombre)} {formatDisplayText(u.apellido)} — {rolLabel[u.rol]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -261,34 +259,29 @@ export function UploadArchivoModal({
         </div>
 
         {/* Footer fijo */}
-        <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancel}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !isFormValid}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
-                  Subiendo...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-5 w-5 stroke-[2.5]" />
-                  Subir Archivo
-                </>
-              )}
-            </Button>
-          </div>
+        <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 mt-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleCancel}
+            className="h-[48px] max-lg:h-12 max-lg:w-full px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !isFormValid}
+            className="h-[48px] max-lg:h-12 max-lg:w-full px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed max-lg:hover:scale-100"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 max-lg:hidden h-5 w-5 animate-spin stroke-[2.5]" />
+                Subiendo...
+              </>
+            ) : (
+              'Subir Archivo'
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

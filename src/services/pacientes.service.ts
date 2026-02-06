@@ -162,6 +162,21 @@ export const pacientesService = {
   removeAsignacion: async (pacienteId: string, profesionalId: string): Promise<void> => {
     await api.delete<ApiResponse<void>>(`/pacientes/${pacienteId}/asignaciones/${profesionalId}`);
   },
+
+  /**
+   * Reemplazar todas las asignaciones del paciente en una sola operación
+   */
+  setAsignaciones: async (
+    pacienteId: string,
+    profesionalIds: string[]
+  ): Promise<AsignacionPacienteProfesional[]> => {
+    const response = await api.put<ApiResponse<AsignacionPacienteProfesional[]>>(
+      `/pacientes/${pacienteId}/asignaciones`,
+      { profesional_ids: profesionalIds }
+    );
+    const data = getData(response);
+    return data || [];
+  },
 };
 
 export interface AsignacionPacienteProfesional {

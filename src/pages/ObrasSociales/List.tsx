@@ -171,7 +171,7 @@ export default function AdminObrasSociales() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-lg:pb-[46px] relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -184,7 +184,7 @@ export default function AdminObrasSociales() {
         </div>
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium max-lg:hidden"
         >
           <Plus className="h-5 w-5 mr-2 stroke-[2]" />
           Nueva Obra Social
@@ -244,7 +244,7 @@ export default function AdminObrasSociales() {
           <Table>
             <TableHeader>
               <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[200px]">
                   Nombre
                 </TableHead>
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
@@ -262,14 +262,9 @@ export default function AdminObrasSociales() {
                   className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                 >
                   <TableCell className="py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#2563eb]/10 to-[#1d4ed8]/10 flex items-center justify-center">
-                        <Building2 className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                      </div>
-                      <span className="font-medium text-[#374151] font-['Inter'] text-[15px]">
-                        {item.nombre}
-                      </span>
-                    </div>
+                    <span className="font-medium text-[#374151] font-['Inter'] text-[15px]">
+                      {item.nombre}
+                    </span>
                   </TableCell>
                   <TableCell>
                     {item.activo ? (
@@ -349,15 +344,27 @@ export default function AdminObrasSociales() {
         </Card>
       )}
 
+      {/* FAB móvil: Nueva Obra Social */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+        <Button
+          onClick={() => setShowCreateModal(true)}
+          className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
+          title="Nueva Obra Social"
+          aria-label="Nueva Obra Social"
+        >
+          <Plus className="h-6 w-6 stroke-[2]" />
+        </Button>
+      </div>
+
       {/* Modal Crear */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent className="max-w-[600px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl">
           <DialogHeader className="px-8 pt-8 pb-6 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB]">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+              <div className="max-md:hidden h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
                 <Building2 className="h-6 w-6 text-white stroke-[2]" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Nueva Obra Social
                 </DialogTitle>
@@ -384,28 +391,29 @@ export default function AdminObrasSociales() {
             </div>
           </div>
 
-          <DialogFooter className="px-8 py-5 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3">
+          <DialogFooter className="px-8 py-5 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-col md:flex-row md:justify-end gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateModal(false)}
-                className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                disabled={isSubmitting}
+                className="h-[48px] w-full md:w-auto px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200 order-1"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCreate}
                 disabled={isSubmitting}
-                className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="h-[48px] w-full md:w-auto px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-2"
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                    <Loader2 className="max-md:hidden mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
                     Guardando...
                   </>
                 ) : (
                   <>
-                    <Plus className="mr-2 h-5 w-5 stroke-[2]" />
-                    Crear
+                    <Plus className="max-md:hidden mr-2 h-5 w-5 stroke-[2]" />
+                    Crear obra social
                   </>
                 )}
               </Button>

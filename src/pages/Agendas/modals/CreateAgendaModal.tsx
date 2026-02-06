@@ -23,7 +23,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Calendar, CalendarDays, Clock, Loader2, User } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2 } from 'lucide-react';
 import { agendaService, type CreateAgendaData } from '@/services/agenda.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { ConfiguracionAgenda } from '@/types';
@@ -274,23 +275,16 @@ export function CreateAgendaModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[900px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl gap-0 flex flex-col overflow-hidden">
-        <DialogHeader className="flex-shrink-0 px-8 pt-8 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] mb-0">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
-              <Calendar className="h-6 w-6 text-white stroke-[2]" />
-            </div>
-            <div>
-              <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                {editingAgenda ? 'Editar configuración' : 'Nueva Agenda'}
-              </DialogTitle>
-              <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                {editingAgenda ? 'Modifica horario y duración del turno' : 'Configura los horarios disponibles por día'}
-              </DialogDescription>
-            </div>
-          </div>
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 max-lg:px-4 max-lg:pt-5 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] mb-0">
+          <DialogTitle className="text-[24px] max-lg:text-[20px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+            {editingAgenda ? 'Editar configuración' : 'Nueva Agenda'}
+          </DialogTitle>
+          <DialogDescription className="text-base max-lg:text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
+            {editingAgenda ? 'Modifica horario y duración del turno' : 'Configura los horarios disponibles por día'}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 max-lg:px-4 max-lg:py-4 space-y-5">
           {editingAgenda ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -319,7 +313,7 @@ export function CreateAgendaModal({
                   </div>
                 </div>
               </div>
-              <div className="space-y-3 max-w-[200px]">
+              <div className="space-y-3 w-full">
                 <Label htmlFor="duracion_turno_minutos" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Duración del turno (min)
                 </Label>
@@ -340,13 +334,20 @@ export function CreateAgendaModal({
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">¿Cómo atiende este profesional?</Label>
                 <div className="flex items-center gap-4 p-4 rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB]">
+                  <span className="lg:hidden flex-shrink-0">
+                    <Checkbox
+                      id="dias-fijos-check"
+                      checked={diasFijosSemana}
+                      onCheckedChange={(c) => setDiasFijosSemana(c === true)}
+                    />
+                  </span>
                   <Switch
                     id="dias-fijos-switch"
                     checked={diasFijosSemana}
                     onCheckedChange={setDiasFijosSemana}
-                    className="data-[state=checked]:bg-[#2563eb]"
+                    className="data-[state=checked]:bg-[#2563eb] max-lg:hidden"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label htmlFor="dias-fijos-switch" className="font-['Inter'] text-[14px] text-[#374151] cursor-pointer mb-0 block">
                       {diasFijosSemana
                         ? 'Días fijos por semana (Lu, Ma, Mi…). Configurá horarios por día.'
@@ -358,10 +359,9 @@ export function CreateAgendaModal({
 
               {diasFijosSemana ? (
                 <>
-                  <div className="grid gap-x-4 gap-y-3 items-end grid-cols-[minmax(200px,1fr)_300px_120px]">
-                    <div className="space-y-3">
-                      <Label htmlFor="profesional_id" className="h-5 flex items-center gap-2 text-[15px] font-medium text-[#374151] font-['Inter']">
-                        <User className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                  <div className="flex flex-col gap-4 w-full">
+                    <div className="space-y-2 w-full">
+                      <Label htmlFor="profesional_id" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                         Profesional <span className="text-[#EF4444]">*</span>
                       </Label>
                       <Select
@@ -369,7 +369,7 @@ export function CreateAgendaModal({
                         onValueChange={(value) => setAgendaForm({ ...agendaForm, profesional_id: value })}
                         disabled={profesionalSelectorDisabled}
                       >
-                        <SelectTrigger className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
+                        <SelectTrigger id="profesional_id" className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
                           <SelectValue placeholder="Seleccionar profesional" />
                         </SelectTrigger>
                         <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
@@ -393,9 +393,8 @@ export function CreateAgendaModal({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="agenda-vigencia-desde" className="h-5 flex items-center gap-2 text-[15px] font-medium text-[#374151] font-['Inter']">
-                        <CalendarDays className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                    <div className="space-y-2 w-full">
+                      <Label htmlFor="agenda-vigencia-desde" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                         Vigente desde
                       </Label>
                       <DatePicker
@@ -404,12 +403,12 @@ export function CreateAgendaModal({
                         onChange={(v) => setAgendaForm({ ...agendaForm, vigencia_desde: v })}
                         placeholder="Elegir fecha"
                         className="h-[52px] w-full text-[#374151]"
+                        inline
                       />
                     </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="duracion_turno_minutos_new" className="h-5 flex items-center gap-2 text-[15px] font-medium text-[#374151] font-['Inter']">
-                        <Clock className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
-                        Dur. (min)
+                    <div className="space-y-2 w-full">
+                      <Label htmlFor="duracion_turno_minutos_new" className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                        Duración del turno (min)
                       </Label>
                       <Input
                         id="duracion_turno_minutos_new"
@@ -418,35 +417,36 @@ export function CreateAgendaModal({
                         max={480}
                         value={agendaForm.duracion_turno_minutos}
                         onChange={(e) => setAgendaForm({ ...agendaForm, duracion_turno_minutos: parseInt(e.target.value) || 30 })}
-                        className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter']"
+                        className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter']"
                         placeholder="30"
                       />
                     </div>
                   </div>
                   <div className="space-y-3">
                     <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Horario por día (marca los días que trabaja)</Label>
-                    <div className="rounded-[12px] border border-[#E5E7EB] overflow-hidden">
-                      <Table className="table-fixed w-full">
+                    <div className="rounded-[12px] border border-[#E5E7EB] overflow-x-auto">
+                      <Table className="w-full min-w-[320px]">
                         <TableHeader>
                           <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[18%]">Trabaja</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[22%]">Día</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[30%]">Hora inicio</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[30%]">Hora fin</TableHead>
+                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[80px]">Trabaja</TableHead>
+                            <TableHead className="font-['Inter'] text-[14px] text-[#374151]">Día</TableHead>
+                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora inicio</TableHead>
+                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora fin</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {DIAS_SEMANA.map((dia) => (
                             <TableRow key={dia.value} className="border-[#E5E7EB]">
-                              <TableCell className="py-2 w-[18%]">
+                              <TableCell className="py-3 w-[80px]">
                                 <Switch
                                   id={`dia-${dia.value}`}
                                   checked={!!diasActivos[dia.value]}
                                   onCheckedChange={(checked) => setDiasActivos((prev) => ({ ...prev, [dia.value]: checked }))}
+                                  className="data-[state=checked]:bg-[#2563eb]"
                                 />
                               </TableCell>
-                              <TableCell className="font-['Inter'] text-[15px] text-[#374151] py-3 w-[22%]">{dia.label}</TableCell>
-                              <TableCell className="py-2 w-[30%]">
+                              <TableCell className="font-['Inter'] text-[15px] text-[#374151] py-3">{dia.label}</TableCell>
+                              <TableCell className="py-2 min-w-[100px]">
                                 <Input
                                   type="time"
                                   value={diasHorarios[dia.value]?.hora_inicio ?? '09:00'}
@@ -460,7 +460,7 @@ export function CreateAgendaModal({
                                   className="h-10 border-[#D1D5DB] rounded-[8px] text-[14px] font-['Inter'] w-full disabled:opacity-50 disabled:bg-[#F9FAFB]"
                                 />
                               </TableCell>
-                              <TableCell className="py-2 w-[30%]">
+                              <TableCell className="py-2 min-w-[100px]">
                                 <Input
                                   type="time"
                                   value={diasHorarios[dia.value]?.hora_fin ?? '18:00'}
@@ -483,9 +483,8 @@ export function CreateAgendaModal({
                 </>
               ) : (
                 <>
-                  <div className="space-y-3">
-                    <Label htmlFor="profesional_id_puntual" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                      <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <div className="space-y-2 w-full">
+                    <Label htmlFor="profesional_id_puntual" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Profesional <span className="text-[#EF4444]">*</span>
                     </Label>
                     <Select
@@ -493,23 +492,23 @@ export function CreateAgendaModal({
                       onValueChange={(value) => setAgendaForm({ ...agendaForm, profesional_id: value })}
                       disabled={profesionalSelectorDisabled}
                     >
-                      <SelectTrigger id="profesional_id_puntual" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
+                      <SelectTrigger id="profesional_id_puntual" className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
                         <SelectValue placeholder="Seleccionar profesional" />
                       </SelectTrigger>
-                        <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                          {profesionales.map((prof) => {
-                            const yaTieneAgenda = profesionalesConAgendaIds.has(prof.id);
-                            return (
-                              <SelectItem key={prof.id} value={prof.id} disabled={yaTieneAgenda} className="font-['Inter'] rounded-[8px] text-[15px] py-3">
-                                <span className="truncate">
-                                  {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
-                                  {prof.especialidad ? ` - ${formatDisplayText(prof.especialidad)}` : ''}
-                                </span>
-                                {yaTieneAgenda && <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Ya tiene agenda</span>}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
+                      <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
+                        {profesionales.map((prof) => {
+                          const yaTieneAgenda = profesionalesConAgendaIds.has(prof.id);
+                          return (
+                            <SelectItem key={prof.id} value={prof.id} disabled={yaTieneAgenda} className="font-['Inter'] rounded-[8px] text-[15px] py-3">
+                              <span className="truncate">
+                                {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
+                                {prof.especialidad ? ` - ${formatDisplayText(prof.especialidad)}` : ''}
+                              </span>
+                              {yaTieneAgenda && <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Ya tiene agenda</span>}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
                     </Select>
                   </div>
                   <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-4 space-y-4">
@@ -519,24 +518,25 @@ export function CreateAgendaModal({
                     <p className="text-[13px] text-[#6B7280] font-['Inter'] -mt-2">
                       Ingresá la primera fecha en que el profesional atiende. Después podés agregar más desde Gestionar → Fechas puntuales.
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
+                    <div className="flex flex-col gap-4 w-full">
+                      <div className="space-y-2 w-full">
                         <Label className="text-[14px] font-['Inter']">Fecha</Label>
                         <DatePicker
                           value={primeraFechaPuntual.fecha}
                           onChange={(v) => setPrimeraFechaPuntual((prev) => ({ ...prev, fecha: v ?? '' }))}
                           placeholder="Elegir fecha"
-                          className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px]"
+                          className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px]"
+                          inline
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3 w-full">
                         <div className="space-y-2">
                           <Label className="text-[14px] font-['Inter']">Hora inicio</Label>
                           <Input
                             type="time"
                             value={primeraFechaPuntual.hora_inicio}
                             onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, hora_inicio: e.target.value }))}
-                            className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                            className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
                           />
                         </div>
                         <div className="space-y-2">
@@ -545,11 +545,11 @@ export function CreateAgendaModal({
                             type="time"
                             value={primeraFechaPuntual.hora_fin}
                             onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, hora_fin: e.target.value }))}
-                            className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                            className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
                           />
                         </div>
                       </div>
-                      <div className="space-y-2 sm:col-span-2 max-w-[140px]">
+                      <div className="space-y-2 w-full">
                         <Label className="text-[14px] font-['Inter']">Duración (min)</Label>
                         <Input
                           type="number"
@@ -557,7 +557,7 @@ export function CreateAgendaModal({
                           max={480}
                           value={primeraFechaPuntual.duracion_turno_minutos}
                           onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
-                          className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                          className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
                         />
                       </div>
                     </div>
@@ -568,11 +568,11 @@ export function CreateAgendaModal({
           )}
         </div>
 
-        <DialogFooter className="flex-shrink-0 px-8 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3 mt-0 pt-4">
+        <DialogFooter className="flex-shrink-0 px-6 py-4 max-lg:px-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3 max-lg:flex-col max-lg:gap-4 mt-0 pt-4">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px]"
+            className="h-[48px] px-6 max-lg:w-full rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px]"
           >
             Cancelar
           </Button>
@@ -584,15 +584,17 @@ export function CreateAgendaModal({
               (!editingAgenda && diasFijosSemana && !DIAS_SEMANA.some((d) => diasActivos[d.value])) ||
               (!editingAgenda && !diasFijosSemana && ((!agendaForm.profesional_id && !effectivePresetProfesionalId) || !primeraFechaPuntual.fecha || primeraFechaPuntual.hora_inicio >= primeraFechaPuntual.hora_fin))
             }
-            className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg font-semibold font-['Inter'] text-[15px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-[48px] px-8 max-lg:w-full rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg font-semibold font-['Inter'] text-[15px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting || updateAgendaMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
                 Guardando...
               </>
+            ) : editingAgenda ? (
+              'Actualizar'
             ) : (
-              editingAgenda ? 'Actualizar' : 'Crear'
+              'Crear agenda'
             )}
           </Button>
         </DialogFooter>

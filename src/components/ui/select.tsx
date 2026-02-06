@@ -17,7 +17,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
       className={cn(
-      "relative flex min-h-[48px] w-full items-center justify-between rounded-[10px] border-[1.5px] border-[#D1D5DB] bg-white px-4 py-3.5 pr-10 text-base font-normal text-[#374151] ring-offset-background placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563eb] focus:ring-[0_0_0_3px_rgba(124,58,237,0.1)] transition-all duration-200 disabled:cursor-not-allowed disabled:bg-[#F9FAFB] disabled:text-[#9CA3AF] disabled:opacity-60 hover:border-[#0ea5e9] [&>span]:line-clamp-1",
+      "relative flex min-h-[48px] w-full items-center justify-between rounded-[10px] border-[1.5px] border-[#D1D5DB] bg-white px-4 py-3.5 pr-10 text-base font-normal text-[#374151] ring-offset-background placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 disabled:cursor-not-allowed disabled:bg-[#F9FAFB] disabled:text-[#9CA3AF] disabled:opacity-60 hover:border-[#2563eb] [&>span]:line-clamp-1",
       className,
     )}
     {...props}
@@ -77,9 +77,9 @@ const SelectContent = React.forwardRef<
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport
         className={cn(
-          "p-1",
+          "p-1.5 overflow-y-auto",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
+            "w-full min-w-[var(--radix-select-trigger-width)] max-h-[min(24rem,80vh)]",
         )}
       >
         {children}
@@ -101,18 +101,18 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { hideIndicator?: boolean }
->(({ className, children, hideIndicator, ...props }, ref) => (
+>(({ className, children, hideIndicator = true, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-lg py-3 pr-3 text-base outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-[#dbeafe] focus:text-[#2563eb] hover:bg-[#F3F4F6] transition-colors duration-150",
-      hideIndicator ? "pl-3 data-[state=checked]:bg-[#dbeafe] data-[state=checked]:text-[#2563eb]" : "pl-10",
+      "relative flex w-full cursor-pointer select-none items-center rounded-lg py-2.5 px-3 text-base outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-[#dbeafe] focus:text-[#2563eb] hover:bg-[#F3F4F6] transition-colors duration-150 data-[state=checked]:bg-[#dbeafe] data-[state=checked]:text-[#2563eb] data-[state=checked]:font-medium",
+      !hideIndicator && "pl-10",
       className,
     )}
     {...props}
   >
     {!hideIndicator && (
-      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <span className="absolute left-2.5 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <Check className="h-4 w-4" />
         </SelectPrimitive.ItemIndicator>

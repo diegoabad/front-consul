@@ -114,7 +114,7 @@ export interface Notificacion {
 export interface Archivo {
   id: string;
   paciente_id: string;
-  profesional_id: string;
+  profesional_id?: string | null;
   nombre_archivo: string;
   tipo_archivo?: string;
   url_archivo: string;
@@ -163,6 +163,7 @@ export interface Evolucion {
   paciente_apellido?: string;
   profesional_nombre?: string;
   profesional_apellido?: string;
+  profesional_especialidad?: string;
 }
 
 // Tipos para turnos

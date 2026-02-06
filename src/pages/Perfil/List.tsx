@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { User, Mail, Key, Eye, EyeOff, Loader2, Pencil } from 'lucide-react';
+import { Key, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { authService } from '@/services/auth.service';
@@ -135,36 +135,19 @@ export default function AdminPerfil() {
         <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
           Mi Perfil
         </h1>
-        <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
+        <p className="text-base text-[#6B7280] mt-2 mb-0 font-['Inter']">
           Tu información personal y seguridad
         </p>
+        <button
+          type="button"
+          onClick={openEditModal}
+          className="font-['Inter'] text-[#2563eb] hover:text-[#1d4ed8] hover:underline text-base font-medium mt-2"
+        >
+          Editar perfil
+        </button>
       </div>
 
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
-        <CardHeader className="bg-gradient-to-b from-white to-[#F9FAFB] border-b border-[#E5E7EB] px-8 py-6">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center">
-                <User className="h-6 w-6 text-white stroke-[2]" />
-              </div>
-              <div>
-                <CardTitle className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
-                  Información personal
-                </CardTitle>
-                <CardDescription className="text-base text-[#6B7280] font-['Inter'] mt-1">
-                  Nombre, apellido, email y teléfono
-                </CardDescription>
-              </div>
-            </div>
-            <Button
-              onClick={openEditModal}
-              className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] text-white h-11 px-5"
-            >
-              <Pencil className="h-4 w-4 mr-2 stroke-[2]" />
-              Editar información
-            </Button>
-          </div>
-        </CardHeader>
         <CardContent className="p-8 space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-3">
@@ -172,7 +155,7 @@ export default function AdminPerfil() {
               <Input
                 value={formatDisplayText(user.nombre)}
                 disabled
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
+                className="h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] bg-[#F9FAFB]"
               />
             </div>
             <div className="space-y-3">
@@ -180,19 +163,18 @@ export default function AdminPerfil() {
               <Input
                 value={formatDisplayText(user.apellido)}
                 disabled
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
+                className="h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] bg-[#F9FAFB]"
               />
             </div>
             <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Mail className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Email
               </Label>
               <Input
                 type="email"
                 value={user.email}
                 disabled
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
+                className="h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] bg-[#F9FAFB]"
               />
             </div>
             <div className="space-y-3">
@@ -200,12 +182,12 @@ export default function AdminPerfil() {
               <Input
                 value={user.telefono || 'No especificado'}
                 disabled
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
+                className="h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] bg-[#F9FAFB]"
               />
             </div>
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Rol del sistema</Label>
-              <div className="h-[52px] flex items-center">
+            <div className="space-y-0">
+              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Rol del sistema</Label>
+              <div className="h-10 flex items-center">
                 {getRolBadge(user.rol)}
               </div>
             </div>
@@ -213,23 +195,23 @@ export default function AdminPerfil() {
 
           {/* Contraseña */}
           <div className="pt-6 border-t border-[#E5E7EB]">
-            <div className="flex items-center justify-between p-6 border-[1.5px] border-[#E5E7EB] rounded-[12px] bg-gradient-to-br from-white to-[#F9FAFB] hover:border-[#2563eb] transition-all duration-200">
+            <div className="flex items-center justify-between flex-wrap gap-3 p-6 border-[1.5px] border-[#E5E7EB] rounded-[12px] bg-gradient-to-br from-white to-[#F9FAFB] hover:border-[#2563eb] transition-all duration-200">
               <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb]/10 to-[#1d4ed8]/10 flex items-center justify-center">
+                <div className="hidden lg:flex h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb]/10 to-[#1d4ed8]/10 items-center justify-center">
                   <Key className="h-6 w-6 text-[#2563eb] stroke-[2]" />
                 </div>
-                <div>
-                  <p className="font-semibold text-[#374151] font-['Inter'] text-[16px]">Contraseña</p>
-                  <p className="text-sm text-[#6B7280] font-['Inter'] mt-1">••••••••••••</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-[#374151] font-['Inter'] text-[16px] mb-0">Contraseña</p>
+                  <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">••••••••••••</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(true)}
+                    className="font-['Inter'] text-[#2563eb] hover:text-[#1d4ed8] hover:underline text-base font-medium"
+                  >
+                    Cambiar contraseña
+                  </button>
                 </div>
               </div>
-              <Button
-                onClick={() => setShowPasswordModal(true)}
-                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md rounded-[12px] px-6 h-12 font-medium"
-              >
-                <Key className="h-4 w-4 mr-2 stroke-[2]" />
-                Cambiar contraseña
-              </Button>
             </div>
           </div>
         </CardContent>
@@ -237,8 +219,8 @@ export default function AdminPerfil() {
 
       {/* Modal: Editar información */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="max-w-[500px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0">
-          <DialogHeader className="px-8 pt-8 pb-4 border-b border-[#E5E7EB] mb-0">
+        <DialogContent className="max-w-[500px] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0 px-8 pt-6 pb-2 border-b border-[#E5E7EB] mb-0">
             <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
               Editar información
             </DialogTitle>
@@ -246,7 +228,7 @@ export default function AdminPerfil() {
               Modificá nombre, apellido, email y teléfono
             </DialogDescription>
           </DialogHeader>
-          <div className="px-8 py-6 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-8 pt-3 pb-3 space-y-4">
             <div className="space-y-2">
               <Label className="text-[14px] font-medium text-[#374151]">Nombre</Label>
               <Input
@@ -285,7 +267,7 @@ export default function AdminPerfil() {
               />
             </div>
           </div>
-          <DialogFooter className="px-8 py-4 border-t border-[#E5E7EB] gap-2 mt-0">
+          <DialogFooter className="flex-shrink-0 flex flex-col sm:flex-row justify-end gap-2 px-8 py-3 border-t border-[#E5E7EB] mt-0">
             <Button
               variant="outline"
               onClick={() => setShowEditModal(false)}
@@ -308,7 +290,7 @@ export default function AdminPerfil() {
       {/* Modal: Cambiar contraseña */}
       <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
         <DialogContent className="max-w-[500px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0">
-          <DialogHeader className="px-8 pt-8 pb-4 border-b border-[#E5E7EB] mb-0">
+          <DialogHeader className="px-8 pt-6 pb-2 border-b border-[#E5E7EB] mb-0">
             <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
               Cambiar contraseña
             </DialogTitle>
@@ -316,7 +298,7 @@ export default function AdminPerfil() {
               La contraseña debe tener al menos 8 caracteres
             </DialogDescription>
           </DialogHeader>
-          <div className="px-8 py-6 space-y-4">
+          <div className="px-8 pt-3 pb-3 space-y-4">
             <div className="space-y-2">
               <Label className="text-[14px] font-medium text-[#374151]">Nueva contraseña</Label>
               <div className="relative">
@@ -360,21 +342,21 @@ export default function AdminPerfil() {
               </div>
             </div>
           </div>
-          <DialogFooter className="px-8 py-4 border-t border-[#E5E7EB] gap-2 mt-0">
+          <DialogFooter className="flex flex-row gap-2 px-8 py-3 border-t border-[#E5E7EB] mt-0">
             <Button
               variant="outline"
               onClick={() => {
                 setShowPasswordModal(false);
                 setPasswordForm({ newPassword: '', confirmPassword: '' });
               }}
-              className="rounded-[10px]"
+              className="rounded-[10px] flex-1 min-w-0"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleChangePassword}
               disabled={isSubmittingPassword}
-              className="rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8]"
+              className="rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] flex-1 min-w-0"
             >
               {isSubmittingPassword ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Guardar

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { formatDisplayText } from '@/lib/utils';
-import { Calendar, Plus, Edit, Loader2, Clock, User } from 'lucide-react';
+import { Calendar, Plus, Edit, Loader2, User } from 'lucide-react';
 import { agendaService } from '@/services/agenda.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { ConfiguracionAgenda } from '@/types';
@@ -111,7 +111,12 @@ export default function AdminAgendas() {
 
   const filteredAgendas = useMemo(() => agendas, [agendas]);
 
-  /** Agrupado por profesional para la tabla: incluye configs y profesionales con solo excepciones */
+  const profesionalLogueado = useMemo(
+    () => profesionales.find((p: { usuario_id?: string }) => p.usuario_id === user?.id),
+    [profesionales, user?.id]
+  );
+
+  /** Agrupado por profesional para la tabla: incluye configs, profesionales con solo excepciones y, si es profesional, siempre su propia fila */
   const agendasPorProfesional = useMemo(() => {
     const byProf = new Map<string, { profesional_id: string; profesional_nombre: string; profesional_apellido: string; profesional_especialidad?: string; agendas: ConfiguracionAgenda[]; soloExcepciones?: boolean }>();
     for (const a of filteredAgendas) {
@@ -142,8 +147,17 @@ export default function AdminAgendas() {
         });
       }
     }
+    if (isProfesional && profesionalLogueado && !byProf.has(profesionalLogueado.id)) {
+      byProf.set(profesionalLogueado.id, {
+        profesional_id: profesionalLogueado.id,
+        profesional_nombre: profesionalLogueado.nombre ?? '',
+        profesional_apellido: profesionalLogueado.apellido ?? '',
+        profesional_especialidad: profesionalLogueado.especialidad,
+        agendas: [],
+      });
+    }
     return Array.from(byProf.values());
-  }, [filteredAgendas, todasLasExcepciones, profesionales]);
+  }, [filteredAgendas, todasLasExcepciones, profesionales, isProfesional, profesionalLogueado]);
 
   // Profesional: fijar filtro a su propio profesional (solo hay uno en la lista)
   useEffect(() => {
@@ -180,13 +194,9 @@ export default function AdminAgendas() {
 
   const isLoading = loadingAgendas || loadingProfesionales;
 
-  if (isProfesional) {
-    return <Navigate to="/turnos" replace />;
-  }
-
   return (
     <>
-      <div className="space-y-8">
+    <div className="space-y-8 max-lg:pb-20 relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -199,7 +209,7 @@ export default function AdminAgendas() {
         </div>
         <Button
           onClick={() => handleOpenAgendaModal()}
-          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium max-lg:hidden"
         >
           <Plus className="h-5 w-5 mr-2 stroke-[2]" />
           Nueva Agenda
@@ -247,12 +257,12 @@ export default function AdminAgendas() {
                 <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
                   No hay configuraciones de agenda
                 </h3>
-                <p className="text-[#6B7280] mb-6 font-['Inter']">
+                <p className="text-[#6B7280] mb-6 font-['Inter'] max-lg:mb-0">
                   {profesionalFilter !== 'todos' ? 'No hay configuraciones para el profesional seleccionado' : 'Crea una nueva agenda para comenzar'}
                 </p>
                 <Button
                   onClick={() => handleOpenAgendaModal()}
-                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium max-lg:hidden"
                 >
                   <Plus className="h-5 w-5 mr-2 stroke-[2]" />
                   Nueva Agenda
@@ -264,19 +274,19 @@ export default function AdminAgendas() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[200px] w-[200px]">
                       Profesional
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[320px]">
                       Días y horarios
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[100px]">
                       Duración
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[100px]">
                       Estado
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[120px] text-center">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-[120px] min-w-[100px] text-center">
                       Acciones
                     </TableHead>
                   </TableRow>
@@ -287,21 +297,20 @@ export default function AdminAgendas() {
                       key={grupo.profesional_id}
                       className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                     >
-                      <TableCell className="py-4">
+                      <TableCell className="py-4 min-w-[200px]">
                         <div>
                           <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
-                            {grupo.profesional_nombre} {grupo.profesional_apellido}
+                            {formatDisplayText(grupo.profesional_nombre)} {formatDisplayText(grupo.profesional_apellido)}
                           </p>
                           {grupo.profesional_especialidad && (
                             <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">
-                              {grupo.profesional_especialidad}
+                              {formatDisplayText(grupo.profesional_especialidad)}
                             </p>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-[#374151] font-['Inter'] text-[14px] flex-wrap">
-                          <Clock className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                      <TableCell className="min-w-[320px]">
+                        <div className="text-[#374151] font-['Inter'] text-[14px] flex-wrap">
                           {grupo.soloExcepciones ? (
                             <span className="text-[#6B7280] italic">Solo días puntuales</span>
                           ) : (
@@ -309,7 +318,7 @@ export default function AdminAgendas() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-[100px]">
                         <span className="text-[#6B7280] font-['Inter'] text-[14px]">
                           {grupo.soloExcepciones
                             ? '—'
@@ -318,10 +327,10 @@ export default function AdminAgendas() {
                               : `${grupo.agendas[0]?.duracion_turno_minutos ?? 30} min`}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-[100px]">
                         {getEstadoBadge(grupo.soloExcepciones ? true : grupo.agendas.every((a) => a.activo))}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right min-w-[100px]">
                         <TooltipProvider>
                           <div className="flex items-center justify-end gap-1">
                             <Tooltip>
@@ -371,16 +380,35 @@ export default function AdminAgendas() {
             </Card>
           )}
 
-      {/* Modal: Gestionar agenda (componente independiente) */}
-      <GestionarAgendaModal
-        open={showGestionarModal}
-        onOpenChange={setShowGestionarModal}
-        profesionalId={profesionalGestionar?.id ?? ''}
-        profesionalNombre={profesionalGestionar?.nombre ?? ''}
-        profesionalApellido={profesionalGestionar?.apellido ?? ''}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
-      />
-    </div>
+      {/* FAB móvil: Nueva Agenda */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+        <Button
+          onClick={() => handleOpenAgendaModal()}
+          className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
+          title="Nueva Agenda"
+          aria-label="Nueva Agenda"
+        >
+          <Plus className="h-6 w-6 stroke-[2]" />
+        </Button>
+      </div>
+
+      {/* Modal: Gestionar agenda — solo montar cuando está abierto para evitar bucle Radix Presence */}
+      {showGestionarModal && profesionalGestionar && (
+        <GestionarAgendaModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowGestionarModal(false);
+              setProfesionalGestionar(null);
+            }
+          }}
+          profesionalId={profesionalGestionar.id}
+          profesionalNombre={profesionalGestionar.nombre}
+          profesionalApellido={profesionalGestionar.apellido}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+        />
+      )}
+                  </div>
 
       {/* Modal: Crear agenda (componente independiente) */}
       <CreateAgendaModal

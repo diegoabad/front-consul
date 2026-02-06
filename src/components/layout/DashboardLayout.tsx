@@ -10,7 +10,7 @@ import type { UserRole } from '@/types';
 // Rutas permitidas por rol (deben coincidir con el sidebar). Incluye /perfil para todos.
 const RUTAS_POR_ROL: Record<UserRole, string[]> = {
   administrador: ['/dashboard', '/contrato', '/turnos', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/logs', '/perfil'],
-  profesional: ['/turnos', '/pacientes', '/contrato', '/perfil'],
+  profesional: ['/turnos', '/pacientes', '/agendas', '/contrato', '/perfil'],
   secretaria: ['/turnos', '/contrato', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/perfil'],
 };
 
@@ -63,9 +63,9 @@ export function DashboardLayout() {
         <DashboardSidebar role={user.rol} user={user} collapsed={sidebarCollapsed} />
       </div>
 
-      {/* Mobile Sidebar: overlay DEBAJO del header (z-40) para que la barra con hamburguesa + logo siga visible y se pueda cerrar desde ahí */}
+      {/* Mobile Sidebar: overlay por encima del contenido y FABs (z-50) pero el header está después en DOM así que sigue visible para cerrar */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-40 pt-16 lg:hidden" aria-modal="true" role="dialog">
+        <div className="fixed inset-0 z-50 pt-16 lg:hidden" aria-modal="true" role="dialog">
           <div
             className="absolute inset-0 bg-black/50"
             role="button"

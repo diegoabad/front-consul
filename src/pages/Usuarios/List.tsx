@@ -687,7 +687,7 @@ export default function AdminUsuarios() {
     !(user?.rol === 'secretaria' && usuario.rol === 'administrador');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-lg:pb-[46px] relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -701,7 +701,7 @@ export default function AdminUsuarios() {
         {canCreate && (
           <Button
             onClick={() => setShowCreateModal(true)}
-            className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+            className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium max-lg:hidden"
           >
             <Plus className="h-5 w-5 mr-2 stroke-[2]" />
             Nuevo Usuario
@@ -808,8 +808,8 @@ export default function AdminUsuarios() {
           <Table>
             <TableHeader>
               <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
-                  Usuario
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[240px]">
+                  Nombre y apellido
                 </TableHead>
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Rol
@@ -830,9 +830,9 @@ export default function AdminUsuarios() {
                 >
                   <TableCell className="py-4">
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
-                        <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
-                          {usuario.nombre?.[0] || ''}{usuario.apellido?.[0] || ''}
+                      <Avatar className="hidden sm:flex h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
+                        <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm uppercase">
+                          {(usuario.nombre?.[0] || '').toUpperCase()}{(usuario.apellido?.[0] || '').toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <p className="font-medium text-[#374151] font-['Inter'] text-[15px] m-0">
@@ -917,6 +917,20 @@ export default function AdminUsuarios() {
         </span>
       </div>
 
+      {/* FAB móvil: Nuevo Usuario */}
+      {canCreate && (
+        <div className="lg:hidden fixed bottom-6 right-6 z-40">
+          <Button
+            onClick={() => setShowCreateModal(true)}
+            className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
+            title="Nuevo Usuario"
+            aria-label="Nuevo Usuario"
+          >
+            <Plus className="h-6 w-6 stroke-[2]" />
+          </Button>
+        </div>
+      )}
+
       {/* Modal Crear Usuario */}
       <Dialog
         open={showCreateModal}
@@ -939,14 +953,14 @@ export default function AdminUsuarios() {
         >
           <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] mb-0 flex-shrink-0">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+              <div className="max-md:hidden h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
                 <Plus className="h-6 w-6 text-white stroke-[2]" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   {createStep === 2 ? 'Datos del profesional' : 'Nuevo Usuario'}
                 </DialogTitle>
-                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
+                <DialogDescription className={`text-base text-[#6B7280] font-['Inter'] mt-1 mb-0 ${createStep === 2 ? 'max-md:hidden' : ''}`}>
                   {createStep === 2
                     ? 'Matrícula, especialidad y contrato (período, valor y fecha de inicio)'
                     : 'Crear un nuevo usuario en el sistema'}
@@ -958,7 +972,7 @@ export default function AdminUsuarios() {
           <div className="flex-1 min-h-0 overflow-y-auto">
           {createStep === 1 ? (
           <div className="px-8 py-6 space-y-5">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <Label htmlFor="create-nombre" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Nombre
@@ -992,7 +1006,7 @@ export default function AdminUsuarios() {
 
             <div className="space-y-3">
               <Label htmlFor="create-email" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Mail className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <Mail className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                 Email
                 <span className="text-[#EF4444]">*</span>
               </Label>
@@ -1008,10 +1022,10 @@ export default function AdminUsuarios() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <Label htmlFor="create-password" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Key className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <Key className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Contraseña
                   <span className="text-[#EF4444]">*</span>
                 </Label>
@@ -1041,7 +1055,7 @@ export default function AdminUsuarios() {
 
               <div className="space-y-3">
                 <Label htmlFor="create-confirm-password" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Key className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <Key className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Repetir contraseña
                   <span className="text-[#EF4444]">*</span>
                 </Label>
@@ -1070,10 +1084,10 @@ export default function AdminUsuarios() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <Label htmlFor="create-telefono" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <Phone className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Teléfono
                 </Label>
                 <Input
@@ -1087,7 +1101,7 @@ export default function AdminUsuarios() {
 
               <div className="space-y-3">
                 <Label htmlFor="create-rol" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <ShieldCheck className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Rol
                   <span className="text-[#EF4444]">*</span>
                 </Label>
@@ -1115,14 +1129,14 @@ export default function AdminUsuarios() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <Label htmlFor="create-matricula" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    <Stethoscope className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                     Matrícula
                   </Label>
                   <Input
                     id="create-matricula"
                     value={profesionalExtraData.matricula}
                     onChange={(e) => setProfesionalExtraData({ ...profesionalExtraData, matricula: e.target.value })}
-                    className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[14px] md:text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                     placeholder="Ej. 12345"
                   />
                 </div>
@@ -1147,7 +1161,7 @@ export default function AdminUsuarios() {
                         value={newEspecialidadNombre}
                         onChange={(e) => setNewEspecialidadNombre(e.target.value)}
                         placeholder="Nombre de la nueva especialidad"
-                        className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                        className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] md:text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateEspecialidad()}
                       />
                       <Button
@@ -1156,7 +1170,7 @@ export default function AdminUsuarios() {
                         disabled={isCreatingEspecialidad || !newEspecialidadNombre.trim()}
                         className="h-[52px] px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] disabled:opacity-50"
                       >
-                        {isCreatingEspecialidad ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Agregar'}
+                        {isCreatingEspecialidad ? <Loader2 className="h-4 w-4 animate-spin" /> : (<><span className="max-md:hidden">Agregar</span><span className="md:hidden">+</span></>)}
                       </Button>
                     </div>
                   ) : (
@@ -1178,15 +1192,15 @@ export default function AdminUsuarios() {
                   )}
                 </div>
               </div>
-              <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-5">
-                <h4 className="text-[15px] font-semibold text-[#374151] font-['Inter'] flex items-center gap-2 mb-4">
-                  <CreditCard className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-5 max-md:border-0 max-md:bg-transparent max-md:rounded-none max-md:p-0">
+                <h4 className="text-[15px] font-semibold text-[#374151] font-['Inter'] flex items-center gap-2 mb-4 max-md:mb-3">
+                  <CreditCard className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Contrato
                 </h4>
                 <div className="space-y-4">
                 <div className="space-y-3 relative" ref={contratoDatePickerRef}>
                   <Label className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    <Calendar className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                     Fecha de inicio
                   </Label>
                   <button
@@ -1204,7 +1218,7 @@ export default function AdminUsuarios() {
                     }}
                     className="h-[52px] w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
                   >
-                    <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                    <Calendar className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                     <span className="text-[#374151]">
                       {formatFechaInicioDisplay(profesionalExtraData.fecha_inicio)}
                     </span>
@@ -1257,8 +1271,8 @@ export default function AdminUsuarios() {
                         const n = parseValorToNumber(profesionalExtraData.valor);
                         if (n !== undefined) setProfesionalExtraData((p) => ({ ...p, valor: String(n) }));
                       }}
-                      className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
-                      placeholder="0"
+                      className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[14px] md:text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                      placeholder="Ej. 500.000"
                     />
                   </div>
                 </div>
@@ -1269,16 +1283,16 @@ export default function AdminUsuarios() {
           )}
           </div>
 
-          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3 mt-0 flex-shrink-0">
+          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-col md:flex-row md:justify-end gap-3 mt-0 flex-shrink-0">
             <Button
               variant="outline"
               onClick={() => (createStep === 2 ? setCreateStep(1) : setShowCreateModal(false))}
               disabled={isSubmitting}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+              className="h-[48px] w-full md:w-auto px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200 order-1 md:order-1"
             >
               {createStep === 2 ? (
                 <>
-                  <ChevronLeft className="mr-2 h-5 w-5 stroke-[2]" />
+                  <ChevronLeft className="max-md:hidden mr-2 h-5 w-5 stroke-[2]" />
                   Atrás
                 </>
               ) : (
@@ -1288,23 +1302,23 @@ export default function AdminUsuarios() {
             <Button
               onClick={handleCreate}
               disabled={isSubmitting}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="h-[48px] w-full md:w-auto px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-2 md:order-2"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                  <Loader2 className="max-md:hidden mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
                   Guardando...
                 </>
               ) : createStep === 2 ? (
                 <>
-                  <Plus className="mr-2 h-5 w-5 stroke-[2]" />
+                  <Plus className="max-md:hidden mr-2 h-5 w-5 stroke-[2]" />
                   Crear usuario y profesional
                 </>
               ) : createFormData.rol === 'profesional' ? (
                 'Siguiente'
               ) : (
                 <>
-                  <Plus className="mr-2 h-5 w-5 stroke-[2]" />
+                  <Plus className="max-md:hidden mr-2 h-5 w-5 stroke-[2]" />
                   Crear Usuario
                 </>
               )}
@@ -1676,7 +1690,7 @@ export default function AdminUsuarios() {
                     id="edit-matricula"
                     value={editProfesionalData.matricula}
                     onChange={(e) => setEditProfesionalData({ ...editProfesionalData, matricula: e.target.value })}
-                    className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[14px] md:text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                     placeholder="Ej. 12345"
                   />
                 </div>
@@ -1701,7 +1715,7 @@ export default function AdminUsuarios() {
                         value={editNewEspecialidadNombre}
                         onChange={(e) => setEditNewEspecialidadNombre(e.target.value)}
                         placeholder="Nombre de la nueva especialidad"
-                        className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                        className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] md:text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateEspecialidad()}
                       />
                       <Button
@@ -1710,7 +1724,7 @@ export default function AdminUsuarios() {
                         disabled={isCreatingEspecialidad || !editNewEspecialidadNombre.trim()}
                         className="h-[52px] px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] disabled:opacity-50"
                       >
-                        {isCreatingEspecialidad ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Agregar'}
+                        {isCreatingEspecialidad ? <Loader2 className="h-4 w-4 animate-spin" /> : (<><span className="max-md:hidden">Agregar</span><span className="md:hidden">+</span></>)}
                       </Button>
                     </div>
                   ) : (
@@ -1732,9 +1746,9 @@ export default function AdminUsuarios() {
                   )}
                 </div>
               </div>
-              <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-5">
-                <h4 className="text-[15px] font-semibold text-[#374151] font-['Inter'] flex items-center gap-2 mb-4">
-                  <CreditCard className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+              <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-5 max-md:border-0 max-md:bg-transparent max-md:rounded-none max-md:p-0">
+                <h4 className="text-[15px] font-semibold text-[#374151] font-['Inter'] flex items-center gap-2 mb-4 max-md:mb-3">
+                  <CreditCard className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
                   Contrato
                 </h4>
                 <div className="space-y-4">
@@ -1813,8 +1827,8 @@ export default function AdminUsuarios() {
                             const n = parseValorToNumber(editProfesionalData.valor);
                             if (n !== undefined) setEditProfesionalData((p) => ({ ...p, valor: String(n) }));
                           }}
-                          className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
-                          placeholder="0"
+                          className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[14px] md:text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                          placeholder="Ej. 500.000"
                         />
                       </div>
                     </div>

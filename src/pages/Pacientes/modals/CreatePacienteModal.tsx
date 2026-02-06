@@ -20,6 +20,7 @@ import type { CreatePacienteData } from '@/services/pacientes.service';
 import { pacientesService } from '@/services/pacientes.service';
 import type { Paciente } from '@/types';
 import { obrasSocialesService } from '@/services/obras-sociales.service';
+import { formatDisplayText } from '@/lib/utils';
 
 interface CreatePacienteModalProps {
   open: boolean;
@@ -252,9 +253,9 @@ export function CreatePacienteModal({
         }`}
       >
         {/* Header fijo */}
-        <DialogHeader className="px-8 pt-8 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+        <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
           <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+            <div className="max-lg:hidden h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
               <User className="h-6 w-6 text-white stroke-[2]" />
             </div>
             <div>
@@ -269,7 +270,7 @@ export function CreatePacienteModal({
         </DialogHeader>
 
         {/* Contenido scrolleable */}
-        <div className="overflow-y-auto flex-1 min-h-0 px-8 py-4 scrollbar-violet">
+        <div className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
           {step === 'dni' ? (
             <div className="space-y-4">
               {!pacienteExistente ? (
@@ -289,64 +290,11 @@ export function CreatePacienteModal({
                 </div>
               ) : (
                 <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2 min-w-0">
-                      <p className="text-[15px] font-medium text-[#111827] mb-0">
-                        {pacienteExistente.nombre} {pacienteExistente.apellido}
-                      </p>
-                      <span className="text-[14px] text-[#6B7280]">DNI {formatDNI(pacienteExistente.dni)}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-[13px] text-[#2563eb] font-['Inter'] -ml-1"
-                        onClick={() => { setPacienteExistente(null); setDniInput(''); }}
-                      >
-                        Otro DNI
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {profesionalIdToAssign != null && onVincularExistente ? (
-                        vinculadoOk ? (
-                          <Button
-                            type="button"
-                            onClick={handleVerFicha}
-                            size="sm"
-                            className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] inline-flex items-center gap-1.5"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Ver ficha
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            onClick={handleVincularExistente}
-                            disabled={isVincularLoading}
-                            size="sm"
-                            className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] disabled:opacity-50 inline-flex items-center gap-1.5"
-                          >
-                            {isVincularLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <>
-                                <Link2 className="h-3.5 w-3.5" />
-                                Vincular
-                              </>
-                            )}
-                          </Button>
-                        )
-                      ) : (
-                        <Button
-                          type="button"
-                          onClick={handleVerFicha}
-                          size="sm"
-                          className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] inline-flex items-center gap-1.5"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Ver ficha
-                        </Button>
-                      )}
-                    </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="text-[15px] font-medium text-[#111827] mb-0">
+                      {formatDisplayText(pacienteExistente.nombre)} {formatDisplayText(pacienteExistente.apellido)}
+                    </p>
+                    <span className="text-[14px] text-[#6B7280]">DNI {formatDNI(pacienteExistente.dni)}</span>
                   </div>
                 </div>
               )}
@@ -535,7 +483,7 @@ export function CreatePacienteModal({
                           disabled={isCreatingObraSocial || !newObraSocialNombre.trim()}
                           className="h-[48px] px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] disabled:opacity-50"
                         >
-                          {isCreatingObraSocial ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Agregar'}
+                          {isCreatingObraSocial ? <Loader2 className="h-4 w-4 animate-spin" /> : (<><span className="max-md:hidden">Agregar</span><span className="md:hidden">+</span></>)}
                         </Button>
                       </div>
                     ) : (
@@ -627,24 +575,24 @@ export function CreatePacienteModal({
         </div>
 
         {/* Footer fijo */}
-        <DialogFooter className="px-8 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
-          <div className="flex gap-3">
+        <DialogFooter className="px-8 max-lg:px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 mt-0">
+          <div className="flex gap-3 max-lg:flex-col max-lg:w-full max-lg:gap-2">
             {step === 'dni' ? (
               <>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleCancel}
-                  className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                  onClick={pacienteExistente ? () => { setPacienteExistente(null); setDniInput(''); } : handleCancel}
+                  className="h-[48px] max-lg:h-11 px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200 max-lg:w-full"
                 >
-                  Cerrar
+                  {pacienteExistente ? 'Otro DNI' : 'Cerrar'}
                 </Button>
                 {!pacienteExistente ? (
                   <Button
                     type="button"
                     onClick={handleBuscarDni}
                     disabled={isSearchingDni}
-                    className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50"
+                    className="h-[48px] max-lg:h-11 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 max-lg:w-full"
                   >
                     {isSearchingDni ? (
                       <>
@@ -655,7 +603,34 @@ export function CreatePacienteModal({
                       'Buscar por DNI'
                     )}
                   </Button>
-                ) : null}
+                ) : (
+                  <>
+                    {profesionalIdToAssign != null && onVincularExistente && !vinculadoOk ? (
+                      <Button
+                        type="button"
+                        onClick={handleVincularExistente}
+                        disabled={isVincularLoading}
+                        className="h-[48px] max-lg:h-11 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 max-lg:w-full inline-flex items-center gap-2"
+                      >
+                        {isVincularLoading ? (
+                          <Loader2 className="h-5 w-5 animate-spin stroke-[2.5]" />
+                        ) : (
+                          <Link2 className="h-5 w-5 stroke-[2]" />
+                        )}
+                        Vincular
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        onClick={handleVerFicha}
+                        className="h-[48px] max-lg:h-11 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 max-lg:w-full inline-flex items-center gap-2"
+                      >
+                        <ExternalLink className="h-5 w-5 stroke-[2]" />
+                        Ver ficha
+                      </Button>
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -663,14 +638,14 @@ export function CreatePacienteModal({
                   type="button"
                   variant="outline"
                   onClick={handleCancel}
-                  className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                  className="h-[48px] max-lg:h-11 px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200 max-lg:w-full"
                 >
                   Cancelar
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   disabled={isSubmitting}
-                  className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="h-[48px] max-lg:h-11 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 max-lg:w-full max-lg:hover:scale-100"
                 >
                   {isSubmitting ? (
                     <>

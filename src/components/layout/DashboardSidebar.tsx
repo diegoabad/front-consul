@@ -40,6 +40,8 @@ interface DashboardSidebarProps {
 interface SidebarMenuConfig {
   beforeSeparator: MenuItem[];
   afterSeparator: MenuItem[];
+  /** Opcional: ítems tras otra raya (ej. Logs) */
+  afterSecondSeparator?: MenuItem[];
 }
 
 const menuConfig: Record<UserRole, SidebarMenuConfig> = {
@@ -55,13 +57,14 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Usuarios', url: '/usuarios', icon: UserCog },
       { title: 'Especialidades', url: '/especialidades', icon: GraduationCap },
       { title: 'Obras Sociales', url: '/obras-sociales', icon: Building2 },
-      { title: 'Logs', url: '/logs', icon: FileText },
     ],
+    afterSecondSeparator: [{ title: 'Logs', url: '/logs', icon: FileText }],
   },
   profesional: {
     beforeSeparator: [
       { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
+      { title: 'Agendas', url: '/agendas', icon: Calendar },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
     ],
     afterSeparator: [],
@@ -96,18 +99,22 @@ function renderNavItem(
       to={item.url}
       onClick={onNavigate}
       className={cn(
-        'flex items-center rounded-[10px] transition-all duration-200 text-[15px] font-medium relative group',
-        collapsed ? 'justify-center px-0 py-3 w-full' : 'gap-3 px-4 py-3',
+        'flex items-center rounded-[10px] transition-all duration-200 text-[13px] font-medium relative group',
+        collapsed ? 'justify-center px-0 py-2.5 w-full' : 'gap-2.5 px-3 py-2.5',
         isActive
           ? 'bg-[#dbeafe] text-[#2563eb] shadow-sm'
           : 'text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151]'
       )}
     >
       {isActive && !collapsed && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#2563eb] rounded-r-full" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#2563eb] rounded-r-full" />
       )}
       <Icon
-        className={cn('h-5 w-5 shrink-0 stroke-[2] transition-transform duration-200', collapsed ? 'mx-auto' : '', !isActive && 'group-hover:scale-110')}
+        className={cn(
+          'h-4 w-4 shrink-0 stroke-[2] transition-transform duration-200',
+          collapsed ? 'mx-auto' : '',
+          !isActive && 'group-hover:scale-110'
+        )}
       />
       {!collapsed && <span className="truncate">{item.title}</span>}
     </NavLink>
@@ -130,17 +137,16 @@ export function DashboardSidebar({ role, user: _user, collapsed = false, onNavig
   const location = useLocation();
 
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
-  const { beforeSeparator, afterSeparator } = config;
-  const isDrawer = mobileDrawer;
+  const { beforeSeparator, afterSeparator, afterSecondSeparator = [] } = config;
   return (
     <aside
       className={cn(
         'bg-white transition-all duration-300 flex flex-col overflow-hidden',
-        isDrawer ? 'w-full h-full' : 'fixed left-0 top-0 z-40 h-screen border-r border-[#E5E7EB] shadow-sm',
-        !isDrawer && (collapsed ? 'w-[72px]' : 'w-[280px]')
+        mobileDrawer ? 'w-full h-full' : 'fixed left-0 top-0 z-40 h-screen border-r border-[#E5E7EB] shadow-sm',
+        !mobileDrawer && (collapsed ? 'w-[72px]' : 'w-[280px]')
       )}
     >
-      {!isDrawer && (
+      {!mobileDrawer && (
         /* Espacio para que el menú no quede bajo la barra superior (solo desktop) */
         <div className="h-16 flex-shrink-0" aria-hidden />
       )}
@@ -161,6 +167,14 @@ export function DashboardSidebar({ role, user: _user, collapsed = false, onNavig
               <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
               <div className="space-y-1">
                 {afterSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
+              </div>
+            </>
+          )}
+          {afterSecondSeparator.length > 0 && (
+            <>
+              <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
+              <div className="space-y-1">
+                {afterSecondSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
               </div>
             </>
           )}

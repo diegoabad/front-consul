@@ -18,6 +18,7 @@ export interface Evolucion {
   paciente_apellido?: string;
   profesional_nombre?: string;
   profesional_apellido?: string;
+  profesional_especialidad?: string;
 }
 
 export interface EvolucionFilters {

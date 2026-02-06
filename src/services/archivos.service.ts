@@ -4,7 +4,8 @@ import type { ApiResponse } from '@/types';
 export interface Archivo {
   id: string;
   paciente_id: string;
-  profesional_id: string;
+  usuario_id?: string;
+  profesional_id?: string | null;
   nombre_archivo: string;
   tipo_archivo?: string;
   url_archivo: string;
@@ -17,6 +18,8 @@ export interface Archivo {
   paciente_apellido?: string;
   profesional_nombre?: string;
   profesional_apellido?: string;
+  usuario_subido_nombre?: string;
+  usuario_subido_apellido?: string;
 }
 
 export interface ArchivoFilters {
@@ -26,7 +29,7 @@ export interface ArchivoFilters {
 
 export interface CreateArchivoData {
   paciente_id: string;
-  profesional_id: string;
+  usuario_id: string;
   descripcion?: string;
   archivo: File; // Archivo a subir
 }
@@ -79,7 +82,7 @@ export const archivosService = {
     const formData = new FormData();
     formData.append('archivo', data.archivo);
     formData.append('paciente_id', data.paciente_id);
-    formData.append('profesional_id', data.profesional_id);
+    formData.append('usuario_id', data.usuario_id);
     if (data.descripcion) {
       formData.append('descripcion', data.descripcion);
     }

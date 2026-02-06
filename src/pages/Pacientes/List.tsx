@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ import {
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { formatDisplayText } from '@/lib/utils';
 import {
-  Search, Plus, Eye, Edit, Trash2, Phone,
+  Search, Plus, Eye, Edit, Trash2,
   User, Loader2, UserCheck, UserX, UserPlus
 } from 'lucide-react';
 import {
@@ -68,10 +68,13 @@ export default function AdminPacientes() {
   const [showAsignarModal, setShowAsignarModal] = useState(false);
   const [pacienteForAsignar, setPacienteForAsignar] = useState<Paciente | null>(null);
   const [searchAsignarLista, setSearchAsignarLista] = useState('');
-  const [selectedProfesionalIdLista, setSelectedProfesionalIdLista] = useState<string | null>(null);
+  const [_selectedProfesionalIdLista, setSelectedProfesionalIdLista] = useState<string | null>(null);
   const [asignarDropdownOpenLista, setAsignarDropdownOpenLista] = useState(false);
   const asignandoRef = useRef(false);
-  const asignarModalJustOpenedRef = useRef(false);
+  const asignarModalOpenPrevRef = useRef(false);
+  const asignarModalSyncedDraftRef = useRef(false);
+  const initialAsignacionesListaRef = useRef<AsignacionPacienteProfesional[]>([]);
+  const [draftAsignacionesLista, setDraftAsignacionesLista] = useState<AsignacionPacienteProfesional[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Profesional logueado (para rol profesional: asignar al crear/vincular)
@@ -322,7 +325,7 @@ export default function AdminPacientes() {
   const canDeactivate = hasPermission(user, 'pacientes.desactivar');
   const canAsignarProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
 
-  const { data: asignacionesLista = [], refetch: refetchAsignacionesLista } = useQuery({
+  const { data: asignacionesLista = [], isFetched: asignacionesListaFetched } = useQuery({
     queryKey: ['paciente-asignaciones', pacienteForAsignar?.id],
     queryFn: () => pacientesService.getAsignaciones(pacienteForAsignar!.id),
     enabled: !!showAsignarModal && !!pacienteForAsignar?.id,
@@ -334,63 +337,63 @@ export default function AdminPacientes() {
     enabled: showAsignarModal,
   });
 
-  const addAsignacionListaMutation = useMutation({
-    mutationFn: (profesional_id: string) =>
-      pacientesService.addAsignacion(pacienteForAsignar!.id, profesional_id),
-    onSuccess: (nuevaListaAsignaciones) => {
-      if (pacienteForAsignar?.id) {
-        queryClient.setQueryData(['paciente-asignaciones', pacienteForAsignar.id], nuevaListaAsignaciones ?? []);
-      }
-      reactToastify.success('Profesional asignado correctamente', { position: 'top-right', autoClose: 3000 });
-    },
-    onError: async (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string }; status?: number } };
-      reactToastify.error(err?.response?.data?.message ?? 'Error al asignar profesional', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
-      if (err?.response?.status === 400 && pacienteForAsignar?.id) {
-        await queryClient.invalidateQueries({ queryKey: ['paciente-asignaciones', pacienteForAsignar.id] });
-        refetchAsignacionesLista();
-      }
-    },
-  });
+  // Al abrir el modal (desde icono de acciones o de otro lado), sincronizar draft cuando lleguen las asignaciones
+  useEffect(() => {
+    const justOpened = showAsignarModal && !asignarModalOpenPrevRef.current;
+    asignarModalOpenPrevRef.current = showAsignarModal;
+    if (justOpened) {
+      asignarModalSyncedDraftRef.current = false;
+    }
+    if (showAsignarModal && pacienteForAsignar?.id && asignacionesListaFetched && !asignarModalSyncedDraftRef.current) {
+      asignarModalSyncedDraftRef.current = true;
+      setDraftAsignacionesLista([...asignacionesLista]);
+      initialAsignacionesListaRef.current = [...asignacionesLista];
+    }
+  }, [showAsignarModal, pacienteForAsignar?.id, asignacionesLista, asignacionesListaFetched]);
 
-  const removeAsignacionListaMutation = useMutation({
-    mutationFn: (profesionalId: string) =>
-      pacientesService.removeAsignacion(pacienteForAsignar!.id, profesionalId),
-    onSuccess: async () => {
-      if (pacienteForAsignar?.id) {
-        await queryClient.invalidateQueries({ queryKey: ['paciente-asignaciones', pacienteForAsignar.id] });
-        refetchAsignacionesLista();
-      }
-      reactToastify.success('Asignación eliminada correctamente', { position: 'top-right', autoClose: 3000 });
-    },
-    onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } } };
-      reactToastify.error(err?.response?.data?.message ?? 'Error al quitar asignación', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
-    },
-  });
+  const handleGuardarAsignacionesLista = async () => {
+    if (!pacienteForAsignar?.id) return;
+    const profesionalIds = draftAsignacionesLista.map((a) => a.profesional_id);
+    setIsSubmitting(true);
+    try {
+      const nuevaLista = await pacientesService.setAsignaciones(pacienteForAsignar.id, profesionalIds);
+      queryClient.setQueryData(['paciente-asignaciones', pacienteForAsignar.id], nuevaLista);
+      reactToastify.success('Cambios guardados correctamente', { position: 'top-right', autoClose: 3000 });
+      setShowAsignarModal(false);
+      setPacienteForAsignar(null);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al guardar asignaciones';
+      reactToastify.error(msg, { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const draftListaHasChanges =
+    draftAsignacionesLista.length !== initialAsignacionesListaRef.current.length ||
+    initialAsignacionesListaRef.current.some(
+      (a) => !draftAsignacionesLista.some((d) => d.profesional_id === a.profesional_id)
+    ) ||
+    draftAsignacionesLista.some(
+      (d) => !initialAsignacionesListaRef.current.some((i) => i.profesional_id === d.profesional_id)
+    );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-lg:pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
+          <h1 className="text-[32px] max-lg:text-[24px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
             Pacientes
           </h1>
-          <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
+          <p className="text-base max-lg:text-sm text-[#6B7280] mt-2 font-['Inter']">
             {isLoading ? 'Cargando...' : `${filteredPacientes.length} ${filteredPacientes.length === 1 ? 'paciente registrado' : 'pacientes registrados'}`}
           </p>
         </div>
         {canCreate && (
           <Button
             onClick={() => setShowCreateModal(true)}
-            className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+            className="max-lg:hidden bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
           >
             <Plus className="h-5 w-5 mr-2 stroke-[2]" />
             Nuevo Paciente
@@ -399,17 +402,17 @@ export default function AdminPacientes() {
       </div>
 
       {/* Filtros */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+      <Card className="!mt-0 border border-[#E5E7EB] rounded-[16px] max-lg:rounded-[12px] shadow-sm">
+        <CardContent className="p-6 max-lg:p-4">
+          <div className="flex flex-col sm:flex-row gap-4 max-lg:gap-3">
             {/* Buscador */}
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#9CA3AF] stroke-[2]" />
+              <Search className="absolute left-4 max-lg:left-3 top-1/2 -translate-y-1/2 h-5 w-5 max-lg:h-4 max-lg:w-4 text-[#9CA3AF] stroke-[2]" />
               <Input
                 placeholder="Buscar por nombre, DNI o email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-[#2563eb]/20 transition-all duration-200"
+                className="pl-12 max-lg:pl-10 h-12 max-lg:h-9 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[8px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-[#2563eb]/20 transition-all duration-200"
               />
             </div>
           </div>
@@ -448,78 +451,69 @@ export default function AdminPacientes() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
-                  Paciente
-                </TableHead>
-                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
-                  DNI
-                </TableHead>
-                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
-                  Teléfono
-                </TableHead>
-                {isProfesional && (
-                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
-                    Email
+        <Card className="border border-[#E5E7EB] rounded-[16px] max-lg:rounded-[12px] shadow-sm overflow-hidden">
+          <div className="max-lg:overflow-x-auto">
+            <Table className="min-w-[720px]">
+              <TableHeader>
+                <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] py-4 max-lg:py-3 w-[28%] min-w-[200px]">
+                    Paciente
                   </TableHead>
-                )}
-                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
-                  Obra Social
-                </TableHead>
-                {!isProfesional && (
-                  <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
-                    Estado
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[12%] min-w-[100px]">
+                    DNI
                   </TableHead>
-                )}
-                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "font-['Inter'] font-medium text-[14px] text-[#374151] w-[100px] text-center"}>
-                  {isProfesional ? '' : 'Acciones'}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPacientes.map((paciente) => (
-                <TableRow
-                  key={paciente.id}
-                  className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
-                >
-                  <TableCell className="py-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
-                        <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
-                          {(paciente.nombre?.[0] ?? '').toUpperCase()}{(paciente.apellido?.[0] ?? '').toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
-                          {formatDisplayText(paciente.apellido)}, {formatDisplayText(paciente.nombre)}
-                        </p>
-                        {!isProfesional && (
-                          <>
-                            <p className="text-sm text-[#6B7280] md:hidden font-['Inter']">
-                              DNI: {formatDNI(paciente.dni)}
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[110px]">
+                    Teléfono
+                  </TableHead>
+                  {isProfesional && (
+                    <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[120px]">
+                      Email
+                    </TableHead>
+                  )}
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[18%] min-w-[150px]">
+                    Obra Social
+                  </TableHead>
+                  {!isProfesional && (
+                    <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[80px]">
+                      Estado
+                    </TableHead>
+                  )}
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[100px] min-w-[100px] text-center">
+                    {isProfesional ? '' : 'Acciones'}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPacientes.map((paciente) => (
+                  <TableRow
+                    key={paciente.id}
+                    className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
+                  >
+                    <TableCell className="py-4 max-lg:py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10 max-lg:hidden rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
+                          <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
+                            {(paciente.nombre?.[0] ?? '').toUpperCase()}{(paciente.apellido?.[0] ?? '').toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px] mb-0">
+                            {formatDisplayText(paciente.apellido)}, {formatDisplayText(paciente.nombre)}
+                          </p>
+                          {!isProfesional && paciente.email && (
+                            <p className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter'] mb-0 truncate max-w-[180px]">
+                              {paciente.email}
                             </p>
-                            {paciente.email && (
-                              <p className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter'] mb-0">
-                                {paciente.email}
-                              </p>
-                            )}
-                          </>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className={isProfesional ? "text-[#6B7280] font-['Inter'] text-[14px]" : "hidden md:table-cell text-[#6B7280] font-['Inter'] text-[14px]"}>
-                    {formatDNI(paciente.dni)}
-                  </TableCell>
-                  <TableCell className={isProfesional ? '' : 'hidden lg:table-cell'}>
+                    </TableCell>
+                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">
+                      {formatDNI(paciente.dni)}
+                    </TableCell>
+                    <TableCell className="max-lg:text-[13px]">
                     {paciente.telefono ? (
-                      <div className="flex items-center gap-2 text-[#6B7280] font-['Inter'] text-[14px]">
-                        <Phone className="h-4 w-4 stroke-[2]" />
-                        {paciente.telefono}
-                      </div>
+                      <span className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">{paciente.telefono}</span>
                     ) : (
                       <span className="text-[#9CA3AF]">-</span>
                     )}
@@ -529,17 +523,17 @@ export default function AdminPacientes() {
                       {paciente.email || '-'}
                     </TableCell>
                   )}
-                  <TableCell className={isProfesional ? '' : 'hidden lg:table-cell'}>
-                    <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs font-medium">
+                  <TableCell>
+                    <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium">
                       {paciente.obra_social || 'Sin cobertura'}
                     </Badge>
                   </TableCell>
                   {!isProfesional && (
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell>
                       <Badge className={
                         paciente.activo
-                          ? 'bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] rounded-full px-3 py-1 text-xs font-medium'
-                          : 'bg-[#F3F4F6] text-[#4B5563] border-[#D1D5DB] hover:bg-[#E5E7EB] rounded-full px-3 py-1 text-xs font-medium'
+                          ? 'bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium'
+                          : 'bg-[#F3F4F6] text-[#4B5563] border-[#D1D5DB] hover:bg-[#E5E7EB] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium'
                       }>
                         {paciente.activo ? 'Activo' : 'Inactivo'}
                       </Badge>
@@ -587,7 +581,7 @@ export default function AdminPacientes() {
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                              <p className="text-white">Asignar profesionales</p>
+                              <p className="text-white">Vincular profesional</p>
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -673,6 +667,7 @@ export default function AdminPacientes() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </Card>
       )}
 
@@ -708,16 +703,18 @@ export default function AdminPacientes() {
           setPacienteToDeactivate(null);
         }
       }}>
-        <DialogContent className="max-w-md rounded-[20px] border border-[#E5E7EB] shadow-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-md min-h-[280px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-0 p-6">
+          <DialogHeader className="pb-4 mb-0 border-b border-[#E5E7EB]">
             <DialogTitle className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
               Desactivar Paciente
             </DialogTitle>
-            <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-2 mb-0">
-              ¿Está seguro de que desea desactivar a <span className="font-semibold text-[#374151]">{formatDisplayText(pacienteToDeactivate?.nombre)} {formatDisplayText(pacienteToDeactivate?.apellido)}</span>? No se podrán crear turnos, notas o evoluciones para pacientes inactivos.
-            </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex flex-row justify-end gap-3 mt-6">
+          <div className="mt-5 mb-1">
+            <p className="text-base text-[#6B7280] font-['Inter'] leading-relaxed">
+              ¿Está seguro de que desea desactivar a <span className="font-semibold text-[#374151]">{formatDisplayText(pacienteToDeactivate?.nombre)} {formatDisplayText(pacienteToDeactivate?.apellido)}</span>? No se podrán crear turnos, notas o evoluciones para pacientes inactivos.
+            </p>
+          </div>
+          <DialogFooter className="flex flex-row justify-end gap-3 mt-0 pt-4 border-t border-[#E5E7EB]">
             <Button
               variant="outline"
               onClick={() => {
@@ -808,14 +805,12 @@ export default function AdminPacientes() {
         isLoading={isSubmitting}
       />
 
-      {/* Modal Asignar profesionales (desde listado) */}
+      {/* Modal Vincular profesional (desde listado) */}
       <Dialog
         open={showAsignarModal}
         onOpenChange={(open) => {
           setShowAsignarModal(open);
-          if (open) {
-            asignarModalJustOpenedRef.current = true;
-          } else {
+          if (!open) {
             setPacienteForAsignar(null);
             setSearchAsignarLista('');
             setSelectedProfesionalIdLista(null);
@@ -825,49 +820,44 @@ export default function AdminPacientes() {
         }}
       >
         <DialogContent
-          className="max-w-[1000px] min-h-[640px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden"
+          className="max-w-[1000px] min-h-[640px] max-h-[90vh] max-lg:max-h-[85vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/30">
+              <div className="max-lg:hidden h-14 w-14 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/30">
                 <UserPlus className="h-7 w-7 text-white stroke-[2.5]" />
               </div>
               <div>
-                <DialogTitle className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Asignar profesionales a {pacienteForAsignar ? `${formatDisplayText(pacienteForAsignar.nombre)} ${formatDisplayText(pacienteForAsignar.apellido)}` : 'paciente'}
+                <DialogTitle className="text-[32px] max-lg:text-[20px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                  <span className="max-lg:hidden">Vincular profesional a {pacienteForAsignar ? `${formatDisplayText(pacienteForAsignar.nombre)} ${formatDisplayText(pacienteForAsignar.apellido)}` : 'paciente'}</span>
+                  <span className="lg:hidden">Vincular profesional</span>
                 </DialogTitle>
-                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1.5 mb-0">
-                  Solo los profesionales asignados al paciente podrán verlo y generar evoluciones, notas y subir archivos.
+                <DialogDescription className="text-base max-lg:text-sm text-[#6B7280] font-['Inter'] mt-1.5 mb-0">
+                  Seleccioná profesionales para que puedan atender a este paciente.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <div className="px-8 pt-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            {/* Arriba: Agregar profesional (input + botón) */}
-            <div className="flex-shrink-0 space-y-2">
-              <label className="text-[14px] font-medium text-[#374151] font-['Inter']">
-                Agregar profesional
-              </label>
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="px-8 max-lg:px-4 pt-4 pb-4 flex flex-col flex-1 min-h-0 overflow-y-auto">
+              {/* Arriba: Seleccionar profesional (solo input; al elegir se agrega a la lista) */}
+              <div className="flex-shrink-0 space-y-2">
+                <label className="text-[14px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">
+                  Seleccionar profesional
+                </label>
+                <div className="relative">
                   <Input
                     type="text"
                     placeholder="Buscar por nombre o especialidad..."
                     value={searchAsignarLista}
                     onChange={(e) => { setSearchAsignarLista(e.target.value); if (!e.target.value.trim()) setSelectedProfesionalIdLista(null); }}
-                    onFocus={() => {
-                      if (asignarModalJustOpenedRef.current) {
-                        asignarModalJustOpenedRef.current = false;
-                        return;
-                      }
-                      setAsignarDropdownOpenLista(true);
-                    }}
+                    onFocus={() => setAsignarDropdownOpenLista(true)}
                     onBlur={() => setTimeout(() => setAsignarDropdownOpenLista(false), 200)}
-                    className="h-11 rounded-[10px] border-[1.5px] border-[#D1D5DB] font-['Inter'] text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                    className="h-11 max-lg:h-10 rounded-[10px] max-lg:rounded-[8px] border-[1.5px] border-[#D1D5DB] font-['Inter'] text-[14px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                   />
                   {(asignarDropdownOpenLista || searchAsignarLista.trim().length > 0) && profesionalesLista
-                    .filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id))
+                    .filter((p) => !draftAsignacionesLista.some((a) => a.profesional_id === p.id))
                     .filter((p) => {
                       const q = searchAsignarLista.trim().toLowerCase();
                       if (!q) return true;
@@ -877,7 +867,7 @@ export default function AdminPacientes() {
                     }).length > 0 && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-[260px] overflow-y-auto rounded-[10px] border border-[#E5E7EB] bg-white shadow-lg py-1">
                       {profesionalesLista
-                        .filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id))
+                        .filter((p) => !draftAsignacionesLista.some((a) => a.profesional_id === p.id))
                         .filter((p) => {
                           const q = searchAsignarLista.trim().toLowerCase();
                           const nombre = `${p.nombre ?? ''} ${p.apellido ?? ''}`.toLowerCase();
@@ -893,10 +883,24 @@ export default function AdminPacientes() {
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                setSelectedProfesionalIdLista(p.id);
-                                setSearchAsignarLista(label);
+                                setDraftAsignacionesLista((prev) => [
+                                  ...prev,
+                                  {
+                                    id: `temp-${p.id}`,
+                                    paciente_id: pacienteForAsignar!.id,
+                                    asignado_por_usuario_id: user?.id ?? null,
+                                    fecha_asignacion: new Date().toISOString(),
+                                    profesional_id: p.id,
+                                    profesional_nombre: p.nombre ?? '',
+                                    profesional_apellido: p.apellido ?? '',
+                                    profesional_especialidad: p.especialidad ?? '',
+                                  },
+                                ]);
+                                setSearchAsignarLista('');
+                                setSelectedProfesionalIdLista(null);
+                                // No cerrar el dropdown: queda abierto para seguir eligiendo hasta que toque afuera
                               }}
-                              className={`w-full text-left px-4 py-2.5 text-[14px] font-['Inter'] hover:bg-[#F3F4F6] transition-colors ${selectedProfesionalIdLista === p.id ? 'bg-[#dbeafe] text-[#2563eb]' : 'text-[#374151]'}`}
+                              className="w-full text-left px-4 py-2.5 text-[14px] font-['Inter'] hover:bg-[#F3F4F6] transition-colors text-[#374151]"
                             >
                               {label}
                             </button>
@@ -905,78 +909,86 @@ export default function AdminPacientes() {
                     </div>
                   )}
                 </div>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    if (!selectedProfesionalIdLista || addAsignacionListaMutation.isPending || !pacienteForAsignar) return;
-                    asignandoRef.current = true;
-                    addAsignacionListaMutation.mutate(selectedProfesionalIdLista, {
-                      onSettled: () => {
-                        asignandoRef.current = false;
-                        setSelectedProfesionalIdLista(null);
-                        setSearchAsignarLista('');
-                      },
-                    });
-                  }}
-                  disabled={!selectedProfesionalIdLista || addAsignacionListaMutation.isPending || !pacienteForAsignar}
-                  className="h-11 px-5 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] shrink-0"
-                >
-                  Asignar
-                </Button>
-              </div>
-              {profesionalesLista.filter((p) => !asignacionesLista.some((a) => a.profesional_id === p.id)).length === 0 && (
-                <p className="text-[13px] text-[#6B7280] font-['Inter']">Todos los profesionales están asignados.</p>
-              )}
-            </div>
-
-            {/* Abajo: Profesionales asignados (la lista puede ir en 2 columnas cuando hay espacio) */}
-            <div className="flex flex-col flex-1 min-h-0 mt-6">
-              <h4 className="text-[14px] font-semibold text-[#374151] font-['Inter'] mb-0 flex-shrink-0">
-                Profesionales asignados
-              </h4>
-              <div className="flex-1 min-h-0 overflow-y-auto rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 mt-2 flex flex-col">
-                {asignacionesLista.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center min-h-[120px]">
-                    <p className="text-[13px] text-[#6B7280] font-['Inter'] py-4 px-3 text-center mb-0">
-                      Ningún profesional asignado
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {asignacionesLista.map((a: AsignacionPacienteProfesional) => (
-                      <li key={a.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-[8px] bg-white border border-[#E5E7EB]">
-                        <span className="text-[13px] font-medium text-[#374151] font-['Inter'] truncate">
-                          {a.profesional_nombre} {a.profesional_apellido}{a.profesional_especialidad ? ` - ${a.profesional_especialidad}` : ''}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#FEE2E2] rounded-[6px] h-8 px-2 text-[12px] shrink-0"
-                          onClick={() => removeAsignacionListaMutation.mutate(a.profesional_id)}
-                          disabled={removeAsignacionListaMutation.isPending}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-1 stroke-[2]" />
-                          Quitar
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                {profesionalesLista.filter((p) => !draftAsignacionesLista.some((a) => a.profesional_id === p.id)).length === 0 && (
+                  <p className="text-[13px] max-lg:text-[12px] text-[#6B7280] font-['Inter']">Todos los profesionales están asignados.</p>
                 )}
+              </div>
+
+              {/* Abajo: Profesionales asignados (crece sin scroll interno; scroll del modal) */}
+              <div className="flex flex-col flex-shrink-0 mt-6">
+                <h4 className="text-[14px] max-lg:text-[13px] font-semibold text-[#374151] font-['Inter'] mb-0">
+                  Profesionales asignados
+                </h4>
+                <div className="min-h-[120px] rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 mt-2">
+                  {draftAsignacionesLista.length === 0 ? (
+                    <div className="flex items-center justify-center min-h-[100px]">
+                      <p className="text-[13px] max-lg:text-[12px] text-[#6B7280] font-['Inter'] py-4 px-3 text-center mb-0">
+                        Ningún profesional asignado
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {draftAsignacionesLista.map((a) => (
+                        <li key={a.id ?? a.profesional_id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-[8px] bg-white border border-[#E5E7EB]">
+                          <span className="text-[13px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter'] truncate">
+                            {formatDisplayText(a.profesional_nombre)} {formatDisplayText(a.profesional_apellido)}{a.profesional_especialidad ? ` - ${formatDisplayText(a.profesional_especialidad)}` : ''}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-[#EF4444] hover:text-[#EF4444] hover:bg-[#FEE2E2] rounded-[6px] h-8 w-8 shrink-0"
+                            onClick={() => setDraftAsignacionesLista((prev) => prev.filter((x) => x.profesional_id !== a.profesional_id))}
+                            aria-label="Quitar"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 stroke-[2]" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-          <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
-            <Button
-              variant="outline"
-              onClick={() => { setShowAsignarModal(false); setPacienteForAsignar(null); }}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#2563eb] text-[#2563eb] font-medium font-['Inter'] text-[15px] hover:bg-[#dbeafe] hover:border-[#2563eb] transition-all duration-200"
-            >
-              Cerrar
-            </Button>
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 mt-0">
+            <div className="flex gap-3 max-lg:w-full max-lg:flex-col max-lg:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => { setShowAsignarModal(false); setPacienteForAsignar(null); }}
+                className="h-[48px] max-lg:h-11 px-6 rounded-[12px] border-[1.5px] border-[#2563eb] text-[#2563eb] font-medium font-['Inter'] text-[15px] hover:bg-[#dbeafe] hover:border-[#2563eb] transition-all duration-200 max-lg:w-full"
+              >
+                Cerrar
+              </Button>
+              <Button
+                onClick={() => void handleGuardarAsignacionesLista()}
+                disabled={!draftListaHasChanges || isSubmitting}
+                className="h-[48px] max-lg:h-11 px-6 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold font-['Inter'] text-[15px] disabled:opacity-50 max-lg:w-full"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                    Guardando...
+                  </>
+                ) : (
+                  'Guardar cambios'
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* FAB Nuevo Paciente (solo mobile) */}
+      {canCreate && (
+        <Button
+          onClick={() => setShowCreateModal(true)}
+          aria-label="Nuevo Paciente"
+          className="lg:hidden fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/40 hover:shadow-xl hover:scale-105 transition-all duration-200 p-0"
+        >
+          <Plus className="h-6 w-6 stroke-[2]" />
+        </Button>
+      )}
     </div>
   );
 }

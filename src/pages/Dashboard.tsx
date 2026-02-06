@@ -6,31 +6,43 @@ import { pacientesService } from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { turnosService } from '@/services/turnos.service';
 import { pagosService } from '@/services/pagos.service';
-import { Users, Stethoscope, Calendar, FileText, DollarSign } from 'lucide-react';
+import { Users, Stethoscope, Calendar, FileText, DollarSign, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   if (user?.rol !== 'administrador') return <Navigate to="/turnos" replace />;
-  const { data: pacientes } = useQuery({
+
+  const { data: pacientes, isLoading: loadingPacientes } = useQuery({
     queryKey: ['pacientes'],
     queryFn: () => pacientesService.getAll(),
   });
 
-  const { data: profesionales } = useQuery({
+  const { data: profesionales, isLoading: loadingProfesionales } = useQuery({
     queryKey: ['profesionales'],
     queryFn: () => profesionalesService.getAll(),
   });
 
-  const { data: turnos } = useQuery({
+  const { data: turnos, isLoading: loadingTurnos } = useQuery({
     queryKey: ['turnos'],
     queryFn: () => turnosService.getAll(),
   });
 
-  const { data: pagos = [] } = useQuery({
+  const { data: pagos = [], isLoading: loadingPagos } = useQuery({
     queryKey: ['pagos', 'all'],
     queryFn: () => pagosService.getAll(),
   });
+
+  const isLoading =
+    loadingPacientes || loadingProfesionales || loadingTurnos || loadingPagos;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[280px]">
+        <Loader2 className="h-10 w-10 text-[#2563eb] animate-spin" aria-hidden />
+      </div>
+    );
+  }
 
   const totalPacientes = pacientes?.length || 0;
   const totalProfesionales = profesionales?.length || 0;

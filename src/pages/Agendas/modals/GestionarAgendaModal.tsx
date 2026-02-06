@@ -1,10 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -25,7 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Edit, Loader2, Trash2, Plus } from 'lucide-react';
+import { Edit, Loader2, Trash2, Plus, X } from 'lucide-react';
 import { agendaService, type CreateExcepcionAgendaData, type CreateBloqueData, type ExcepcionAgenda, type BloqueNoDisponible } from '@/services/agenda.service';
 import type { ConfiguracionAgenda } from '@/types';
 import { formatDisplayText } from '@/lib/utils';
@@ -85,6 +87,25 @@ export function GestionarAgendaModal({
     observaciones: '',
   });
 
+  const [activeTab, setActiveTab] = useState('horarios');
+  const tabsListScrollRef = useRef<HTMLDivElement>(null);
+  const horariosScrollRef = useRef<HTMLDivElement>(null);
+  const fechasScrollRef = useRef<HTMLDivElement>(null);
+  const bloqueosScrollRef = useRef<HTMLDivElement>(null);
+
+  const centerActiveTabInBar = () => {
+    const container = tabsListScrollRef.current;
+    if (!container) return;
+    const activeTrigger = container.querySelector<HTMLElement>('[data-state="active"]');
+    if (!activeTrigger) return;
+    const containerWidth = container.clientWidth;
+    const triggerLeft = activeTrigger.offsetLeft;
+    const triggerWidth = activeTrigger.offsetWidth;
+    const scrollLeft = triggerLeft - containerWidth / 2 + triggerWidth / 2;
+    const maxScroll = container.scrollWidth - containerWidth;
+    container.scrollLeft = Math.max(0, Math.min(scrollLeft, maxScroll));
+  };
+
   const [showBloqueModal, setShowBloqueModal] = useState(false);
   const [bloqueToDelete, setBloqueToDelete] = useState<BloqueNoDisponible | null>(null);
   const [showDeleteBloqueModal, setShowDeleteBloqueModal] = useState(false);
@@ -95,6 +116,7 @@ export function GestionarAgendaModal({
     hora_fin: '12:00',
     motivo: '',
   });
+  const [bloqueTodoElDia, setBloqueTodoElDia] = useState(false);
 
   const excepcionesDateRange = useMemo(() => {
     const start = startOfMonth(subMonths(new Date(), 3));
@@ -130,6 +152,15 @@ export function GestionarAgendaModal({
     );
   }, [agendasDelProfesionalConHistorico, profesionalId]);
 
+  // Clave estable para evitar que el efecto corra en cada render cuando la ref del array cambia
+  const currentConfigsKey = useMemo(
+    () =>
+      currentConfigs
+        .map((c) => `${c.dia_semana}:${c.activo}:${c.hora_inicio}:${c.hora_fin}:${c.id}`)
+        .join('|'),
+    [currentConfigs]
+  );
+
   useEffect(() => {
     if (!open || !profesionalId) return;
     const byDia = new Map<number, ConfiguracionAgenda>();
@@ -148,7 +179,7 @@ export function GestionarAgendaModal({
         };
       })
     );
-  }, [open, profesionalId, currentConfigs]);
+  }, [open, profesionalId, currentConfigsKey]);
 
   useEffect(() => {
     if (open && profesionalId) {
@@ -177,6 +208,12 @@ export function GestionarAgendaModal({
     })) as ConfiguracionAgenda[];
     return formatDiasYHorarios(fakeAgendas);
   }, [horariosSemanaForm]);
+
+  /** Días de la semana en que el profesional atiende (0=domingo, 1=lunes, ..., 6=sábado). Para bloques solo se puede elegir estos días. */
+  const diasHabilitadosParaBloque = useMemo(() => {
+    const dias = currentConfigs.filter((c) => c.activo).map((c) => c.dia_semana);
+    return [...new Set(dias)];
+  }, [currentConfigs]);
 
   const vigenciasAgrupadas = useMemo(() => {
     const configsDelProf = (agendasDelProfesionalConHistorico as ConfiguracionAgenda[]).filter(
@@ -332,21 +369,50 @@ export function GestionarAgendaModal({
     }
   };
 
-  return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        {open ? (
-        <DialogContent className="max-w-[960px] w-[95vw] h-[720px] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#E5E7EB] mb-0 flex-shrink-0">
-            <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
-              Agenda de {formatDisplayText(profesionalNombre)} {formatDisplayText(profesionalApellido)}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
-              Horarios de la semana, fechas puntuales y bloqueos
-            </DialogDescription>
-          </DialogHeader>
+  // Cerrar con Escape (ref evita que onOpenChange en deps dispare el efecto en cada render del padre)
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChangeRef.current(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
 
-          {!contentReady ? (
+  if (!open) return null;
+
+  const modalContent = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="gestionar-agenda-title">
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => onOpenChange(false)}
+        aria-hidden
+      />
+      <div className="relative z-50 max-w-[960px] w-[95vw] h-[72vh] min-h-[500px] sm:min-h-[420px] max-h-[88vh] rounded-[20px] p-0 border border-[#E5E7EB] bg-white shadow-2xl flex flex-col overflow-hidden my-4">
+        <div className="px-6 pt-6 pb-4 border-b border-[#E5E7EB] flex-shrink-0 mb-0 flex items-start justify-between gap-4">
+          <div>
+            <h2 id="gestionar-agenda-title" className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
+              Agenda de {formatDisplayText(profesionalNombre)} {formatDisplayText(profesionalApellido)}
+            </h2>
+            <p className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
+              Horarios de la semana, fechas puntuales y bloqueos
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            className="hidden sm:flex h-10 w-10 rounded-full hover:bg-[#F3F4F6] flex-shrink-0"
+            aria-label="Cerrar"
+          >
+            <X className="h-5 w-5 text-[#6B7280] stroke-[2]" />
+          </Button>
+        </div>
+
+        {!contentReady ? (
             <div className="flex-1 min-h-[460px] flex flex-col items-center justify-center gap-4 px-6 pb-6">
               <Loader2 className="h-10 w-10 text-[#2563eb] animate-spin stroke-[2]" />
               <p className="text-[14px] text-[#6B7280] font-['Inter']">Abriendo...</p>
@@ -357,74 +423,97 @@ export function GestionarAgendaModal({
               <p className="text-[14px] text-[#6B7280] font-['Inter']">Cargando horarios, fechas puntuales y bloqueos...</p>
             </div>
           ) : (
-            <Tabs defaultValue="horarios" className="flex-1 min-h-[540px] flex flex-col px-6 pb-6 overflow-hidden">
-              <TabsList className="w-full grid grid-cols-3 h-11 rounded-[10px] bg-[#F9FAFB] border border-[#E5E7EB] p-1 mb-4 flex-shrink-0">
-                <TabsTrigger value="horarios" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white">
-                  Horarios de la semana
-                </TabsTrigger>
-                <TabsTrigger value="fechas" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white">
-                  Fechas puntuales
-                </TabsTrigger>
-                <TabsTrigger value="bloqueos" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white">
-                  Bloqueos
-                </TabsTrigger>
-              </TabsList>
-              <div className="flex-1 min-h-[460px] overflow-hidden flex flex-col">
-                <TabsContent value="horarios" className="flex-1 min-h-0 overflow-hidden mt-0 data-[state=inactive]:hidden flex flex-col">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => {
+                setActiveTab(v);
+                requestAnimationFrame(() => {
+                  if (v === 'horarios') horariosScrollRef.current?.scrollTo(0, 0);
+                  else if (v === 'fechas') fechasScrollRef.current?.scrollTo(0, 0);
+                  else if (v === 'bloqueos') bloqueosScrollRef.current?.scrollTo(0, 0);
+                  requestAnimationFrame(centerActiveTabInBar);
+                });
+              }}
+              className="flex-1 min-h-0 flex flex-col px-6 pb-6 overflow-hidden"
+            >
+              <div ref={tabsListScrollRef} className="w-full min-w-0 overflow-x-auto sm:overflow-visible flex-shrink-0 mt-4 mb-4">
+                <TabsList className="w-full grid grid-cols-3 h-11 rounded-[10px] bg-[#F9FAFB] border border-[#E5E7EB] p-1">
+                  <TabsTrigger value="horarios" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-0 whitespace-normal text-center">
+                    Horarios de la semana
+                  </TabsTrigger>
+                  <TabsTrigger value="fechas" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-0 whitespace-normal text-center">
+                    Fechas puntuales
+                  </TabsTrigger>
+                  <TabsTrigger value="bloqueos" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-0 whitespace-normal text-center">
+                    Bloqueos
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              <div className="flex-1 min-h-0 flex flex-col min-w-0 w-full">
+                <TabsContent value="horarios" className="flex-1 min-h-0 min-w-0 w-full overflow-auto mt-0 data-[state=inactive]:hidden flex flex-col">
                   {!horariosEnModoEdicion ? (
-                    <div className="flex flex-col flex-1 min-h-0">
-                      <div className="flex-shrink-0 mb-4 p-4 rounded-[12px] border-2 border-[#2563eb] bg-[#EFF6FF]">
-                        <p className="text-[12px] font-medium text-[#2563eb] font-['Inter'] uppercase tracking-wide mb-1">Vigente</p>
-                        {vigenciasAgrupadas.length > 0 && vigenciasAgrupadas[0]?.vigente ? (
-                          <p className="text-[18px] font-semibold text-[#111827] font-['Inter'] mb-0">{vigenciasAgrupadas[0].texto}</p>
-                        ) : vigenciasAgrupadas.length > 0 ? (
-                          <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">No hay horarios vigentes (solo historial).</p>
-                        ) : (
-                          <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">Aún no hay horarios de semana configurados.</p>
-                        )}
+                    <>
+                      <div ref={horariosScrollRef} className="flex-1 min-h-0 overflow-auto pb-4">
+                        <div className="flex-shrink-0 mb-4 p-3 sm:p-4 rounded-[12px] border-2 border-[#2563eb] bg-[#EFF6FF]">
+                          <p className="text-[12px] font-medium text-[#2563eb] font-['Inter'] uppercase tracking-wide mb-1">Vigente</p>
+                          {vigenciasAgrupadas.length > 0 && vigenciasAgrupadas[0]?.vigente ? (
+                            <p className="text-[14px] sm:text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0">{vigenciasAgrupadas[0].texto}</p>
+                          ) : vigenciasAgrupadas.length > 0 ? (
+                            <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">No hay horarios vigentes (solo historial).</p>
+                          ) : (
+                            <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">Aún no hay horarios de semana configurados.</p>
+                          )}
+                        </div>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-2">Historial</p>
+                        <div className="py-3 w-full min-w-0 overflow-x-auto">
+                          {vigenciasAgrupadas.filter((v) => !v.vigente).length > 0 ? (
+                            <Table className="w-full min-w-[520px]">
+                              <TableHeader>
+                                <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
+                                  <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[110px] w-[110px]">Desde</TableHead>
+                                  <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[110px] w-[110px]">Hasta</TableHead>
+                                  <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[300px]">Días y horarios</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {vigenciasAgrupadas
+                                  .filter((v) => !v.vigente)
+                                  .map((v) => (
+                                    <TableRow key={`${v.desdeStr}|${v.hastaStr}`} className="border-[#E5E7EB]">
+                                      <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[110px] w-[110px]">{formatDisplayText(formatFechaSafe(v.desdeStr))}</TableCell>
+                                      <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[110px] w-[110px]">{formatDisplayText(formatFechaSafe(v.hastaStr))}</TableCell>
+                                      <TableCell className="font-['Inter'] text-[13px] text-[#6B7280] py-2 min-w-[300px] break-words">{v.texto}</TableCell>
+                                    </TableRow>
+                                  ))}
+                              </TableBody>
+                            </Table>
+                          ) : (
+                            <p className="text-[14px] text-[#6B7280] font-['Inter'] py-1">No hay historial de horarios.</p>
+                          )}
+                        </div>
                       </div>
-                      {vigenciasAgrupadas.filter((v) => !v.vigente).length > 0 && (
-                        <>
-                          <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0 flex-shrink-0">Historial</p>
-                          <div className="flex-1 min-h-0 overflow-y-auto mb-4">
-                            <div className="p-3">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
-                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5">Desde</TableHead>
-                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5">Hasta</TableHead>
-                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5">Días y horarios</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {vigenciasAgrupadas
-                                    .filter((v) => !v.vigente)
-                                    .map((v) => (
-                                      <TableRow key={`${v.desdeStr}|${v.hastaStr}`} className="border-[#E5E7EB]">
-                                        <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2">{formatDisplayText(formatFechaSafe(v.desdeStr))}</TableCell>
-                                        <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2">{formatDisplayText(formatFechaSafe(v.hastaStr))}</TableCell>
-                                        <TableCell className="font-['Inter'] text-[13px] text-[#6B7280] py-2">{v.texto}</TableCell>
-                                      </TableRow>
-                                    ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      <Button
-                        onClick={() => setHorariosEnModoEdicion(true)}
-                        className="flex-shrink-0 rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto"
-                      >
-                        <Edit className="h-4 w-4 mr-2 stroke-[2]" />
-                        Modificar horarios
-                      </Button>
-                    </div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end flex-shrink-0 pt-4 border-t border-[#E5E7EB]">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onOpenChangeRef.current(false)}
+                          className="rounded-[10px] font-['Inter'] w-full sm:w-auto order-1"
+                        >
+                          Cerrar
+                        </Button>
+                        <Button
+                          onClick={() => setHorariosEnModoEdicion(true)}
+                          className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
+                        >
+                          <span className="hidden sm:inline-flex mr-2">
+                            <Edit className="h-4 w-4 stroke-[2]" />
+                          </span>
+                          Modificar horarios
+                        </Button>
+                      </div>
+                    </>
                   ) : (
                     <>
-                      <p className="text-[13px] text-[#6B7280] font-['Inter'] mb-3">
-                        Elegí desde qué fecha aplican los cambios y marcá los días y horarios que atiende.
-                      </p>
                       <div className="mb-4 flex items-center gap-2 flex-wrap">
                         <Label className="text-[14px] font-medium text-[#374151] font-['Inter'] whitespace-nowrap">A partir de:</Label>
                         <DatePicker
@@ -435,23 +524,20 @@ export function GestionarAgendaModal({
                           min={minFechaNuevoPeriodo}
                         />
                       </div>
-                      <div className="flex-1 min-h-0 overflow-y-auto border border-[#E5E7EB] rounded-[12px] overflow-hidden mb-4">
-                        <Table className="w-full table-fixed">
+                      <div className="flex-1 min-h-0 overflow-auto border border-[#E5E7EB] rounded-[12px] mb-4">
+                        <Table className="w-full min-w-[480px]">
                           <TableHeader>
                             <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[22%]">Día</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[18%]">Atiende</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[30%]">Hora inicio</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[30%]">Hora fin</TableHead>
+                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[18%] min-w-[70px]">Atiende</TableHead>
+                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[22%] min-w-[80px]">Día</TableHead>
+                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[120px]">Hora inicio</TableHead>
+                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[120px]">Hora fin</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {horariosSemanaForm.map((item) => (
                               <TableRow key={item.dia_semana} className="border-[#E5E7EB]">
-                                <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 w-[22%]">
-                                  {DIAS_SEMANA.find((d) => d.value === item.dia_semana)?.label ?? ''}
-                                </TableCell>
-                                <TableCell className="py-2 w-[18%]">
+                                <TableCell className="py-2 w-[18%] min-w-[70px]">
                                   <Switch
                                     checked={item.atiende}
                                     onCheckedChange={(checked) => {
@@ -462,7 +548,10 @@ export function GestionarAgendaModal({
                                     className="data-[state=checked]:bg-[#2563eb]"
                                   />
                                 </TableCell>
-                                <TableCell className="py-2 w-[30%]">
+                                <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 w-[22%] min-w-[80px]">
+                                  {DIAS_SEMANA.find((d) => d.value === item.dia_semana)?.label ?? ''}
+                                </TableCell>
+                                <TableCell className="py-2 min-w-[120px]">
                                   <Input
                                     type="time"
                                     value={item.hora_inicio}
@@ -471,11 +560,11 @@ export function GestionarAgendaModal({
                                         prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_inicio: e.target.value } : p))
                                       )
                                     }
-                                    className="h-9 w-full max-w-[140px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
+                                    className="h-9 w-full min-w-[100px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
                                     disabled={!item.atiende}
                                   />
                                 </TableCell>
-                                <TableCell className="py-2 w-[30%]">
+                                <TableCell className="py-2 min-w-[120px]">
                                   <Input
                                     type="time"
                                     value={item.hora_fin}
@@ -484,7 +573,7 @@ export function GestionarAgendaModal({
                                         prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_fin: e.target.value } : p))
                                       )
                                     }
-                                    className="h-9 w-full max-w-[140px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
+                                    className="h-9 w-full min-w-[100px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
                                     disabled={!item.atiende}
                                   />
                                 </TableCell>
@@ -493,7 +582,7 @@ export function GestionarAgendaModal({
                           </TableBody>
                         </Table>
                       </div>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-shrink-0">
                         <Button type="button" variant="outline" onClick={() => setHorariosEnModoEdicion(false)} className="rounded-[10px] font-['Inter'] w-full sm:w-auto">
                           Volver
                         </Button>
@@ -509,24 +598,19 @@ export function GestionarAgendaModal({
                   )}
                 </TabsContent>
 
-                <TabsContent value="fechas" className="flex-1 min-h-0 overflow-hidden mt-0 data-[state=inactive]:hidden flex flex-col">
-                  <div className="flex-shrink-0 mb-3">
-                    <Button onClick={() => setShowExcepcionModal(true)} className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8]">
-                      <Plus className="h-4 w-4 mr-2 stroke-[2]" />
-                      Agregar fecha puntual
-                    </Button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto">
+                <TabsContent value="fechas" className="flex-1 min-h-0 min-w-0 w-full overflow-auto mt-0 data-[state=inactive]:hidden flex flex-col">
+                  <div ref={fechasScrollRef} className="flex-1 min-h-0 min-w-0 overflow-auto pb-4">
                     {excepcionesDelProfesional.length === 0 ? (
                       <p className="text-[14px] text-[#6B7280] font-['Inter'] py-2">No hay fechas puntuales.</p>
                     ) : (
-                      <Table>
+                      <div className="min-w-0 overflow-x-auto">
+                      <Table className="w-full min-w-[520px]">
                         <TableHeader>
                           <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Fecha</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Horario</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Duración</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[70px] text-center">Acciones</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[120px]">Fecha</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[140px]">Horario</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[100px]">Duración</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[80px] w-[80px] text-center">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -534,12 +618,12 @@ export function GestionarAgendaModal({
                             .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
                             .map((ex) => (
                               <TableRow key={ex.id} className="border-[#E5E7EB]">
-                                <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2">{formatFechaSafe(ex.fecha)}</TableCell>
-                                <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2">
+                                <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 min-w-[120px]">{formatFechaSafe(ex.fecha)}</TableCell>
+                                <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2 min-w-[140px]">
                                   {formatTime(ex.hora_inicio)} - {formatTime(ex.hora_fin)}
                                 </TableCell>
-                                <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2">{ex.duracion_turno_minutos ?? 30} min</TableCell>
-                                <TableCell className="py-2 text-right">
+                                <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2 min-w-[100px]">{ex.duracion_turno_minutos ?? 30} min</TableCell>
+                                <TableCell className="py-2 text-right min-w-[80px] w-[80px]">
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -556,28 +640,43 @@ export function GestionarAgendaModal({
                             ))}
                         </TableBody>
                       </Table>
+                      </div>
                     )}
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end flex-shrink-0 pt-4 border-t border-[#E5E7EB]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onOpenChangeRef.current(false)}
+                      className="rounded-[10px] font-['Inter'] w-full sm:w-auto order-1"
+                    >
+                      Cerrar
+                    </Button>
+                    <Button
+                      onClick={() => setShowExcepcionModal(true)}
+                      className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
+                    >
+                      <span className="hidden sm:inline-flex mr-2">
+                        <Plus className="h-4 w-4 stroke-[2]" />
+                      </span>
+                      Agregar fecha puntual
+                    </Button>
                   </div>
                 </TabsContent>
 
-                <TabsContent value="bloqueos" className="flex-1 min-h-0 overflow-hidden mt-0 data-[state=inactive]:hidden flex flex-col">
-                  <div className="flex-shrink-0 mb-3">
-                    <Button onClick={() => setShowBloqueModal(true)} className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8]">
-                      <Plus className="h-4 w-4 mr-2 stroke-[2]" />
-                      Agregar bloqueo
-                    </Button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto">
+                <TabsContent value="bloqueos" className="flex-1 min-h-0 min-w-0 w-full overflow-auto mt-0 data-[state=inactive]:hidden flex flex-col">
+                  <div ref={bloqueosScrollRef} className="flex-1 min-h-0 min-w-0 overflow-auto pb-4">
                     {bloquesDelProfesional.length === 0 ? (
                       <p className="text-[14px] text-[#6B7280] font-['Inter'] py-2">No hay bloqueos.</p>
                     ) : (
-                      <Table>
+                      <div className="min-w-0 overflow-x-auto">
+                      <Table className="w-full min-w-[640px]">
                         <TableHeader>
                           <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Desde</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Hasta</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151]">Motivo</TableHead>
-                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[70px] text-center">Acciones</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[180px]">Desde</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[180px]">Hasta</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[180px]">Motivo</TableHead>
+                            <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[80px] w-[80px] text-center">Acciones</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -588,14 +687,14 @@ export function GestionarAgendaModal({
                               const hasta = bloque.fecha_hora_fin ? new Date(bloque.fecha_hora_fin) : null;
                               return (
                                 <TableRow key={bloque.id} className="border-[#E5E7EB]">
-                                  <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2">
+                                  <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 min-w-[180px]">
                                     {desde ? formatDisplayText(format(desde, 'd MMM yyyy HH:mm', { locale: es })) : '-'}
                                   </TableCell>
-                                  <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2">
+                                  <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 min-w-[180px]">
                                     {hasta ? formatDisplayText(format(hasta, 'd MMM yyyy HH:mm', { locale: es })) : '-'}
                                   </TableCell>
-                                  <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2">{bloque.motivo || '-'}</TableCell>
-                                  <TableCell className="py-2 text-right">
+                                  <TableCell className="font-['Inter'] text-[14px] text-[#6B7280] py-2 min-w-[180px]">{bloque.motivo || '-'}</TableCell>
+                                  <TableCell className="py-2 text-right min-w-[80px] w-[80px]">
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -606,22 +705,46 @@ export function GestionarAgendaModal({
                                       className="h-8 w-8 rounded-[8px] hover:bg-[#FEE2E2] text-[#EF4444]"
                                     >
                                       <Trash2 className="h-4 w-4 stroke-[2]" />
-                                    </Button>
+                                  </Button>
                                   </TableCell>
                                 </TableRow>
                               );
                             })}
                         </TableBody>
                       </Table>
+                      </div>
                     )}
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end flex-shrink-0 pt-4 border-t border-[#E5E7EB]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onOpenChangeRef.current(false)}
+                      className="rounded-[10px] font-['Inter'] w-full sm:w-auto order-1"
+                    >
+                      Cerrar
+                    </Button>
+                    <Button
+                      onClick={() => setShowBloqueModal(true)}
+                      className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
+                    >
+                      <span className="hidden sm:inline-flex mr-2">
+                        <Plus className="h-4 w-4 stroke-[2]" />
+                      </span>
+                      Agregar bloqueo
+                    </Button>
                   </div>
                 </TabsContent>
               </div>
             </Tabs>
           )}
-        </DialogContent>
-        ) : null}
-      </Dialog>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {createPortal(modalContent, document.body)}
 
       {/* Sub-modales */}
       <Dialog open={showExcepcionModal} onOpenChange={setShowExcepcionModal}>
@@ -635,7 +758,12 @@ export function GestionarAgendaModal({
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Fecha</Label>
-              <DatePicker value={excepcionForm.fecha} onChange={(fecha) => setExcepcionForm((f) => ({ ...f, fecha }))} placeholder="Seleccionar fecha" />
+              <DatePicker
+                value={excepcionForm.fecha}
+                onChange={(fecha) => setExcepcionForm((f) => ({ ...f, fecha }))}
+                placeholder="Seleccionar fecha"
+                min={format(new Date(), 'yyyy-MM-dd')}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -679,12 +807,12 @@ export function GestionarAgendaModal({
               />
             </div>
           </div>
-          <DialogFooter className="mt-6 pt-4 border-t border-[#E5E7EB] flex gap-2">
-            <Button variant="outline" onClick={() => setShowExcepcionModal(false)} className="rounded-[12px] font-['Inter']">
+          <DialogFooter className="mt-6 pt-4 border-t border-[#E5E7EB] flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setShowExcepcionModal(false)} className="rounded-[12px] font-['Inter'] order-1 sm:order-2 w-full sm:w-auto">
               Cancelar
             </Button>
             <Button
-              className="rounded-[12px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8]"
+              className="rounded-[12px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] order-2 sm:order-1 w-full sm:w-auto"
               disabled={createExcepcionMutation.isPending || !excepcionForm.profesional_id || !excepcionForm.fecha}
               onClick={() => {
                 const { profesional_id, fecha, hora_inicio, hora_fin, duracion_turno_minutos, observaciones } = excepcionForm;
@@ -753,7 +881,7 @@ export function GestionarAgendaModal({
         isLoading={deleteExcepcionMutation.isPending}
       />
 
-      <Dialog open={showBloqueModal} onOpenChange={setShowBloqueModal}>
+      <Dialog open={showBloqueModal} onOpenChange={(open) => { setShowBloqueModal(open); if (!open) setBloqueTodoElDia(false); }}>
         <DialogContent className="max-w-[440px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-6">
           <DialogHeader className="mb-4 pb-0 border-b-0">
             <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">Agregar bloqueo</DialogTitle>
@@ -764,7 +892,24 @@ export function GestionarAgendaModal({
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Fecha</Label>
-              <DatePicker value={bloqueForm.fecha} onChange={(fecha) => setBloqueForm((f) => ({ ...f, fecha }))} placeholder="Seleccionar fecha" />
+              <DatePicker
+                value={bloqueForm.fecha}
+                onChange={(fecha) => setBloqueForm((f) => ({ ...f, fecha }))}
+                placeholder="Seleccionar fecha"
+                min={format(new Date(), 'yyyy-MM-dd')}
+                allowedDaysOfWeek={diasHabilitadosParaBloque}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="bloque-todo-el-dia"
+                checked={bloqueTodoElDia}
+                onCheckedChange={(checked) => setBloqueTodoElDia(Boolean(checked))}
+                className="data-[state=checked]:bg-[#2563eb] data-[state=checked]:border-[#2563eb]"
+              />
+              <Label htmlFor="bloque-todo-el-dia" className="text-[14px] font-medium text-[#374151] font-['Inter'] cursor-pointer">
+                Todo el día
+              </Label>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -774,6 +919,7 @@ export function GestionarAgendaModal({
                   value={bloqueForm.hora_inicio}
                   onChange={(e) => setBloqueForm((f) => ({ ...f, hora_inicio: e.target.value }))}
                   className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                  disabled={bloqueTodoElDia}
                 />
               </div>
               <div className="space-y-2">
@@ -783,6 +929,7 @@ export function GestionarAgendaModal({
                   value={bloqueForm.hora_fin}
                   onChange={(e) => setBloqueForm((f) => ({ ...f, hora_fin: e.target.value }))}
                   className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                  disabled={bloqueTodoElDia}
                 />
               </div>
             </div>
@@ -797,16 +944,18 @@ export function GestionarAgendaModal({
               />
             </div>
           </div>
-          <DialogFooter className="mt-6 pt-4 border-t border-[#E5E7EB] flex gap-2">
-            <Button variant="outline" onClick={() => setShowBloqueModal(false)} className="rounded-[12px] font-['Inter']">
+          <DialogFooter className="mt-6 pt-4 border-t border-[#E5E7EB] flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setShowBloqueModal(false)} className="rounded-[12px] font-['Inter'] order-1 sm:order-2 w-full sm:w-auto">
               Cancelar
             </Button>
             <Button
-              className="rounded-[12px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8]"
+              className="rounded-[12px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] order-2 sm:order-1 w-full sm:w-auto"
               disabled={createBloqueMutation.isPending || !bloqueForm.profesional_id || !bloqueForm.fecha}
               onClick={() => {
-                const inicio = new Date(bloqueForm.fecha + 'T' + bloqueForm.hora_inicio + ':00');
-                const fin = new Date(bloqueForm.fecha + 'T' + bloqueForm.hora_fin + ':00');
+                const horaInicio = bloqueTodoElDia ? '00:00' : bloqueForm.hora_inicio;
+                const horaFin = bloqueTodoElDia ? '23:59' : bloqueForm.hora_fin;
+                const inicio = new Date(bloqueForm.fecha + 'T' + horaInicio + ':00');
+                const fin = new Date(bloqueForm.fecha + 'T' + horaFin + ':00');
                 createBloqueMutation.mutate({
                   profesional_id: bloqueForm.profesional_id,
                   fecha_hora_inicio: inicio.toISOString(),

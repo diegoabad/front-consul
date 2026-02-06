@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -200,6 +199,8 @@ export default function AdminPagos() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Contrato por profesional
+  const [filterContratoProfesionalId, setFilterContratoProfesionalId] = useState<string>('all');
+  const [filterContratoPeriodo, setFilterContratoPeriodo] = useState<string>('todos');
   const [showEditContratoModal, setShowEditContratoModal] = useState(false);
   const [contratoEditando, setContratoEditando] = useState<Profesional | null>(null);
   const [editContratoForm, setEditContratoForm] = useState<{ fecha_inicio_contrato: string; monto_mensual: string; tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual' }>({ fecha_inicio_contrato: '', monto_mensual: '', tipo_periodo_pago: 'mensual' });
@@ -291,9 +292,12 @@ export default function AdminPagos() {
     };
   }, [allPagos, pendingPagos, overduePagos]);
 
-  // Profesional: fijar filtro a su propio id y no permitir cambiar
+  // Profesional: fijar filtro a su propio id y no permitir cambiar (pagos y contrato)
   useEffect(() => {
-    if (isProfesional && profesionalLogueado?.id) setFilterProfesionalId(profesionalLogueado.id);
+    if (isProfesional && profesionalLogueado?.id) {
+      setFilterProfesionalId(profesionalLogueado.id);
+      setFilterContratoProfesionalId(profesionalLogueado.id);
+    }
   }, [isProfesional, profesionalLogueado?.id]);
 
   // Lista de profesionales para contratos: si es profesional solo ve el suyo
@@ -301,6 +305,18 @@ export default function AdminPagos() {
     () => (isProfesional && profesionalLogueado ? [profesionalLogueado] : profesionales),
     [isProfesional, profesionalLogueado, profesionales]
   );
+
+  // Filtrar contratos por profesional y tipo de período
+  const filteredProfesionalesParaContrato = useMemo(() => {
+    let list = profesionalesParaContrato;
+    if (!isProfesional && filterContratoProfesionalId && filterContratoProfesionalId !== 'all') {
+      list = list.filter((p) => p.id === filterContratoProfesionalId);
+    }
+    if (filterContratoPeriodo && filterContratoPeriodo !== 'todos') {
+      list = list.filter((p) => (p.tipo_periodo_pago || 'mensual') === filterContratoPeriodo);
+    }
+    return list;
+  }, [profesionalesParaContrato, isProfesional, filterContratoProfesionalId, filterContratoPeriodo]);
 
   // Filtrar por profesional y estado
   const filteredPagos = useMemo(() => {
@@ -577,21 +593,21 @@ export default function AdminPagos() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-lg:space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-lg:gap-3">
+        <div className="min-w-0 max-lg:flex-1">
+          <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0 max-lg:text-[26px]">
             Contratos y Pagos
           </h1>
-          <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
+          <p className="text-base text-[#6B7280] mt-2 font-['Inter'] max-lg:mt-1.5 max-lg:text-[15px]">
             Contratos por profesional y pagos
           </p>
         </div>
         {activeMainTab === 'pagos' && canCreate && (
           <Button
             onClick={() => setShowCreateModal(true)}
-            className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
+            className="hidden lg:inline-flex bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
           >
             <Plus className="h-5 w-5 mr-2 stroke-[2]" />
             Generar orden de pago
@@ -600,21 +616,19 @@ export default function AdminPagos() {
       </div>
 
       {/* Pestañas principales: Contrato por profesional | Pagos */}
-      <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'contrato' | 'pagos')} className="space-y-6">
-        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[12px] p-1.5 inline-flex">
-          <TabsList className="bg-transparent p-0 h-auto gap-1">
-            <TabsTrigger value="pagos" className="rounded-[10px] px-5 py-2.5 text-[14px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] data-[state=active]:bg-[#2563eb] data-[state=active]:text-white data-[state=active]:[&_svg]:text-white data-[state=active]:shadow-sm transition-all duration-200">
-              <CreditCard className="h-4 w-4 mr-2 stroke-[2]" />
+      <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'contrato' | 'pagos')} className="space-y-6 max-lg:space-y-5">
+        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[12px] p-1.5 w-full">
+          <TabsList className="bg-transparent p-0 h-auto gap-1 w-full grid grid-cols-2">
+            <TabsTrigger value="pagos" className="rounded-[10px] px-5 py-2.5 text-[14px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] data-[state=active]:bg-[#2563eb] data-[state=active]:text-white data-[state=active]:shadow-sm transition-all duration-200 max-lg:flex-1 max-lg:justify-center max-lg:py-3 max-lg:text-[13px]">
               Órdenes de pago
             </TabsTrigger>
-            <TabsTrigger value="contrato" className="rounded-[10px] px-5 py-2.5 text-[14px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] data-[state=active]:bg-[#2563eb] data-[state=active]:text-white data-[state=active]:[&_svg]:text-white data-[state=active]:shadow-sm transition-all duration-200">
-              <FileText className="h-4 w-4 mr-2 stroke-[2]" />
-              Contrato por profesional
+            <TabsTrigger value="contrato" className="rounded-[10px] px-5 py-2.5 text-[14px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] data-[state=active]:bg-[#2563eb] data-[state=active]:text-white data-[state=active]:shadow-sm transition-all duration-200 max-lg:flex-1 max-lg:justify-center max-lg:py-3 max-lg:text-[13px]">
+              Contratos
             </TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="contrato" className="mt-0">
+        <TabsContent value="contrato" className="mt-0 space-y-6 max-lg:space-y-5 max-lg:pb-6">
           {isLoadingProfesionales ? (
             <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
@@ -633,25 +647,69 @@ export default function AdminPagos() {
               </CardContent>
             </Card>
           ) : (
-            <ContratosTable
-              profesionales={profesionalesParaContrato}
-              formatCurrency={formatCurrency}
-              onEdit={handleOpenEditContrato}
-              onEliminar={(p) => { setContratoToEliminar(p); setShowEliminarContratoConfirm(true); }}
-              canEditContrato={!isProfesional}
-            />
+            <>
+              <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
+                <CardContent className="p-6 max-lg:p-4">
+                  <div className={`grid gap-6 w-full ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} max-lg:gap-4`}>
+                    {!isProfesional && (
+                      <div className="space-y-1.5 max-lg:space-y-1 w-full min-w-0">
+                        <Label className="text-[13px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter']">Profesionales</Label>
+                        <Select value={filterContratoProfesionalId} onValueChange={setFilterContratoProfesionalId}>
+                          <SelectTrigger className="h-9 max-lg:h-8 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[8px] max-lg:rounded-[6px] font-['Inter'] text-[14px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 py-2 max-lg:py-1.5">
+                            <SelectValue placeholder="Todos los profesionales" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
+                            <SelectItem value="all" className="rounded-[8px] font-['Inter'] text-[15px] py-3">
+                              Todos los profesionales
+                            </SelectItem>
+                            {profesionales.map((prof) => (
+                              <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
+                                {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
+                                {prof.especialidad ? ` — ${formatDisplayText(prof.especialidad)}` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <div className="space-y-1.5 max-lg:space-y-1 w-full min-w-0">
+                      <Label className="text-[13px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter']">Período de pago</Label>
+                      <Select value={filterContratoPeriodo} onValueChange={setFilterContratoPeriodo}>
+                        <SelectTrigger className="h-9 max-lg:h-8 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[8px] max-lg:rounded-[6px] font-['Inter'] text-[14px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 py-2 max-lg:py-1.5">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl">
+                          <SelectItem value="todos" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Todos</SelectItem>
+                          <SelectItem value="mensual" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Mensual</SelectItem>
+                          <SelectItem value="quincenal" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Quincenal</SelectItem>
+                          <SelectItem value="semanal" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Semanal</SelectItem>
+                          <SelectItem value="anual" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Anual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <ContratosTable
+                profesionales={filteredProfesionalesParaContrato}
+                formatCurrency={formatCurrency}
+                onEdit={handleOpenEditContrato}
+                onEliminar={(p) => { setContratoToEliminar(p); setShowEliminarContratoConfirm(true); }}
+                canEditContrato={!isProfesional}
+              />
+            </>
           )}
         </TabsContent>
 
-        <TabsContent value="pagos" className="mt-0 space-y-6">
-          <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-            <CardContent className="p-6">
-              <div className={`grid gap-6 max-w-2xl ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+        <TabsContent value="pagos" className="mt-0 space-y-6 max-lg:space-y-5 max-lg:pb-6">
+          <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
+            <CardContent className="p-6 max-lg:p-4">
+              <div className={`grid gap-6 w-full ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} max-lg:gap-4`}>
                 {!isProfesional && (
-                <div className="space-y-2">
-                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Profesionales</Label>
+                <div className="space-y-1.5 max-lg:space-y-1 w-full min-w-0">
+                  <Label className="text-[13px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter']">Profesionales</Label>
                   <Select value={filterProfesionalId} onValueChange={setFilterProfesionalId}>
-                    <SelectTrigger className="h-12 w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
+                    <SelectTrigger className="h-9 max-lg:h-8 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[8px] max-lg:rounded-[6px] font-['Inter'] text-[14px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 py-2 max-lg:py-1.5">
                       <SelectValue placeholder="Todos los profesionales" />
                     </SelectTrigger>
                     <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
@@ -668,10 +726,10 @@ export default function AdminPagos() {
                   </Select>
                 </div>
                 )}
-                <div className="space-y-2">
-                  <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Estado</Label>
+                <div className="space-y-1.5 max-lg:space-y-1 w-full min-w-0">
+                  <Label className="text-[13px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter']">Estado</Label>
                   <Select value={activeTab} onValueChange={setActiveTab}>
-                    <SelectTrigger className="h-12 w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
+                    <SelectTrigger className="h-9 max-lg:h-8 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[8px] max-lg:rounded-[6px] font-['Inter'] text-[14px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 py-2 max-lg:py-1.5">
                       <SelectValue placeholder="Todos los estados" />
                     </SelectTrigger>
                     <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl">
@@ -680,11 +738,9 @@ export default function AdminPagos() {
                       </SelectItem>
                       <SelectItem value="vencidos" className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         Vencidos
-                        {pagosByEstado.vencidos.length > 0 && ` (${pagosByEstado.vencidos.length})`}
                       </SelectItem>
                       <SelectItem value="pendientes" className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         Pendientes
-                        {pagosByEstado.pendientes.length > 0 && ` (${pagosByEstado.pendientes.length})`}
                       </SelectItem>
                       <SelectItem value="pagados" className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         Pagados
@@ -721,16 +777,36 @@ export default function AdminPagos() {
         </TabsContent>
       </Tabs>
 
+      {/* Botón flotante: solo en mobile/tablet (en desktop se usa el botón del header) */}
+      {activeMainTab === 'pagos' && canCreate && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                aria-label="Generar orden de pago"
+                className="lg:hidden fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/40 hover:shadow-xl hover:scale-105 transition-all duration-200 p-0"
+              >
+                <Plus className="h-6 w-6 stroke-[2]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="font-['Inter']">
+              <p>Generar orden de pago</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
       {/* Modal Crear Pago */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent className="max-w-[700px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh]">
-          <DialogHeader className="px-8 pt-8 pb-6 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 [&>div]:m-0">
+        <DialogContent className="max-w-[700px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 [&>div]:m-0">
             <div className="flex items-center gap-4 m-0">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0 max-lg:hidden">
                 <Plus className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Generar orden de pago
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0 line-clamp-2">
@@ -740,10 +816,10 @@ export default function AdminPagos() {
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 flex flex-col gap-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 flex flex-col gap-5 max-lg:gap-4">
             <div className="space-y-3">
               <Label htmlFor="profesional_id" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <User className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                 Profesional
                 <span className="text-[#EF4444]">*</span>
               </Label>
@@ -765,10 +841,10 @@ export default function AdminPagos() {
             </div>
 
             {/* Monto y Período: se muestran siempre en el mismo lugar; al elegir profesional se rellenan */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-lg:gap-3">
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <DollarSign className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                   Monto
                 </Label>
                 <div className="h-[52px] flex items-center px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
@@ -784,7 +860,7 @@ export default function AdminPagos() {
               </div>
               <div className="space-y-3">
                 <Label htmlFor="periodo" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                   Período
                   <span className="text-[#EF4444]">*</span>
                 </Label>
@@ -813,18 +889,18 @@ export default function AdminPagos() {
             </p>
           </div>
 
-          <DialogFooter className="px-8 py-5 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 [&>div]:m-0">
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 [&>div]:m-0">
             <Button
               variant="outline"
               onClick={() => setShowCreateModal(false)}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-6 max-lg:px-4 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleCreate}
               disabled={isSubmitting}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-8 max-lg:px-5 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isSubmitting ? (
                 <>
@@ -844,14 +920,14 @@ export default function AdminPagos() {
 
       {/* Modal Marcar como Pagado */}
       <Dialog open={showPayModal} onOpenChange={setShowPayModal}>
-        <DialogContent className="max-w-[600px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh]">
-          <DialogHeader className="px-8 pt-8 pb-6 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 [&>div]:m-0">
+        <DialogContent className="max-w-[600px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 [&>div]:m-0">
             <div className="flex items-center gap-4 m-0">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0 max-lg:hidden">
                 <CheckCircle2 className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Marcar como Pagado
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0 line-clamp-2">
@@ -865,10 +941,10 @@ export default function AdminPagos() {
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 flex flex-col gap-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 flex flex-col gap-5 max-lg:gap-4">
             <div className="space-y-3 relative" ref={payDatePickerRef}>
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                 Fecha de Pago
                 <span className="text-[#EF4444]">*</span>
               </Label>
@@ -899,7 +975,7 @@ export default function AdminPagos() {
 
             <div className="space-y-3">
               <Label htmlFor="pay-metodo_pago" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                <CreditCard className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
                 Método de Pago
                 <span className="text-[#EF4444]">*</span>
               </Label>
@@ -921,18 +997,18 @@ export default function AdminPagos() {
             </div>
           </div>
 
-          <DialogFooter className="px-8 py-5 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 [&>div]:m-0">
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 [&>div]:m-0">
             <Button
               variant="outline"
               onClick={() => setShowPayModal(false)}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-6 max-lg:px-4 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
             >
               Cancelar
             </Button>
             <Button
               onClick={handlePaySubmit}
               disabled={isSubmitting}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-8 max-lg:px-5 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isSubmitting ? (
                 <>
@@ -952,14 +1028,14 @@ export default function AdminPagos() {
 
       {/* Modal Editar Contrato */}
       <Dialog open={showEditContratoModal} onOpenChange={setShowEditContratoModal}>
-        <DialogContent className="max-w-[640px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl">
-          <DialogHeader className="px-8 pt-8 pb-6 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] [&>div]:m-0">
+        <DialogContent className="max-w-[640px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-lg:overflow-hidden">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 mb-0 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 [&>div]:m-0">
             <div className="flex items-center gap-4 m-0">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 flex-shrink-0 max-lg:hidden">
                 <FileText className="h-6 w-6 text-white stroke-[2]" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   Editar contrato
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
@@ -968,7 +1044,7 @@ export default function AdminPagos() {
               </div>
             </div>
           </DialogHeader>
-          <div className="px-8 py-6 space-y-5">
+          <div className="px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5 max-lg:flex-1 max-lg:min-h-0 max-lg:overflow-y-auto max-lg:space-y-4">
             <div className="space-y-3">
               <Label htmlFor="edit-contrato-fecha" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Fecha de inicio
@@ -981,7 +1057,7 @@ export default function AdminPagos() {
                 className="h-[52px]"
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-lg:gap-3">
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Monto
@@ -1035,18 +1111,18 @@ export default function AdminPagos() {
               </div>
             </div>
           </div>
-          <DialogFooter className="px-8 py-5 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 [&>div]:m-0">
+          <DialogFooter className="px-8 max-lg:px-4 py-5 max-lg:py-4 mt-0 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 [&>div]:m-0">
             <Button
               variant="outline"
               onClick={() => setShowEditContratoModal(false)}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-6 max-lg:px-4 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSubmitEditContrato}
               disabled={updateContratoMutation.isPending}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-[48px] max-lg:h-10 max-lg:w-full px-8 max-lg:px-5 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {updateContratoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Guardar
@@ -1160,17 +1236,18 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
     (p.fecha_inicio_contrato && p.fecha_inicio_contrato.trim() !== '') || (p.monto_mensual != null && p.monto_mensual > 0);
 
   return (
-    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
-      <Table>
+    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:rounded-[12px]">
+      <div className="max-lg:overflow-x-auto">
+      <Table className="max-lg:min-w-[600px]">
         <TableHeader>
           <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Profesional</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Especialidad</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Fecha inicio</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Monto</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Período</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Profesional</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Especialidad</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Fecha inicio</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Monto</TableHead>
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Período</TableHead>
             {canEditContrato && (
-              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-[120px] text-center">Acciones</TableHead>
+              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3 w-[120px] text-center">Acciones</TableHead>
             )}
           </TableRow>
         </TableHeader>
@@ -1179,13 +1256,13 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
             const periodoLabel = { mensual: 'Mensual', quincenal: 'Quincenal', semanal: 'Semanal', anual: 'Anual' }[p.tipo_periodo_pago || 'mensual'];
             return (
             <TableRow key={p.id} className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB]">
-              <TableCell className="py-4 font-['Inter'] text-[15px] text-[#374151]">
+              <TableCell className="py-4 max-lg:py-3 font-['Inter'] text-[15px] max-lg:text-[14px] text-[#374151]">
                 {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
               </TableCell>
-              <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
+              <TableCell className="py-4 max-lg:py-3 font-['Inter'] text-[14px] text-[#6B7280]">
                 {formatDisplayText(p.especialidad) || '—'}
               </TableCell>
-              <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
+              <TableCell className="py-4 max-lg:py-3 font-['Inter'] text-[14px] text-[#6B7280]">
                 {(() => {
                   const raw = p.fecha_inicio_contrato?.trim();
                   if (!raw) return '—';
@@ -1196,14 +1273,14 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
                   return Number.isNaN(d.getTime()) ? '—' : format(d, 'dd/MM/yyyy', { locale: es });
                 })()}
               </TableCell>
-              <TableCell className="py-4 font-['Inter'] text-[15px] font-medium text-[#374151]">
+              <TableCell className="py-4 max-lg:py-3 font-['Inter'] text-[15px] font-medium text-[#374151]">
                 {p.monto_mensual != null && p.monto_mensual > 0 ? formatCurrency(p.monto_mensual) : '—'}
               </TableCell>
-              <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
+              <TableCell className="py-4 max-lg:py-3 font-['Inter'] text-[14px] text-[#6B7280]">
                 {p.monto_mensual != null && p.monto_mensual > 0 ? periodoLabel : '—'}
               </TableCell>
               {canEditContrato && (
-              <TableCell className="py-4 text-right">
+              <TableCell className="py-4 max-lg:py-3 text-right">
                 <TooltipProvider>
                   <div className="flex items-center justify-end gap-1">
                     <Tooltip>
@@ -1246,6 +1323,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
           );})}
         </TableBody>
       </Table>
+      </div>
     </Card>
   );
 }
@@ -1281,30 +1359,31 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
   }
 
   return (
-    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
-      <Table>
+    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:rounded-[12px]">
+      <div className="max-lg:overflow-x-auto">
+      <Table className="max-lg:min-w-[560px]">
         <TableHeader>
           <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3 min-w-[160px]">
               Período
             </TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] max-lg:py-3 min-w-[200px]">
               Profesional
             </TableHead>
-            <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+            <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151] max-lg:py-3">
               Monto
             </TableHead>
             <TableHead className="hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
               Fecha Pago
             </TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] max-lg:py-3">
               Estado
             </TableHead>
-            <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+            <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151] max-lg:py-3">
               Método
             </TableHead>
             {showAcciones && (
-              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[160px] text-center">
+              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[160px] text-center max-lg:py-3">
                 Acciones
               </TableHead>
             )}
@@ -1316,33 +1395,23 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
               key={pago.id}
               className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
             >
-              <TableCell className="py-4">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                  <span className="font-medium text-[#374151] font-['Inter'] text-[15px]">
-                    {formatPeriodoDisplay(pago)}
-                  </span>
-                </div>
+              <TableCell className="py-4 max-lg:py-3 min-w-[160px]">
+                <span className="font-medium text-[#374151] font-['Inter'] text-[15px]">
+                  {formatPeriodoDisplay(pago)}
+                </span>
               </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
-                    <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
-                      {pago.profesional_nombre?.[0] || ''}{pago.profesional_apellido?.[0] || ''}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
-                      {pago.profesional_nombre} {pago.profesional_apellido}
-                    </p>
-                    <p className="text-sm text-[#6B7280] md:hidden font-['Inter'] mt-0">
-                      {formatCurrency(pago.monto)}
-                    </p>
-                  </div>
+              <TableCell className="min-w-[200px]">
+                <div>
+                  <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
+                    {pago.profesional_nombre} {pago.profesional_apellido}
+                  </p>
+                  <p className="text-xs text-[#6B7280] md:hidden font-['Inter'] mt-0">
+                    {formatCurrency(pago.monto)}
+                  </p>
                 </div>
               </TableCell>
               <TableCell className="hidden md:table-cell">
-                <span className="font-semibold text-[#374151] font-['Inter'] text-[15px]">
+                <span className="font-semibold text-[#374151] font-['Inter'] text-[14px]">
                   {formatCurrency(pago.monto)}
                 </span>
               </TableCell>
@@ -1368,7 +1437,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
                 )}
               </TableCell>
               {showAcciones && (
-              <TableCell className="text-right">
+              <TableCell className="text-right max-lg:py-3">
                 <TooltipProvider>
                   <div className="flex items-center justify-end gap-1">
                     {showPayButton && (pago.estado === 'pendiente' || pago.estado === 'vencido') && onPay && (
@@ -1419,6 +1488,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
           ))}
         </TableBody>
       </Table>
+      </div>
     </Card>
   );
 }

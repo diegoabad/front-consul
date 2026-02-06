@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Clock, Loader2, User, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Loader2, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { turnosService } from '@/services/turnos.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { useAuth } from '@/contexts/AuthContext';
@@ -309,16 +309,10 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
       {/* Empty State o Tabla */}
       {filteredTurnos.length === 0 ? (
         <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-          <CardContent className="p-16 text-center">
-            <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
-              <Clock className="h-10 w-10 text-[#2563eb] stroke-[2]" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
+          <CardContent className="p-8 text-center">
+            <h3 className="text-base font-semibold text-[#374151] font-['Inter'] mb-0">
               No hay turnos
             </h3>
-            <p className="text-[#6B7280] font-['Inter']">
-              Aún no se han registrado turnos para este paciente
-            </p>
           </CardContent>
         </Card>
       ) : (
@@ -327,16 +321,22 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
             <Table>
               <TableHeader className="sticky top-0 bg-[#F9FAFB] z-10">
                 <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
-                    Fecha y Hora
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[140px] w-[140px]">
+                    Fecha
                   </TableHead>
-                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[160px] w-[160px]">
+                    Hora
+                  </TableHead>
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] min-w-[200px] w-[200px]">
                     Profesional
                   </TableHead>
-                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] min-w-[140px] w-[140px]">
+                    Especialidad
+                  </TableHead>
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] min-w-[120px] w-[120px]">
                     Estado
                   </TableHead>
-                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] min-w-[220px]">
                     Motivo
                   </TableHead>
                 </TableRow>
@@ -347,43 +347,30 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
                     key={turno.id}
                     className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                   >
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                          <Calendar className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[15px] font-semibold text-[#374151] font-['Inter'] mb-0">
-                            {format(new Date(turno.fecha_hora_inicio), "dd 'de' MMMM 'de' yyyy", { locale: es })}
-                          </p>
-                          <p className="text-sm text-[#6B7280] font-['Inter'] flex items-center gap-1.5 mt-0.5 mb-0">
-                            <Clock className="h-3.5 w-3.5 stroke-[2]" />
-                            {format(new Date(turno.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(turno.fecha_hora_fin), 'HH:mm', { locale: es })}
-                          </p>
-                        </div>
-                      </div>
+                    <TableCell className="py-4 min-w-[140px] w-[140px]">
+                      <span className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                        {formatDisplayText(format(new Date(turno.fecha_hora_inicio), 'd MMM yyyy', { locale: es }))}
+                      </span>
                     </TableCell>
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#DBEAFE] to-[#BFDBFE] flex items-center justify-center shadow-sm flex-shrink-0">
-                          <User className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                            {turno.profesional_nombre} {turno.profesional_apellido}
-                          </p>
-                          {turno.profesional_especialidad && (
-                            <p className="text-xs text-[#6B7280] font-['Inter'] mt-0">
-                              {turno.profesional_especialidad}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                    <TableCell className="py-4 min-w-[160px] w-[160px]">
+                      <span className="text-[14px] text-[#374151] font-['Inter']">
+                        {format(new Date(turno.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(turno.fecha_hora_fin), 'HH:mm', { locale: es })}
+                      </span>
                     </TableCell>
-                    <TableCell className="py-4">
+                    <TableCell className="py-4 min-w-[200px] w-[200px]">
+                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                        {formatDisplayText(turno.profesional_nombre)} {formatDisplayText(turno.profesional_apellido)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="py-4 min-w-[140px] w-[140px]">
+                      <span className="text-[14px] text-[#374151] font-['Inter']">
+                        {turno.profesional_especialidad ? formatDisplayText(turno.profesional_especialidad) : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="py-4 min-w-[120px] w-[120px]">
                       {getEstadoBadge(turno.estado)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-[220px]">
                       {turno.motivo ? (
                         <p className="text-[14px] text-[#374151] font-['Inter'] line-clamp-2 mb-0">
                           {turno.motivo}

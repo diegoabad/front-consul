@@ -96,7 +96,7 @@ export function DashboardHeader({
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-3 px-3 py-2 h-auto hover:bg-[#F3F4F6] text-[#374151] rounded-[10px] transition-all duration-200 border border-transparent hover:border-[#E5E7EB]"
+              className="flex items-center gap-2.5 px-3 py-2 h-auto text-[#374151] rounded-[10px] transition-all duration-200 border border-transparent"
             >
               <UserAvatar
                 nombre={formatDisplayText(user?.nombre) || 'Usuario'}
@@ -104,14 +104,14 @@ export function DashboardHeader({
                 size="sm"
               />
               <div className="hidden md:flex flex-col items-start">
-                <span className="text-sm font-medium text-[#374151] font-['Inter']">
+                <span className="text-[13px] font-medium text-[#374151] font-['Inter'] leading-tight">
                   {formatDisplayText(user?.nombre)} {formatDisplayText(user?.apellido)}
                 </span>
-                <span className="text-xs text-[#6B7280] font-['Inter']">
+                <span className="text-[11px] text-[#6B7280] font-['Inter'] leading-tight">
                   {user?.rol ? getRoleLabel(user.rol) : 'Usuario'}
                 </span>
               </div>
-              <ChevronDown className="hidden md:block h-4 w-4 text-[#6B7280] stroke-[2] transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              <ChevronDown className="hidden md:block h-3.5 w-3.5 text-[#6B7280] stroke-[2] transition-transform duration-200 group-data-[state=open]:rotate-180" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent 

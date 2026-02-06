@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Tooltip,
@@ -10,14 +13,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Plus, Edit, Trash2, Loader2, StickyNote, Clock } from 'lucide-react';
+import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
+import { Plus, Edit, Trash2, Loader2, StickyNote, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { notasService, type CreateNotaData, type UpdateNotaData } from '@/services/notas.service';
 import { pacientesService } from '@/services/pacientes.service';
 import type { Nota } from '@/types';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
-import { formatDisplayText } from '@/lib/utils';
+import { formatDisplayText, formatEvolucionDateTime } from '@/lib/utils';
 import { AlertCircle } from 'lucide-react';
 import { CreateNotaModal, EditNotaModal } from './modals';
 
@@ -31,8 +35,25 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedNota, setSelectedNota] = useState<Nota | null>(null);
+  const [notaToDelete, setNotaToDelete] = useState<Nota | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [filterCreadorId, setFilterCreadorId] = useState<string>('todos');
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
+  const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+
+  const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
+  const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
+  const [datePickerDesdeMonth, setDatePickerDesdeMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [datePickerHastaMonth, setDatePickerHastaMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [datePickerDesdeAnchor, setDatePickerDesdeAnchor] = useState<DOMRect | null>(null);
+  const [datePickerHastaAnchor, setDatePickerHastaAnchor] = useState<DOMRect | null>(null);
+  const datePickerDesdeButtonRef = useRef<HTMLButtonElement>(null);
+  const datePickerHastaButtonRef = useRef<HTMLButtonElement>(null);
+  const datePickerDesdeRef = useRef<HTMLDivElement>(null);
+  const datePickerHastaRef = useRef<HTMLDivElement>(null);
 
   const { data: paciente } = useQuery({
     queryKey: ['paciente', pacienteId],
@@ -44,20 +65,85 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
   const { data: notas = [], isLoading } = useQuery({
     queryKey: ['notas', 'paciente', pacienteId, user?.id],
     queryFn: () => {
-      // Si es profesional, filtrar por usuario_id
       if (isProfesional && user?.id) {
         return notasService.getAll({
           paciente_id: pacienteId,
           usuario_id: user.id,
         });
       }
-      // Si no es profesional, obtener todas las notas del paciente
       return notasService.getByPaciente(pacienteId);
     },
     enabled: !isProfesional || !!user?.id,
   });
 
+  const sortedNotas = useMemo(() => {
+    return [...notas].sort((a, b) => {
+      const da = a.fecha_creacion ? new Date(a.fecha_creacion).getTime() : 0;
+      const db = b.fecha_creacion ? new Date(b.fecha_creacion).getTime() : 0;
+      return db - da;
+    });
+  }, [notas]);
 
+  const filteredNotas = useMemo(() => {
+    let list = sortedNotas;
+    if (filterCreadorId && filterCreadorId !== 'todos') {
+      list = list.filter((n) => n.usuario_id === filterCreadorId);
+    }
+    if (filterFechaDesde) {
+      const desde = new Date(filterFechaDesde + 'T00:00:00').getTime();
+      list = list.filter((n) => (n.fecha_creacion ? new Date(n.fecha_creacion).getTime() : 0) >= desde);
+    }
+    if (filterFechaHasta) {
+      const hasta = new Date(filterFechaHasta + 'T23:59:59').getTime();
+      list = list.filter((n) => (n.fecha_creacion ? new Date(n.fecha_creacion).getTime() : 0) <= hasta);
+    }
+    return list;
+  }, [sortedNotas, filterCreadorId, filterFechaDesde, filterFechaHasta]);
+
+  const creadoresEnNotas = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { id: string; nombre: string; apellido: string; especialidad?: string }[] = [];
+    for (const n of sortedNotas) {
+      if (n.usuario_id && !seen.has(n.usuario_id)) {
+        seen.add(n.usuario_id);
+        result.push({
+          id: n.usuario_id,
+          nombre: n.usuario_nombre ?? '',
+          apellido: n.usuario_apellido ?? '',
+          especialidad: n.especialidad,
+        });
+      }
+    }
+    return result;
+  }, [sortedNotas]);
+
+  useEffect(() => {
+    if (!datePickerDesdeOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (datePickerDesdeButtonRef.current?.contains(target)) return;
+      if (datePickerDesdeRef.current?.contains(target)) return;
+      if ((e.target as Element).closest?.('[data-calendar-desde-portal]')) return;
+      setDatePickerDesdeOpen(false);
+      setDatePickerDesdeAnchor(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [datePickerDesdeOpen]);
+
+  useEffect(() => {
+    if (!datePickerHastaOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (datePickerHastaButtonRef.current?.contains(target)) return;
+      if (datePickerHastaRef.current?.contains(target)) return;
+      if ((e.target as Element).closest?.('[data-calendar-hasta-portal]')) return;
+      setDatePickerHastaOpen(false);
+      setDatePickerHastaAnchor(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [datePickerHastaOpen]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateNotaData) => notasService.create(data),
@@ -72,20 +158,14 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     onError: (error: any) => {
       const errorData = error.response?.data?.error || {};
       let errorMessage = 'Error al crear nota';
-      
       if (errorData.details && Array.isArray(errorData.details) && errorData.details.length > 0) {
-        const detailsMessages = errorData.details.map((d: any) => d.message).join('. ');
-        errorMessage = detailsMessages;
+        errorMessage = errorData.details.map((d: any) => d.message).join('. ');
       } else if (errorData.message) {
         errorMessage = errorData.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-      
-      reactToastify.error(errorMessage, {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      reactToastify.error(errorMessage, { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -104,20 +184,14 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     onError: (error: any) => {
       const errorData = error.response?.data?.error || {};
       let errorMessage = 'Error al actualizar nota';
-      
       if (errorData.details && Array.isArray(errorData.details) && errorData.details.length > 0) {
-        const detailsMessages = errorData.details.map((d: any) => d.message).join('. ');
-        errorMessage = detailsMessages;
+        errorMessage = errorData.details.map((d: any) => d.message).join('. ');
       } else if (errorData.message) {
         errorMessage = errorData.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-      
-      reactToastify.error(errorMessage, {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      reactToastify.error(errorMessage, { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -133,20 +207,14 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     onError: (error: any) => {
       const errorData = error.response?.data?.error || {};
       let errorMessage = 'Error al eliminar nota';
-      
       if (errorData.details && Array.isArray(errorData.details) && errorData.details.length > 0) {
-        const detailsMessages = errorData.details.map((d: any) => d.message).join('. ');
-        errorMessage = detailsMessages;
+        errorMessage = errorData.details.map((d: any) => d.message).join('. ');
       } else if (errorData.message) {
         errorMessage = errorData.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-      
-      reactToastify.error(errorMessage, {
-        position: 'top-right',
-        autoClose: 3000,
-      });
+      reactToastify.error(errorMessage, { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -173,9 +241,20 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('¿Está seguro de eliminar esta nota?')) {
-      await deleteMutation.mutateAsync(id);
+  const handleDelete = (nota: Nota) => {
+    setNotaToDelete(nota);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!notaToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await deleteMutation.mutateAsync(notaToDelete.id);
+      setShowDeleteModal(false);
+      setNotaToDelete(null);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -197,7 +276,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
   const pacienteInactivo = !!(paciente && !paciente.activo);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-lg:pb-20 max-lg:overflow-x-hidden relative">
       {/* Alerta paciente inactivo */}
       {pacienteInactivo && (
         <Card className="bg-[#FEF3C7] border-[1.5px] border-[#F59E0B] rounded-[16px]">
@@ -221,17 +300,19 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
+        <div className="min-w-0">
+          <h2 className="text-[24px] max-lg:text-[20px] font-bold text-[#111827] font-['Poppins'] mb-0">
             Notas del Paciente
           </h2>
-          <p className="text-base text-[#6B7280] mt-1 font-['Inter']">
-            {notas.length} {notas.length === 1 ? 'nota registrada' : 'notas registradas'}
+          <p className="text-base max-lg:text-sm text-[#6B7280] mt-1 font-['Inter']">
+            {filteredNotas.length === sortedNotas.length
+              ? `${sortedNotas.length} ${sortedNotas.length === 1 ? 'nota registrada' : 'notas registradas'}`
+              : `${filteredNotas.length} de ${sortedNotas.length} notas`}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 max-lg:hidden">
           {canCreate && (
-            <Button 
+            <Button
               onClick={() => setShowCreateModal(true)}
               disabled={pacienteInactivo}
               title={pacienteInactivo ? 'No se pueden crear notas para pacientes inactivos' : ''}
@@ -244,105 +325,202 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
         </div>
       </div>
 
-      {/* Empty State o Lista */}
-      {notas.length === 0 ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-          <CardContent className="p-16 text-center">
-            <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
-              <StickyNote className="h-10 w-10 text-[#2563eb] stroke-[2]" />
+      {/* Filtros: creador y fecha */}
+      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Creador</Label>
+                <Select value={filterCreadorId} onValueChange={setFilterCreadorId}>
+                  <SelectTrigger className="h-11 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
+                    <SelectValue placeholder="Todos los creadores" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-[12px]">
+                    <SelectItem value="todos">Todos los creadores</SelectItem>
+                    {creadoresEnNotas.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {formatDisplayText(c.nombre)} {formatDisplayText(c.apellido)}
+                        {c.especialidad ? ` — ${formatDisplayText(c.especialidad)}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerDesdeRef}>
+                <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha desde</Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    ref={datePickerDesdeButtonRef}
+                    type="button"
+                    onClick={() => {
+                      const willOpen = !datePickerDesdeOpen;
+                      setDatePickerDesdeOpen(willOpen);
+                      if (willOpen) {
+                        setDatePickerHastaOpen(false);
+                        setDatePickerDesdeMonth(filterFechaDesde ? startOfMonth(new Date(filterFechaDesde + 'T12:00:00')) : startOfMonth(new Date()));
+                        setDatePickerDesdeAnchor(datePickerDesdeButtonRef.current?.getBoundingClientRect() ?? null);
+                      } else {
+                        setDatePickerDesdeAnchor(null);
+                      }
+                    }}
+                    className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                  >
+                    <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                    <span className="text-[#374151] truncate">
+                      {filterFechaDesde ? format(new Date(filterFechaDesde + 'T12:00:00'), "d 'de' MMMM yyyy", { locale: es }) : 'Seleccionar'}
+                    </span>
+                    <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto flex-shrink-0 transition-transform ${datePickerDesdeOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  {filterFechaDesde && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setFilterFechaDesde('')}
+                      className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                      aria-label="Quitar fecha desde"
+                    >
+                      <X className="h-5 w-5 stroke-[2]" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerHastaRef}>
+                <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha hasta</Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    ref={datePickerHastaButtonRef}
+                    type="button"
+                    onClick={() => {
+                      const willOpen = !datePickerHastaOpen;
+                      setDatePickerHastaOpen(willOpen);
+                      if (willOpen) {
+                        setDatePickerDesdeOpen(false);
+                        setDatePickerHastaMonth(filterFechaHasta ? startOfMonth(new Date(filterFechaHasta + 'T12:00:00')) : startOfMonth(new Date()));
+                        setDatePickerHastaAnchor(datePickerHastaButtonRef.current?.getBoundingClientRect() ?? null);
+                      } else {
+                        setDatePickerHastaAnchor(null);
+                      }
+                    }}
+                    className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                  >
+                    <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
+                    <span className="text-[#374151] truncate">
+                      {filterFechaHasta ? format(new Date(filterFechaHasta + 'T12:00:00'), "d 'de' MMMM yyyy", { locale: es }) : 'Seleccionar'}
+                    </span>
+                    <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto flex-shrink-0 transition-transform ${datePickerHastaOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  {filterFechaHasta && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setFilterFechaHasta('')}
+                      className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                      aria-label="Quitar fecha hasta"
+                    >
+                      <X className="h-5 w-5 stroke-[2]" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
+          </CardContent>
+        </Card>
+
+      {/* Empty State o Lista */}
+      {sortedNotas.length === 0 ? (
+        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+          <CardContent className="p-8 max-lg:p-6 text-center">
+            <h3 className="text-base font-semibold text-[#374151] font-['Inter'] mb-0">
               No hay notas
             </h3>
-            <p className="text-[#6B7280] mb-6 font-['Inter']">
-              {pacienteInactivo 
-                ? 'Este paciente está inactivo. No se pueden crear nuevas notas.' 
-                : 'Aún no se han creado notas para este paciente'
-              }
+          </CardContent>
+        </Card>
+      ) : filteredNotas.length === 0 ? (
+        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+          <CardContent className="p-8 max-lg:p-6 text-center">
+            <h3 className="text-lg font-semibold mb-1 text-[#374151] font-['Inter']">
+              No hay resultados
+            </h3>
+            <p className="text-[#6B7280] font-['Inter'] mb-0">
+              No se encontraron notas con los filtros aplicados. Probá cambiando creador o rango de fechas.
             </p>
-            {canCreate && !pacienteInactivo && (
-              <Button 
-                onClick={() => setShowCreateModal(true)}
-                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
-              >
-                <Plus className="h-5 w-5 mr-2 stroke-[2]" />
-                Nueva Nota
-              </Button>
-            )}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-2">
-          {notas.map((nota) => (
+          {filteredNotas.map((nota) => (
             <Card key={nota.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center shadow-sm flex-shrink-0">
-                      <StickyNote className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <p className="text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0">
+                <div className="flex items-center min-h-[72px]">
+                  <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-3 lg:gap-4 lg:flex-nowrap w-full">
+                    {/* Renglón 1 mobile / Col 1 desktop: Creador — Especialidad */}
+                    <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left lg:min-w-0 lg:max-w-[240px] w-full lg:w-auto">
+                      <div className="max-lg:hidden h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center shadow-sm flex-shrink-0 mr-3">
+                        <StickyNote className="h-5 w-5 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="min-w-0 overflow-hidden flex flex-col items-center lg:items-start">
+                        <p className="text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0 lg:truncate text-center lg:text-left">
                           {formatDisplayText(nota.usuario_nombre)} {formatDisplayText(nota.usuario_apellido)}
                           {nota.especialidad && (
-                            <span className="text-[14px] font-normal text-[#6B7280] ml-2">
-                              - {formatDisplayText(nota.especialidad)}
-                            </span>
+                            <span className="font-normal text-[#6B7280] lg:hidden"> — {formatDisplayText(nota.especialidad)}</span>
                           )}
                         </p>
-                        <div className="flex items-center gap-2 text-[#6B7280]">
-                          <Clock className="h-4 w-4 stroke-[2] flex-shrink-0" />
-                          <p className="text-[14px] font-['Inter'] mb-0">
-                            {nota.fecha_creacion
-                              ? format(new Date(nota.fecha_creacion), "dd 'de' MMMM 'de' yyyy 'a las' HH:mm", {
-                                  locale: es,
-                                })
-                              : '-'}
+                        {nota.especialidad && (
+                          <p className="hidden lg:block text-[14px] text-[#6B7280] font-['Inter'] mb-0 truncate">
+                            {formatDisplayText(nota.especialidad)}
                           </p>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {canUpdate && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              onClick={() => handleEdit(nota)}
-                              variant="ghost"
-                              size="icon"
-                              className="h-10 w-10 rounded-[8px] hover:bg-[#F3F4F6]"
-                            >
-                              <Edit className="h-5 w-5 text-[#6B7280] stroke-[2]" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                            <p className="text-white">Editar</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {canDelete && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              onClick={() => handleDelete(nota.id)}
-                              variant="ghost"
-                              size="icon"
-                              className="h-10 w-10 rounded-[8px] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
-                            >
-                              <Trash2 className="h-5 w-5 text-[#EF4444] stroke-[2]" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                            <p className="text-white">Eliminar</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {/* Renglón 2 mobile / Col 2 desktop: Fecha */}
+                    <div className="w-full lg:flex-1 flex justify-center min-w-0">
+                      <p className="text-[14px] text-[#6B7280] font-['Inter'] whitespace-nowrap mb-0 text-center">
+                        {nota.fecha_creacion ? formatEvolucionDateTime(nota.fecha_creacion) : '—'}
+                      </p>
+                    </div>
+                    {/* Renglón 3 mobile / Col 3 desktop: Acciones */}
+                    <div className="flex items-center justify-center lg:justify-end gap-2 flex-shrink-0">
+                      {canUpdate && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                onClick={() => handleEdit(nota)}
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 rounded-[8px] hover:bg-[#F3F4F6]"
+                              >
+                                <Edit className="h-5 w-5 text-[#6B7280] stroke-[2]" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">Editar</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {canDelete && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                onClick={() => handleDelete(nota)}
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 rounded-[8px] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
+                              >
+                                <Trash2 className="h-5 w-5 text-[#EF4444] stroke-[2]" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">Eliminar</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-4 pt-4 border-t border-[#E5E7EB]">
@@ -353,6 +531,20 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* FAB móvil: Nueva nota */}
+      {canCreate && !pacienteInactivo && (
+        <div className="lg:hidden fixed bottom-6 right-6 z-40">
+          <Button
+            onClick={() => setShowCreateModal(true)}
+            className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
+            title="Nueva Nota"
+            aria-label="Nueva Nota"
+          >
+            <Plus className="h-6 w-6 stroke-[2]" />
+          </Button>
         </div>
       )}
 
@@ -374,6 +566,136 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
           isSubmitting={isSubmitting}
         />
       )}
+
+      {/* Calendario Fecha desde (portal) */}
+      {datePickerDesdeOpen && datePickerDesdeAnchor &&
+        createPortal(
+          <div
+            data-calendar-desde-portal
+            className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
+            style={{ position: 'fixed', top: datePickerDesdeAnchor.bottom + 8, left: datePickerDesdeAnchor.left, width: Math.min(Math.max(datePickerDesdeAnchor.width, 280), 450) }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                {format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+              </span>
+              <div className="flex gap-1">
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => subMonths(m, 1))}>
+                  <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => addMonths(m, 1))}>
+                  <ChevronRight className="h-4 w-4 stroke-[2]" />
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+              ))}
+              {(() => {
+                const monthEnd = endOfMonth(datePickerDesdeMonth);
+                const calStart = startOfWeek(datePickerDesdeMonth, { weekStartsOn: 1 });
+                const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                const selectedDate = filterFechaDesde ? new Date(filterFechaDesde + 'T12:00:00') : null;
+                return days.map((day) => {
+                  const isCurrentMonth = isSameMonth(day, datePickerDesdeMonth);
+                  const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      onClick={() => {
+                        setFilterFechaDesde(format(day, 'yyyy-MM-dd'));
+                        setDatePickerDesdeMonth(startOfMonth(day));
+                        setDatePickerDesdeOpen(false);
+                        setDatePickerDesdeAnchor(null);
+                      }}
+                      className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                        ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                        ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                        ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                    >
+                      {format(day, 'd')}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Calendario Fecha hasta (portal) */}
+      {datePickerHastaOpen && datePickerHastaAnchor &&
+        createPortal(
+          <div
+            data-calendar-hasta-portal
+            className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
+            style={{ position: 'fixed', top: datePickerHastaAnchor.bottom + 8, left: datePickerHastaAnchor.left, width: Math.min(Math.max(datePickerHastaAnchor.width, 280), 450) }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                {format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+              </span>
+              <div className="flex gap-1">
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => subMonths(m, 1))}>
+                  <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => addMonths(m, 1))}>
+                  <ChevronRight className="h-4 w-4 stroke-[2]" />
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+              ))}
+              {(() => {
+                const monthEnd = endOfMonth(datePickerHastaMonth);
+                const calStart = startOfWeek(datePickerHastaMonth, { weekStartsOn: 1 });
+                const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                const selectedDate = filterFechaHasta ? new Date(filterFechaHasta + 'T12:00:00') : null;
+                return days.map((day) => {
+                  const isCurrentMonth = isSameMonth(day, datePickerHastaMonth);
+                  const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      onClick={() => {
+                        setFilterFechaHasta(format(day, 'yyyy-MM-dd'));
+                        setDatePickerHastaMonth(startOfMonth(day));
+                        setDatePickerHastaOpen(false);
+                        setDatePickerHastaAnchor(null);
+                      }}
+                      className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                        ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                        ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                        ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                    >
+                      {format(day, 'd')}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      <ConfirmDeleteModal
+        open={showDeleteModal}
+        onOpenChange={(open) => {
+          setShowDeleteModal(open);
+          if (!open) setNotaToDelete(null);
+        }}
+        title="Eliminar Nota"
+        description="¿Estás seguro de que deseas eliminar esta nota? Esta acción no se puede deshacer."
+        onConfirm={handleConfirmDelete}
+        isLoading={isSubmitting}
+      />
     </div>
   );
 }

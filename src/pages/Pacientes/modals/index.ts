@@ -3,6 +3,7 @@ export { EditPacienteModal } from './EditPacienteModal';
 export { CreateEvolucionModal } from './CreateEvolucionModal';
 export { EditEvolucionModal } from './EditEvolucionModal';
 export { ViewEvolucionModal } from './ViewEvolucionModal';
+export { NotaModal } from './NotaModal';
 export { CreateNotaModal } from './CreateNotaModal';
 export { EditNotaModal } from './EditNotaModal';
 export { UploadArchivoModal } from './UploadArchivoModal';
