@@ -18,6 +18,7 @@ import { Stethoscope, Loader2, Calendar, User, FileText, Pill } from 'lucide-rea
 import { profesionalesService } from '@/services/profesionales.service';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDisplayText } from '@/lib/utils';
 import type { UpdateEvolucionData } from '@/services/evoluciones.service';
 import type { Evolucion } from '@/types';
 
@@ -153,7 +154,7 @@ export function EditEvolucionModal({
                 <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
                   {profesionales.map((prof) => (
                     <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                      {prof.nombre} {prof.apellido} {prof.especialidad ? `- ${prof.especialidad}` : ''}
+                      {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)} {prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

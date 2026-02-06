@@ -5,9 +5,9 @@ import { getToken, clearAuth } from '@/utils/storage';
 import { showApiErrorToast } from '@/utils/apiErrorToast';
 
 // Vite solo expone variables que empiezan con VITE_. En Netlify la variable DEBE llamarse exactamente VITE_API_URL.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://consul-mm.onrender.com/api';
 
-// Diagnóstico: abrí la consola del navegador (F12 → Console). Si en producción ves "http://localhost:5000/api", la variable no se leyó en el build (nombre o redeploy).
+// Diagnóstico: abrí la consola del navegador (F12 → Console). Si no ves la URL esperada, la variable no se leyó en el build (nombre o redeploy).
 if (typeof window !== 'undefined') {
   console.info('[Consultorio] API base:', API_URL);
 }
@@ -40,35 +40,35 @@ api.interceptors.response.use(
     const errorMessage = error.response?.data?.message || error.message || 'Error en la solicitud';
     const requestUrl = error.config?.url || '';
     const isLoginEndpoint = requestUrl.includes('/auth/login');
+
+    // En login no mostramos toast aquí: solo el AuthContext muestra un único mensaje
+    if (isLoginEndpoint) {
+      return Promise.reject(error);
+    }
     
     if (error.response?.status === 401) {
-      // No mostrar toast de "Sesión expirada" en el login
-      // El AuthContext ya maneja el mensaje de error para credenciales incorrectas
-      if (!isLoginEndpoint) {
-        clearAuth();
-        reactToastify.error('Sesión expirada. Por favor, inicia sesión nuevamente', {
-          position: 'top-right',
-          autoClose: 3000,
-        });
-        // Usar window.location solo si no estamos ya en login
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+      clearAuth();
+      reactToastify.error('Sesión expirada. Por favor, inicia sesión nuevamente', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
       }
-      // Si es el endpoint de login, no hacer nada aquí, dejar que AuthContext maneje el error
     } else if (error.response?.status === 403) {
       showApiErrorToast('403', 'No tienes permisos para realizar esta acción');
     } else if (error.response?.status === 404) {
-      showApiErrorToast('404', 'Recurso no encontrado');
+      const isPacienteByDni = requestUrl.includes('pacientes') && (requestUrl.includes('by-dni') || requestUrl.includes('by_dni'));
+      showApiErrorToast('404', isPacienteByDni ? 'Paciente no encontrado' : 'Recurso no encontrado');
+    } else if (error.response?.status === 409) {
+      showApiErrorToast('409', errorMessage);
     } else if (error.response?.status >= 500) {
       showApiErrorToast('server', 'Error del servidor. Por favor, intenta más tarde');
     } else if (error.response?.status === 400) {
       // No mostrar toast para errores 400 (validación)
-      // Los componentes manejan estos errores con mensajes más descriptivos
     } else if (error.response?.status) {
       showApiErrorToast('other', errorMessage);
     } else {
-      // Error de red / timeout / servidor no responde (ej. backend dormido)
       showApiErrorToast('server', 'Error de conexión. Verifica tu conexión o intenta en unos segundos.');
     }
     

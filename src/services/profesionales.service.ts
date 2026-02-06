@@ -18,7 +18,7 @@ export interface CreateProfesionalData {
   fecha_ultimo_pago?: string;
   fecha_inicio_contrato?: string; // YYYY-MM-DD
   monto_mensual?: number;
-  tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal';
+  tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
   observaciones?: string;
 }
 

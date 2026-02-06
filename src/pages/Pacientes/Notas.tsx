@@ -17,6 +17,7 @@ import type { Nota } from '@/types';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { formatDisplayText } from '@/lib/utils';
 import { AlertCircle } from 'lucide-react';
 import { CreateNotaModal, EditNotaModal } from './modals';
 
@@ -283,10 +284,10 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0">
-                          {nota.usuario_nombre} {nota.usuario_apellido}
+                          {formatDisplayText(nota.usuario_nombre)} {formatDisplayText(nota.usuario_apellido)}
                           {nota.especialidad && (
                             <span className="text-[14px] font-normal text-[#6B7280] ml-2">
-                              - {nota.especialidad}
+                              - {formatDisplayText(nota.especialidad)}
                             </span>
                           )}
                         </p>

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,21 +30,23 @@ import {
 } from '@/components/ui/tooltip';
 import { 
   Calendar, CalendarPlus, Clock, User, Eye, X, Plus, 
-  Loader2, Filter, FileText, Stethoscope, ChevronLeft, ChevronRight, Search, Phone, Trash2, Lock, Pencil
+  Loader2, Filter, FileText, Stethoscope, ChevronLeft, ChevronRight, Search, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import { turnosService, type CreateTurnoData, type CancelTurnoData, type UpdateTurnoData } from '@/services/turnos.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { pacientesService } from '@/services/pacientes.service';
-import { agendaService, type CreateBloqueData, type BloqueNoDisponible, type UpdateBloqueData, type CreateExcepcionAgendaData } from '@/services/agenda.service';
+import { agendaService, type CreateBloqueData, type CreateExcepcionAgendaData } from '@/services/agenda.service';
 import { DatePicker } from '@/components/ui/date-picker';
 import type { Turno, Paciente } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { formatDisplayText } from '@/lib/utils';
+import { CreateAgendaModal, GestionarAgendaModal } from '@/pages/Agendas/modals';
 
 const estadoOptions = [
   { value: 'todos', label: 'Todos los estados' },
-  { value: 'pendiente', label: 'A confirmar' },
+  { value: 'pendiente', label: 'Pendiente' },
   { value: 'confirmado', label: 'Confirmados' },
   { value: 'completado', label: 'Atendidos' },
   { value: 'cancelado', label: 'Cancelados' },
@@ -53,7 +55,7 @@ const estadoOptions = [
 
 // Opciones para cambiar estado en la grilla (valor backend → etiqueta)
 const estadoOpcionesGrilla = [
-  { value: 'pendiente', label: 'A confirmar' },
+  { value: 'pendiente', label: 'Pendiente' },
   { value: 'confirmado', label: 'Confirmado' },
   { value: 'completado', label: 'Atendido' },
   { value: 'cancelado', label: 'Cancelado' },
@@ -74,7 +76,7 @@ function formatDni(dni: string | number | undefined | null): string {
 
 /** Clases del SelectTrigger de estado: hover y flecha según color del estado (sin violeta) */
 function getEstadoSelectTriggerClass(estado: string): string {
-  const base = "h-8 w-auto max-w-[140px] min-w-0 rounded-full border shadow-none font-['Inter'] text-[13px] py-1 pl-2.5 pr-8 text-left focus:outline-none [&>svg]:!right-2 [&>svg]:!h-3.5 [&>svg]:!w-3.5";
+  const base = "h-5 w-auto max-w-[140px] min-w-0 rounded-full border shadow-none font-['Inter'] text-[13px] py-px pl-2 pr-7 text-left focus:outline-none [&>svg]:!right-1.5 [&>svg]:!h-3 [&>svg]:!w-3";
   switch (estado) {
     case 'confirmado':
       return `${base} bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] hover:border-[#6EE7B7] focus:border-[#6EE7B7] focus:ring-2 focus:ring-[#065F46]/20 [&>svg]:!text-[#065F46]`;
@@ -92,7 +94,7 @@ function getEstadoSelectTriggerClass(estado: string): string {
 }
 
 function getEstadoBadge(estado: string, className = '') {
-  const base = 'rounded-full px-3 py-1 text-xs font-medium ' + className;
+  const base = 'rounded-full px-3 py-px text-xs font-medium ' + className;
   switch (estado) {
     case 'confirmado':
       return (
@@ -103,7 +105,7 @@ function getEstadoBadge(estado: string, className = '') {
     case 'pendiente':
       return (
         <Badge className={`bg-[#FEF3C7] text-[#92400E] border-[#FDE047] hover:bg-[#FDE68A] ${base}`}>
-          A confirmar
+          Pendiente
         </Badge>
       );
     case 'cancelado':
@@ -163,16 +165,9 @@ function generarOpcionesHora(inicio: string, finExcl: string, pasoMinutos: numbe
 export default function AdminTurnos() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
-
   const [estadoFilter, setEstadoFilter] = useState('todos');
   const [profesionalFilter, setProfesionalFilter] = useState('');
-  const profesionalFromUrl = searchParams.get('profesional');
-
-  useEffect(() => {
-    if (profesionalFromUrl) setProfesionalFilter(profesionalFromUrl);
-  }, [profesionalFromUrl]);
-  const [fechaFilter, setFechaFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [fechaFilter, setFechaFilter] = useState<string>('');
   const [calendarViewMonth, setCalendarViewMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -182,18 +177,15 @@ export default function AdminTurnos() {
   const [selectedTurno, setSelectedTurno] = useState<Turno | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showBloqueModal, setShowBloqueModal] = useState(false);
-  const [showGestionarBloqueModal, setShowGestionarBloqueModal] = useState(false);
-  const [bloqueEditando, setBloqueEditando] = useState<BloqueNoDisponible | null>(null);
-  const [bloqueEditForm, setBloqueEditForm] = useState<{ hora_inicio: string; hora_fin: string; motivo: string }>({ hora_inicio: '', hora_fin: '', motivo: '' });
-  const [bloqueToDelete, setBloqueToDelete] = useState<BloqueNoDisponible | null>(null);
+  const [abrioModalParaDesbloquear, setAbrioModalParaDesbloquear] = useState(false);
+  const [showDesbloquearTodoConfirm, setShowDesbloquearTodoConfirm] = useState(false);
   const [isSubmittingBloque, setIsSubmittingBloque] = useState(false);
   const [bloqueForm, setBloqueForm] = useState<{
     profesional_id: string;
     fecha_inicio: string;
     fecha_fin: string;
     todo_el_dia: boolean;
-    hora_inicio: string;
-    hora_fin: string;
+    franjas: { hora_inicio: string; hora_fin: string }[];
     motivo: string;
   }>(() => {
     const hoy = new Date().toISOString().slice(0, 10);
@@ -202,8 +194,7 @@ export default function AdminTurnos() {
       fecha_inicio: hoy,
       fecha_fin: hoy,
       todo_el_dia: false,
-      hora_inicio: '09:00',
-      hora_fin: '12:00',
+      franjas: [{ hora_inicio: '09:00', hora_fin: '12:00' }],
       motivo: '',
     };
   });
@@ -238,7 +229,7 @@ export default function AdminTurnos() {
       setPacienteDniInput('');
       setPacienteFound(null);
       setShowQuickCreatePaciente(false);
-      setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '' });
+      setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
     }
   }, [showCreateModal, profesionalFilter, fechaFilter]);
 
@@ -260,7 +251,7 @@ export default function AdminTurnos() {
   const [pacienteDniInput, setPacienteDniInput] = useState('');
   const [pacienteFound, setPacienteFound] = useState<Paciente | null>(null);
   const [showQuickCreatePaciente, setShowQuickCreatePaciente] = useState(false);
-  const [quickCreatePaciente, setQuickCreatePaciente] = useState({ dni: '', nombre: '', apellido: '', telefono: '' });
+  const [quickCreatePaciente, setQuickCreatePaciente] = useState({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
   const [isSearchingPaciente, setIsSearchingPaciente] = useState(false);
   const [isCreatingPaciente, setIsCreatingPaciente] = useState(false);
 
@@ -268,6 +259,12 @@ export default function AdminTurnos() {
   const [cancelData, setCancelData] = useState<CancelTurnoData>({
     razon_cancelacion: '',
   });
+  const [showSinAgendaModal, setShowSinAgendaModal] = useState(false);
+  const [showSobreturnoModal, setShowSobreturnoModal] = useState(false);
+  const [pendingCreatePayload, setPendingCreatePayload] = useState<CreateTurnoData | null>(null);
+  const [showCreateAgendaModalFromTurnos, setShowCreateAgendaModalFromTurnos] = useState(false);
+  const [showGestionarAgendaModalFromTurnos, setShowGestionarAgendaModalFromTurnos] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch profesionales
   const { data: profesionales = [] } = useQuery({
@@ -285,6 +282,30 @@ export default function AdminTurnos() {
   useEffect(() => {
     if (isProfesional && profesionalLogueado?.id) setProfesionalFilter(profesionalLogueado.id);
   }, [isProfesional, profesionalLogueado?.id]);
+
+  // Al cambiar de profesional, quitar el día seleccionado para no mostrar turnos del día anterior
+  useEffect(() => {
+    setFechaFilter('');
+  }, [profesionalFilter]);
+
+  // Agenda del profesional (antes que cualquier hook que la use, para evitar "before initialization")
+  const { data: agendasDelProfesional = [], isLoading: loadingAgendasDelProfesional } = useQuery({
+    queryKey: ['agendas', profesionalFilter, 'conHistorico'],
+    queryFn: () => agendaService.getAllAgenda({ profesional_id: profesionalFilter!, activo: true, vigente: false }),
+    enabled: Boolean(profesionalFilter),
+  });
+
+  // Profesional sin agenda: mostrar modal "¿Querés crearla?"
+  useEffect(() => {
+    if (
+      isProfesional &&
+      profesionalFilter &&
+      !loadingAgendasDelProfesional &&
+      agendasDelProfesional.length === 0
+    ) {
+      setShowSinAgendaModal(true);
+    }
+  }, [isProfesional, profesionalFilter, loadingAgendasDelProfesional, agendasDelProfesional.length]);
 
   // Fetch turnos con filtros
   const filters = useMemo(() => {
@@ -308,9 +329,31 @@ export default function AdminTurnos() {
   const { data: turnos = [], isLoading } = useQuery({
     queryKey: ['turnos', filters],
     queryFn: () => turnosService.getAll(filters),
+    enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
   });
 
-  const filteredTurnos = useMemo(() => turnos, [turnos]);
+  // Sin profesional seleccionado no se muestran turnos (aunque el backend pudiera devolverlos)
+  const filteredTurnos = useMemo(
+    () => (profesionalFilter ? turnos : []),
+    [profesionalFilter, turnos]
+  );
+
+  // Turnos del día seleccionado en el modal de crear (para mostrar Bloqueado/Ocupado y validar sobreturno)
+  const filtersCreateDay = useMemo(() => {
+    if (!createFecha || !createFormData.profesional_id) return null;
+    const fechaInicio = new Date(createFecha + 'T00:00:00');
+    const fechaFin = new Date(createFecha + 'T23:59:59.999');
+    return {
+      profesional_id: createFormData.profesional_id,
+      fecha_inicio: fechaInicio.toISOString(),
+      fecha_fin: fechaFin.toISOString(),
+    };
+  }, [createFecha, createFormData.profesional_id]);
+  const { data: turnosDelDiaCreate = [] } = useQuery({
+    queryKey: ['turnos', 'create-day', filtersCreateDay],
+    queryFn: () => turnosService.getAll(filtersCreateDay!),
+    enabled: Boolean(showCreateModal && filtersCreateDay),
+  });
 
   // Todas las agendas (para saber qué profesionales tienen agenda y pueden ser elegidos en Turnos)
   const { data: todasLasAgendas = [] } = useQuery({
@@ -321,13 +364,6 @@ export default function AdminTurnos() {
     () => new Set(todasLasAgendas.map((a) => a.profesional_id)),
     [todasLasAgendas]
   );
-
-  // Agenda del profesional (incluye histórico para que el calendario muestre correctamente pasado: Lu–Vi antes de quitar lunes)
-  const { data: agendasDelProfesional = [] } = useQuery({
-    queryKey: ['agendas', profesionalFilter, 'conHistorico'],
-    queryFn: () => agendaService.getAllAgenda({ profesional_id: profesionalFilter!, activo: true, vigente: false }),
-    enabled: Boolean(profesionalFilter),
-  });
 
   // Días puntuales del profesional (rango: mes del calendario ± 1 mes)
   const excepcionesDateRange = useMemo(() => {
@@ -397,6 +433,19 @@ export default function AdminTurnos() {
       return bStart < dayEnd && bEnd > dayStart;
     });
   }, [createFecha, profesionalFilter, bloquesDelMes]);
+
+  /** Bloques del día seleccionado en el modal de bloqueo (cuando es un solo día) para mostrar/eliminar */
+  const bloquesDelDiaEnModal = useMemo(() => {
+    if (!bloqueForm.fecha_inicio || bloqueForm.fecha_inicio !== bloqueForm.fecha_fin || !bloqueForm.profesional_id) return [];
+    const dayStart = new Date(bloqueForm.fecha_inicio + 'T00:00:00').getTime();
+    const dayEnd = new Date(bloqueForm.fecha_inicio + 'T23:59:59.999').getTime();
+    return bloquesDelMes.filter((b) => {
+      if (b.profesional_id !== bloqueForm.profesional_id) return false;
+      const bStart = new Date(b.fecha_hora_inicio).getTime();
+      const bEnd = new Date(b.fecha_hora_fin).getTime();
+      return bStart < dayEnd && bEnd > dayStart;
+    });
+  }, [bloqueForm.fecha_inicio, bloqueForm.fecha_fin, bloqueForm.profesional_id, bloquesDelMes]);
 
   /** Verifica si el slot [slotStart, slotEnd] (Date) solapa con algún bloque */
   const slotSolapaConBloque = (slotStart: Date, slotEnd: Date, bloques: { fecha_hora_inicio: string; fecha_hora_fin: string }[]) => {
@@ -476,6 +525,15 @@ export default function AdminTurnos() {
     return horasFin[horasFin.length - 1] ?? null;
   }, [getAgendaForDate]);
 
+  // Si el profesional tiene hoy habilitado y no hay día seleccionado, seleccionar hoy (solo cuando la agenda ya cargó)
+  useEffect(() => {
+    if (!profesionalFilter || loadingAgendasDelProfesional) return;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    if (getAgendaForDate(todayStr).length > 0) {
+      setFechaFilter((prev) => (prev === '' ? todayStr : prev));
+    }
+  }, [profesionalFilter, loadingAgendasDelProfesional, getAgendaForDate]);
+
   /** Rango y duración para la fecha seleccionada según agenda o excepción del profesional */
   const rangoHorarioCreate = useMemo(() => {
     if (!createFecha) return { min: undefined as string | undefined, max: undefined as string | undefined, duracionMinutos: 30 };
@@ -517,6 +575,13 @@ export default function AdminTurnos() {
     });
     return disponibles.length === 0;
   }, [fechaFilter, horarioDelDiaListado, bloquesDelDiaListado, getAgendaForDate]);
+
+  /** Motivo del bloqueo cuando el día listado está completamente bloqueado (para la pastilla) */
+  const motivoBloqueoDiaListado = useMemo(() => {
+    if (!diaCompletamenteBloqueadoListado || bloquesDelDiaListado.length === 0) return null;
+    const b = bloquesDelDiaListado.find((block) => block.motivo?.trim());
+    return b?.motivo?.trim() || null;
+  }, [diaCompletamenteBloqueadoListado, bloquesDelDiaListado]);
 
   /** Días del mes visible (calendario izquierda) que están completamente bloqueados para el profesional */
   const diasCompletamenteBloqueadosCalendario = useMemo(() => {
@@ -586,45 +651,70 @@ export default function AdminTurnos() {
   const esHoyCreate = createFecha === format(new Date(), 'yyyy-MM-dd');
   const horaActual = format(new Date(), 'HH:mm');
   const duracionCreate = rangoHorarioCreate.duracionMinutos ?? 30;
-  /** Opciones de hora inicio: hoy sin pasados + excluir slots que solapan con bloques */
-  const opcionesHoraInicioFiltradas = useMemo(() => {
-    const list = esHoyCreate ? opcionesHoraInicio.filter((h) => h > horaActual) : opcionesHoraInicio;
-    if (bloquesDelDiaCreate.length === 0) return list;
-    return list.filter((h) => {
+  /** Todas las opciones de hora inicio (solo excluir pasados si es hoy); no se ocultan bloqueados/ocupados */
+  const opcionesHoraInicioTodas = useMemo(() => {
+    return esHoyCreate ? opcionesHoraInicio.filter((h) => h > horaActual) : opcionesHoraInicio;
+  }, [opcionesHoraInicio, esHoyCreate, horaActual]);
+  /** Opciones de hora inicio con estado (Bloqueado/Ocupado) para mostrar en gris pero seleccionables */
+  const opcionesHoraInicioConEstado = useMemo(() => {
+    const activos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
+    return opcionesHoraInicioTodas.map((h) => {
       const slotStart = new Date(createFecha + 'T' + h + ':00');
       const slotEnd = new Date(createFecha + 'T' + sumarMinutos(h, duracionCreate) + ':00');
-      return !slotSolapaConBloque(slotStart, slotEnd, bloquesDelDiaCreate);
+      const bloqueado = slotSolapaConBloque(slotStart, slotEnd, bloquesDelDiaCreate);
+      const ocupado = activos.some((t) => {
+        const tStart = new Date(t.fecha_hora_inicio).getTime();
+        const tEnd = new Date(t.fecha_hora_fin).getTime();
+        return slotStart.getTime() < tEnd && slotEnd.getTime() > tStart;
+      });
+      const label = bloqueado ? `${h} - Bloqueado` : ocupado ? `${h} - Ocupado` : h;
+      return { value: h, label, bloqueado, ocupado };
     });
-  }, [opcionesHoraInicio, esHoyCreate, horaActual, createFecha, duracionCreate, bloquesDelDiaCreate]);
-  /** Opciones de hora fin: hoy sin pasados + excluir slots que solapan con bloques */
-  const opcionesHoraFinFiltradas = useMemo(() => {
-    const list = esHoyCreate ? opcionesHoraFin.filter((h) => h > horaActual) : opcionesHoraFin;
-    if (bloquesDelDiaCreate.length === 0) return list;
-    return list.filter((h) => {
-      const slotStart = new Date(createFecha + 'T' + createHoraInicio + ':00');
-      const slotEnd = new Date(createFecha + 'T' + h + ':00');
-      return !slotSolapaConBloque(slotStart, slotEnd, bloquesDelDiaCreate);
-    });
-  }, [opcionesHoraFin, createHoraInicio, esHoyCreate, horaActual, createFecha, bloquesDelDiaCreate]);
+  }, [opcionesHoraInicioTodas, createFecha, duracionCreate, bloquesDelDiaCreate, turnosDelDiaCreate]);
+  /** Todas las opciones de hora fin (solo excluir pasados si es hoy) */
+  const opcionesHoraFinTodas = useMemo(() => {
+    return esHoyCreate ? opcionesHoraFin.filter((h) => h > horaActual) : opcionesHoraFin;
+  }, [opcionesHoraFin, esHoyCreate, horaActual]);
+  /** Opciones de hora fin con estado: Bloqueado = el intervalo [inicio, h] toca un bloque. Ocupado = la hora h cae dentro de un turno existente (solo esa hora, no todo el intervalo). */
+  const opcionesHoraFinConEstado = useMemo(() => {
+    const activos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
+    return opcionesHoraFinTodas
+      .filter((h) => h > createHoraInicio)
+      .map((h) => {
+        const slotStart = new Date(createFecha + 'T' + createHoraInicio + ':00');
+        const slotEnd = new Date(createFecha + 'T' + h + ':00');
+        const bloqueado = slotSolapaConBloque(slotStart, slotEnd, bloquesDelDiaCreate);
+        const hMs = new Date(createFecha + 'T' + h + ':00').getTime();
+        const ocupado = activos.some((t) => {
+          const tStart = new Date(t.fecha_hora_inicio).getTime();
+          const tEnd = new Date(t.fecha_hora_fin).getTime();
+          return hMs >= tStart && hMs <= tEnd;
+        });
+        const label = bloqueado ? `${h} - Bloqueado` : ocupado ? `${h} - Ocupado` : h;
+        return { value: h, label, bloqueado, ocupado };
+      });
+  }, [opcionesHoraFinTodas, createHoraInicio, createFecha, bloquesDelDiaCreate, turnosDelDiaCreate]);
 
-  /** Día completamente bloqueado para crear turno (no hay slots disponibles) */
+  /** Día sin horario configurado (no hay opciones) */
   const diaCompletamenteBloqueadoCreate = useMemo(() => {
-    if (!createFecha || bloquesDelDiaCreate.length === 0) return false;
-    return opcionesHoraInicioFiltradas.length === 0;
-  }, [createFecha, bloquesDelDiaCreate.length, opcionesHoraInicioFiltradas.length]);
+    return opcionesHoraInicioTodas.length === 0;
+  }, [opcionesHoraInicioTodas.length]);
 
-  // Ajustar horas al cambiar fecha, rango o inicio: usar opciones FILTRADAS (bloques + hoy) para que hora fin tenga opciones cuando hay bloque parcial
+  // Ajustar horas al cambiar fecha o rango: valor en la lista, no bloqueado, y fin > inicio
   useEffect(() => {
-    const inicioValido = opcionesHoraInicioFiltradas.includes(createHoraInicio);
-    const finValido = opcionesHoraFinFiltradas.includes(createHoraFin) && createHoraFin > createHoraInicio;
-    if (!inicioValido && opcionesHoraInicioFiltradas.length > 0) {
-      setCreateHoraInicio(opcionesHoraInicioFiltradas[0]);
+    const optInicio = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
+    const inicioValido = optInicio && !optInicio.bloqueado;
+    const optFin = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
+    const finValido = optFin && !optFin.bloqueado && createHoraFin > createHoraInicio;
+    if (!inicioValido && opcionesHoraInicioConEstado.length > 0) {
+      const primerNoBloqueado = opcionesHoraInicioConEstado.find((o) => !o.bloqueado);
+      if (primerNoBloqueado) setCreateHoraInicio(primerNoBloqueado.value);
     }
-    if (!finValido && opcionesHoraFinFiltradas.length > 0) {
-      const primerFinValido = opcionesHoraFinFiltradas.find((h) => h > createHoraInicio) ?? opcionesHoraFinFiltradas[0];
-      setCreateHoraFin(primerFinValido);
+    if (!finValido && opcionesHoraFinConEstado.length > 0) {
+      const primerNoBloqueado = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
+      if (primerNoBloqueado) setCreateHoraFin(primerNoBloqueado.value);
     }
-  }, [createFecha, createHoraInicio, createHoraFin, opcionesHoraInicioFiltradas, opcionesHoraFinFiltradas]);
+  }, [createFecha, createHoraInicio, createHoraFin, opcionesHoraInicioConEstado, opcionesHoraFinConEstado]);
 
 
   // Cerrar date picker al hacer clic fuera
@@ -658,15 +748,6 @@ export default function AdminTurnos() {
       }));
     }
   }, [showDiaPuntualModal, profesionalFilter, fechaFilter]);
-
-  // Cerrar modal Gestionar bloqueo cuando ya no hay bloques en el día
-  useEffect(() => {
-    if (showGestionarBloqueModal && fechaFilter && profesionalFilter && bloquesDelDiaListado.length === 0) {
-      setShowGestionarBloqueModal(false);
-      setBloqueEditando(null);
-      setBloqueToDelete(null);
-    }
-  }, [showGestionarBloqueModal, fechaFilter, profesionalFilter, bloquesDelDiaListado.length]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -718,28 +799,11 @@ export default function AdminTurnos() {
     mutationFn: (id: string) => agendaService.deleteBloque(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bloques'] });
-      setBloqueToDelete(null);
-      reactToastify.success('Bloque eliminado correctamente', { position: 'top-right', autoClose: 3000 });
+      // No mostramos toast aquí: al desbloquear el día se eliminan varios bloques y se muestra un solo toast "Día desbloqueado correctamente"
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
       reactToastify.error(err?.response?.data?.message || 'Error al eliminar bloque', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
-    },
-  });
-
-  const updateBloqueMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateBloqueData }) => agendaService.updateBloque(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bloques'] });
-      setBloqueEditando(null);
-      reactToastify.success('Bloque actualizado correctamente', { position: 'top-right', autoClose: 3000 });
-    },
-    onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } } };
-      reactToastify.error(err?.response?.data?.message || 'Error al actualizar bloque', {
         position: 'top-right',
         autoClose: 3000,
       });
@@ -763,20 +827,72 @@ export default function AdminTurnos() {
     },
   });
 
+  const deleteExcepcionMutation = useMutation({
+    mutationFn: (id: string) => agendaService.deleteExcepcion(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
+      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+      reactToastify.success('Fecha especial eliminada correctamente', { position: 'top-right', autoClose: 3000 });
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      reactToastify.error(err?.response?.data?.message || 'Error al eliminar fecha especial', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    },
+  });
+
+  const excepcionDelDiaSeleccionado = useMemo(() => {
+    if (!fechaFilter || !profesionalFilter) return null;
+    return excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter) ?? null;
+  }, [excepcionesDelRango, fechaFilter, profesionalFilter]);
+
+  const handleEliminarFechaEspecial = async () => {
+    if (!excepcionDelDiaSeleccionado?.id) return;
+    try {
+      await deleteExcepcionMutation.mutateAsync(excepcionDelDiaSeleccionado.id);
+    } catch {
+      // toast ya en onError
+    }
+  };
+
   const handleOpenBloqueModal = () => {
-    const hoy = new Date().toISOString().slice(0, 10);
+    const diaInicial = fechaFilter || new Date().toISOString().slice(0, 10);
+    const tieneBloques = bloquesDelDiaListado.length > 0;
+    const esDiaCompletamenteBloqueado = diaCompletamenteBloqueadoListado && tieneBloques;
+    const motivoPrellenado = tieneBloques
+      ? (motivoBloqueoDiaListado || bloquesDelDiaListado.find((b) => b.motivo?.trim())?.motivo?.trim() || '')
+      : '';
+    const franjasPrellenadas =
+      tieneBloques && !esDiaCompletamenteBloqueado
+        ? bloquesDelDiaListado.map((b) => ({
+            hora_inicio: format(new Date(b.fecha_hora_inicio), 'HH:mm'),
+            hora_fin: format(new Date(b.fecha_hora_fin), 'HH:mm'),
+          }))
+        : [{ hora_inicio: '09:00', hora_fin: '12:00' }];
+    setAbrioModalParaDesbloquear(tieneBloques);
     setBloqueForm({
       profesional_id: profesionalFilter || '',
-      fecha_inicio: hoy,
-      fecha_fin: hoy,
-      todo_el_dia: false,
-      hora_inicio: '09:00',
-      hora_fin: '12:00',
-      motivo: '',
+      fecha_inicio: diaInicial,
+      fecha_fin: diaInicial,
+      todo_el_dia: esDiaCompletamenteBloqueado,
+      franjas: franjasPrellenadas,
+      motivo: motivoPrellenado,
     });
-    setBloqueDatePickerDesdeMonth(startOfMonth(new Date()));
-    setBloqueDatePickerHastaMonth(startOfMonth(new Date()));
+    setBloqueDatePickerDesdeMonth(startOfMonth(new Date(diaInicial + 'T12:00:00')));
+    setBloqueDatePickerHastaMonth(startOfMonth(new Date(diaInicial + 'T12:00:00')));
     setShowBloqueModal(true);
+  };
+
+  const handleDesbloquearDia = async () => {
+    if (bloquesDelDiaListado.length === 0) return;
+    try {
+      await Promise.all(bloquesDelDiaListado.map((b) => deleteBloqueMutation.mutateAsync(b.id)));
+      reactToastify.success('Día desbloqueado correctamente', { position: 'top-right', autoClose: 3000 });
+    } catch {
+      reactToastify.error('Error al desbloquear el día', { position: 'top-right', autoClose: 3000 });
+    }
   };
 
   const buildBloquePayload = (
@@ -817,19 +933,55 @@ export default function AdminTurnos() {
       reactToastify.error('La fecha "Hasta" debe ser igual o posterior a "Desde"', { position: 'top-right', autoClose: 3000 });
       return;
     }
-    if (!bloqueForm.todo_el_dia && bloqueForm.hora_inicio >= bloqueForm.hora_fin) {
-      reactToastify.error('La hora fin debe ser posterior a la hora inicio', { position: 'top-right', autoClose: 3000 });
-      return;
+    if (!bloqueForm.todo_el_dia) {
+      const franjaInvalida = bloqueForm.franjas.find((f) => f.hora_inicio >= f.hora_fin);
+      if (franjaInvalida) {
+        reactToastify.error('En cada franja la hora fin debe ser posterior a la hora inicio', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+      if (bloqueForm.franjas.length === 0 && !abrioModalParaDesbloquear) {
+        reactToastify.error('Agregá al menos una franja horaria', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
     }
     setIsSubmittingBloque(true);
     try {
-      const { profesional_id, fecha_inicio, fecha_fin, todo_el_dia, hora_inicio, hora_fin, motivo } = bloqueForm;
+      const { profesional_id, fecha_inicio, fecha_fin, todo_el_dia, franjas, motivo } = bloqueForm;
       const isUnDia = fecha_inicio === fecha_fin;
+
+      if (abrioModalParaDesbloquear && bloquesDelDiaEnModal.length > 0) {
+        const idsToDelete = bloquesDelDiaEnModal.map((b) => b.id);
+        await Promise.all(idsToDelete.map((id) => deleteBloqueMutation.mutateAsync(id)));
+        if (!todo_el_dia && franjas.length === 0) {
+          reactToastify.success('Día desbloqueado correctamente', { position: 'top-right', autoClose: 3000 });
+          setShowBloqueModal(false);
+          setAbrioModalParaDesbloquear(false);
+          return;
+        }
+      }
+
       if (isUnDia) {
-        const payload = buildBloquePayload(profesional_id, fecha_inicio, todo_el_dia, hora_inicio, hora_fin);
-        if (motivo.trim()) payload.motivo = motivo.trim();
-        await createBloqueMutation.mutateAsync(payload);
-        reactToastify.success('Bloque creado correctamente', { position: 'top-right', autoClose: 3000 });
+        if (todo_el_dia) {
+          const payload = buildBloquePayload(profesional_id, fecha_inicio, true, '00:00', '23:59');
+          if (motivo.trim()) payload.motivo = motivo.trim();
+          await createBloqueMutation.mutateAsync(payload);
+          reactToastify.success(abrioModalParaDesbloquear ? 'Bloque actualizado correctamente' : 'Bloque creado correctamente', { position: 'top-right', autoClose: 3000 });
+        } else {
+          let creados = 0;
+          for (const fr of franjas) {
+            try {
+              const payload = buildBloquePayload(profesional_id, fecha_inicio, false, fr.hora_inicio, fr.hora_fin);
+              if (motivo.trim()) payload.motivo = motivo.trim();
+              await createBloqueMutation.mutateAsync(payload);
+              creados++;
+            } catch {
+              // puede fallar por solapamiento
+            }
+          }
+          if (creados > 0) {
+            reactToastify.success(creados === 1 ? (abrioModalParaDesbloquear ? '1 bloque actualizado' : '1 bloque creado') : (abrioModalParaDesbloquear ? `${creados} bloques actualizados` : `${creados} bloques creados`), { position: 'top-right', autoClose: 3000 });
+          }
+        }
       } else {
         const start = new Date(fecha_inicio);
         const end = new Date(fecha_fin);
@@ -849,12 +1001,15 @@ export default function AdminTurnos() {
           end.setHours(23, 59, 59, 999);
           while (current <= end) {
             const dateStr = current.toISOString().slice(0, 10);
-            const payload = buildBloquePayload(profesional_id, dateStr, false, hora_inicio, hora_fin);
-            try {
-              await createBloqueMutation.mutateAsync(payload);
-              creados++;
-            } catch {
-              // puede fallar por solapamiento
+            for (const fr of franjas) {
+              try {
+                const payload = buildBloquePayload(profesional_id, dateStr, false, fr.hora_inicio, fr.hora_fin);
+                if (motivo.trim()) payload.motivo = motivo.trim();
+                await createBloqueMutation.mutateAsync(payload);
+                creados++;
+              } catch {
+                // puede fallar por solapamiento
+              }
             }
             current.setDate(current.getDate() + 1);
           }
@@ -943,9 +1098,19 @@ export default function AdminTurnos() {
       if (pac) {
         setPacienteFound(pac);
         setCreateFormData((prev) => ({ ...prev, paciente_id: pac.id }));
+        // Si es profesional, vincular el paciente a su lista para no duplicar y que lo vea después
+        if (isProfesional && profesionalFilter) {
+          try {
+            await pacientesService.addAsignacion(pac.id, profesionalFilter);
+            queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+            reactToastify.success('Paciente vinculado a tu lista', { position: 'top-right', autoClose: 3000 });
+          } catch {
+            // Ya estaba asignado u otro error; no bloquear el flujo
+          }
+        }
       } else {
         setShowQuickCreatePaciente(true);
-        setQuickCreatePaciente({ dni, nombre: '', apellido: '', telefono: '' });
+        setQuickCreatePaciente({ dni, nombre: '', apellido: '', telefono: '', email: '' });
       }
     } catch {
       reactToastify.error('Error al buscar paciente', { position: 'top-right', autoClose: 3000 });
@@ -955,9 +1120,9 @@ export default function AdminTurnos() {
   };
 
   const handleQuickCreatePaciente = async () => {
-    const { dni, nombre, apellido, telefono } = quickCreatePaciente;
-    if (!dni.trim() || !nombre.trim() || !apellido.trim() || !telefono.trim()) {
-      reactToastify.error('Complete DNI, nombre, apellido y teléfono', { position: 'top-right', autoClose: 3000 });
+    const { dni, nombre, apellido, telefono, email } = quickCreatePaciente;
+    if (!dni.trim() || !nombre.trim() || !apellido.trim() || !telefono.trim() || !email.trim()) {
+      reactToastify.error('Completá DNI, nombre, apellido, email y teléfono', { position: 'top-right', autoClose: 3000 });
       return;
     }
     setIsCreatingPaciente(true);
@@ -967,12 +1132,22 @@ export default function AdminTurnos() {
         nombre: nombre.trim(),
         apellido: apellido.trim(),
         telefono: telefono.trim(),
+        email: email.trim(),
       });
       queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       setCreateFormData((prev) => ({ ...prev, paciente_id: nuevo.id }));
       setPacienteFound(nuevo);
       setShowQuickCreatePaciente(false);
-      setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '' });
+      setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
+      // Si es profesional, asignar el nuevo paciente a su lista para que lo vea
+      if (isProfesional && profesionalFilter) {
+        try {
+          await pacientesService.addAsignacion(nuevo.id, profesionalFilter);
+          queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+        } catch {
+          // No bloquear; el paciente ya se creó
+        }
+      }
       reactToastify.success('Paciente creado', { position: 'top-right', autoClose: 3000 });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Error al crear paciente';
@@ -1021,13 +1196,51 @@ export default function AdminTurnos() {
       }
     }
 
+    const slotStart = inicioLocal.getTime();
+    const slotEnd = finLocal.getTime();
+    const turnosActivos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
+    const mismoPacienteEnSlot = turnosActivos.some((t) => {
+      if (t.paciente_id !== createFormData.paciente_id) return false;
+      const tStart = new Date(t.fecha_hora_inicio).getTime();
+      const tEnd = new Date(t.fecha_hora_fin).getTime();
+      return slotStart < tEnd && slotEnd > tStart;
+    });
+    if (mismoPacienteEnSlot) {
+      reactToastify.error('Esta persona ya tiene un turno en ese horario. No puede tener dos turnos a la misma hora.', {
+        position: 'top-right',
+        autoClose: 4000,
+      });
+      return;
+    }
+    const otroPacienteEnSlot = turnosActivos.some((t) => {
+      if (t.paciente_id === createFormData.paciente_id) return false;
+      const tStart = new Date(t.fecha_hora_inicio).getTime();
+      const tEnd = new Date(t.fecha_hora_fin).getTime();
+      return slotStart < tEnd && slotEnd > tStart;
+    });
+
+    const payload = { ...createFormData, fecha_hora_inicio, fecha_hora_fin };
+    if (otroPacienteEnSlot) {
+      setPendingCreatePayload(payload);
+      setShowSobreturnoModal(true);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await createMutation.mutateAsync({
-        ...createFormData,
-        fecha_hora_inicio,
-        fecha_hora_fin,
-      });
+      await createMutation.mutateAsync(payload);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmSobreturno = async () => {
+    if (!pendingCreatePayload) return;
+    setShowSobreturnoModal(false);
+    setIsSubmitting(true);
+    try {
+      await createMutation.mutateAsync({ ...pendingCreatePayload, sobreturno: true });
+      setPendingCreatePayload(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -1079,14 +1292,17 @@ export default function AdminTurnos() {
 
   const profesionalOptions = profesionales.map((prof) => ({
     value: prof.id,
-    label: `${prof.nombre} ${prof.apellido} ${prof.especialidad ? `- ${prof.especialidad}` : ''}`,
+    label: `${formatDisplayText(prof.nombre)} ${formatDisplayText(prof.apellido)} ${prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}`,
     tieneAgenda: profesionalesConAgendaIds.has(prof.id),
   }));
 
   void Boolean(estadoFilter !== 'todos' || profesionalFilter);
 
-  // Fecha seleccionada (para listado de turnos)
-  const selectedDate = useMemo(() => new Date(fechaFilter + 'T12:00:00'), [fechaFilter]);
+  // Fecha seleccionada (para listado de turnos); null si no hay día seleccionado
+  const selectedDate = useMemo<Date | null>(
+    () => (fechaFilter ? new Date(fechaFilter + 'T12:00:00') : null),
+    [fechaFilter]
+  );
   // Calendario: mes mostrado (al cambiar flechas no cambia la fecha seleccionada)
   const calendarMonthStart = calendarViewMonth;
   const calendarMonthEnd = endOfMonth(calendarViewMonth);
@@ -1108,12 +1324,108 @@ export default function AdminTurnos() {
 
   return (
     <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)]">
+      {/* Modal: profesional sin agenda — ¿Querés crearla? */}
+      <Dialog open={showSinAgendaModal} onOpenChange={setShowSinAgendaModal}>
+        <DialogContent
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="mb-0">
+            <DialogTitle className="pr-14 mb-0">Sin agenda configurada</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5 my-3">
+            <DialogDescription>
+              Para poder ver y gestionar turnos necesitás definir tus horarios de atención. ¿Querés crearla ahora?
+            </DialogDescription>
+          </div>
+          <DialogFooter className="mt-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowSinAgendaModal(false)}
+              className="rounded-[10px] border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB] focus:outline-none focus:ring-0"
+            >
+              No
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowSinAgendaModal(false);
+                setShowCreateAgendaModalFromTurnos(true);
+              }}
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5"
+            >
+              Sí, crear agenda
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: sobreturno — este horario ya tiene un turno */}
+      <Dialog open={showSobreturnoModal} onOpenChange={(open) => { if (!open) { setShowSobreturnoModal(false); setPendingCreatePayload(null); } }}>
+        <DialogContent
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="mb-0">
+            <DialogTitle className="pr-14 mb-0">Sobreturno</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5 mb-0">
+            <DialogDescription>
+              Este horario ya tiene un turno asignado a otro paciente. ¿Está seguro de querer sacar un sobreturno?
+            </DialogDescription>
+          </div>
+          <DialogFooter className="mt-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { setShowSobreturnoModal(false); setPendingCreatePayload(null); }}
+              className="rounded-[10px] border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB] focus:outline-none focus:ring-0"
+            >
+              No, cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmSobreturno}
+              disabled={isSubmitting}
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5"
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2 inline" /> : null}
+              Sí, crear sobreturno
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Header: título y botones */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
-            Gestión de Turnos
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
+              Gestión de Turnos
+            </h1>
+            {isProfesional && profesionalLogueado && (
+              <span className="inline-flex items-center gap-1.5 mt-1">
+                {agendasDelProfesional.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateAgendaModalFromTurnos(true)}
+                    className="text-[15px] font-medium text-[#2563eb] hover:text-[#1d4ed8] hover:underline font-['Inter']"
+                  >
+                    Crear agenda
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowGestionarAgendaModalFromTurnos(true)}
+                    className="text-[15px] font-medium text-[#2563eb] hover:text-[#1d4ed8] hover:underline font-['Inter']"
+                  >
+                    Gestionar agenda
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
             {isLoading ? 'Cargando...' : `${filteredTurnos.length} ${filteredTurnos.length === 1 ? 'turno' : 'turnos'} del día seleccionado`}
           </p>
@@ -1124,29 +1436,44 @@ export default function AdminTurnos() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (fechaFilter && bloquesDelDiaListado.length > 0) {
-                    setShowGestionarBloqueModal(true);
-                    setBloqueEditando(null);
-                    setBloqueToDelete(null);
-                  } else {
-                    handleOpenBloqueModal();
-                  }
-                }}
-                className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter']"
+                onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
+                disabled={bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending}
+                className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
               >
-                <Lock className="h-5 w-5 mr-2 stroke-[2]" />
-                {fechaFilter && bloquesDelDiaListado.length > 0 ? 'Modificar / Desbloquear' : 'Bloquear día'}
+                {bloquesDelDiaListado.length > 0 ? (
+                  <>
+                    {deleteBloqueMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <LockOpen className="h-5 w-5 mr-2 stroke-[2]" />}
+                    Desbloquear
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-5 w-5 mr-2 stroke-[2]" />
+                    Bloquear
+                  </>
+                )}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowDiaPuntualModal(true)}
-                className="border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] hover:text-[#1d4ed8] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter']"
-              >
-                <CalendarPlus className="h-5 w-5 mr-2 stroke-[2]" />
-                Habilitar día
-              </Button>
+              {excepcionDelDiaSeleccionado ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleEliminarFechaEspecial}
+                  disabled={deleteExcepcionMutation.isPending}
+                  className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
+                >
+                  {deleteExcepcionMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <Calendar className="h-5 w-5 mr-2 stroke-[2]" />}
+                  Eliminar fecha especial
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowDiaPuntualModal(true)}
+                  className="border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] hover:text-[#1d4ed8] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter']"
+                >
+                  <CalendarPlus className="h-5 w-5 mr-2 stroke-[2]" />
+                  Habilitar día
+                </Button>
+              )}
             </>
           )}
           {canCreate && (
@@ -1156,7 +1483,7 @@ export default function AdminTurnos() {
                   <span className="inline-block">
                     <Button
                       onClick={() => setShowCreateModal(true)}
-                      disabled={!profesionalFilter}
+                      disabled={!profesionalFilter || diaCompletamenteBloqueadoListado}
                       className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-5 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
                     >
                       <Plus className="h-5 w-5 mr-2 stroke-[2]" />
@@ -1165,7 +1492,11 @@ export default function AdminTurnos() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2">
-                  {!profesionalFilter ? 'Seleccione un profesional para crear turnos' : 'Crear un nuevo turno'}
+                  {!profesionalFilter
+                    ? 'Seleccione un profesional para crear turnos'
+                    : diaCompletamenteBloqueadoListado
+                      ? 'El día está completamente bloqueado'
+                      : 'Crear un nuevo turno'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1184,7 +1515,7 @@ export default function AdminTurnos() {
               </label>
               {isProfesional ? (
                 <div className="h-12 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[15px] text-[#374151]">
-                  {profesionalLogueado ? `${profesionalLogueado.nombre} ${profesionalLogueado.apellido}` : 'Cargando...'}
+                  {profesionalLogueado ? `${formatDisplayText(profesionalLogueado.nombre)} ${formatDisplayText(profesionalLogueado.apellido)}` : 'Cargando...'}
                 </div>
               ) : (
               <Select value={profesionalFilter || undefined} onValueChange={setProfesionalFilter}>
@@ -1268,7 +1599,7 @@ export default function AdminTurnos() {
               ))}
               {calendarDays.map((day) => {
                 const isCurrentMonth = isSameMonth(day, calendarViewMonth);
-                const isSelected = isSameDay(day, selectedDate);
+                const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
                 const isTodayDate = isToday(day);
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const isLaborable = getAgendaForDate(dateStr).length > 0;
@@ -1283,13 +1614,12 @@ export default function AdminTurnos() {
                     className={`
                       h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
                       ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
+                      ${!isSelected && isDisabled && !isTodayDate ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
                       ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6]' : ''}
-                      ${!isSelected && !isDisabled && isCurrentMonth && !isCompletamenteBloqueado && !isTodayDate && !isDiaPuntual ? 'text-[#374151] hover:bg-[#dbeafe]' : ''}
-                      ${!isSelected && !isDisabled && isDiaPuntual && !isCompletamenteBloqueado ? 'bg-[#d1fae5] text-[#047857] font-medium ring-1 ring-[#059669]/40 hover:bg-[#a7f3d0]' : ''}
-                      ${!isSelected && !isDisabled && isTodayDate && !isDiaPuntual ? 'bg-[#dbeafe] text-[#2563eb] font-semibold ring-1 ring-[#2563eb]/50' : ''}
-                      ${!isSelected && !isDisabled && isTodayDate && isDiaPuntual ? 'bg-[#d1fae5] text-[#047857] font-semibold ring-1 ring-[#059669]/50' : ''}
-                      ${!isSelected && !isDisabled && isCompletamenteBloqueado ? 'bg-gray-100 text-gray-600 font-medium ring-1 ring-gray-300' : ''}
+                      ${!isSelected && !isDisabled && isCurrentMonth && !isCompletamenteBloqueado && !isTodayDate ? 'text-[#374151] hover:bg-[#dbeafe]' : ''}
+                      ${!isSelected && isTodayDate && !isDisabled ? 'bg-[#dbeafe] text-[#2563eb] font-semibold border-2 border-[#2563eb]' : ''}
+                      ${!isSelected && isTodayDate && isDisabled ? 'bg-[#EFF6FF] text-[#2563eb]/80 font-semibold border-2 border-[#2563eb] cursor-not-allowed opacity-70' : ''}
+                      ${!isSelected && !isDisabled && isCompletamenteBloqueado && !isTodayDate ? 'bg-gray-100 text-gray-600 font-medium ring-1 ring-gray-300' : ''}
                     `}
                   >
                     {format(day, 'd')}
@@ -1338,125 +1668,155 @@ export default function AdminTurnos() {
         <Card className="border-0 rounded-[16px] shadow-none hover:!shadow-none hover:!translate-y-0 flex-1 min-w-0 flex flex-col min-h-0">
           <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-auto">
             <div className="px-6 py-4 border-b border-[#E5E7EB] mb-4">
-              <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins'] mb-0">
-                Turnos del {format(selectedDate, "d 'de' MMMM", { locale: es }).replace(/\s+(\w+)$/, (_, month) => ' ' + month.charAt(0).toUpperCase() + month.slice(1))}
-                {profesionalFilter ? (
-                  horarioDelDiaListado ? (
-                    <span className="font-normal text-[#6B7280]"> ({horarioDelDiaListado.min} - {horarioDelDiaListado.max})</span>
-                  ) : (
-                    <span className="font-normal text-[#9CA3AF]"> (Sin horario para este día)</span>
-                  )
-                ) : null}
-              </h2>
-              {profesionalFilter && bloquesDelDiaListado.length > 0 && (
-                <p className="text-[14px] font-['Inter'] mt-1 mb-0">
-                  {diaCompletamenteBloqueadoListado ? (
-                    <span className="text-gray-600 font-medium flex items-center gap-1.5">
-                      <Lock className="h-4 w-4 stroke-[2]" />
-                      Día completamente bloqueado — no se pueden asignar turnos
-                    </span>
-                  ) : (
-                    <span className="text-gray-600 flex items-center gap-1.5">
-                      <Lock className="h-4 w-4 stroke-[2]" />
-                      Horarios bloqueados: {bloquesDelDiaListado.map((b) => `${format(new Date(b.fecha_hora_inicio), 'HH:mm')} - ${format(new Date(b.fecha_hora_fin), 'HH:mm')}${b.motivo ? ` (${b.motivo})` : ''}`).join(' · ')}
-                    </span>
-                  )}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins'] mb-0">
+                  {selectedDate
+                    ? `Turnos del ${format(selectedDate, "d 'de' MMMM", { locale: es }).replace(/\s+(\w+)$/, (_, month) => ' ' + month.charAt(0).toUpperCase() + month.slice(1))}`
+                    : 'Turnos'}
+                  {selectedDate && profesionalFilter ? (
+                    horarioDelDiaListado ? (
+                      <span className="font-normal text-[#6B7280]"> ({horarioDelDiaListado.min} - {horarioDelDiaListado.max})</span>
+                    ) : (
+                      <span className="font-normal text-[#9CA3AF]"> (Sin horario para este día)</span>
+                    )
+                  ) : null}
+                </h2>
+                {profesionalFilter && diaCompletamenteBloqueadoListado && (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
+                  >
+                    <Lock className="h-3.5 w-3.5 mr-1.5 stroke-[2] inline-block" />
+                    {motivoBloqueoDiaListado ? `Bloqueado - ${motivoBloqueoDiaListado}` : 'Bloqueado'}
+                  </Badge>
+                )}
+                {profesionalFilter && bloquesDelDiaListado.length > 0 && !diaCompletamenteBloqueadoListado && (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#E5E7EB] text-[#4B5563] border border-[#D1D5DB] hover:bg-[#E5E7EB] ml-1"
+                  >
+                    <Lock className="h-3.5 w-3.5 mr-1.5 stroke-[2] inline-block" />
+                    {(() => {
+                      const horariosStr = bloquesDelDiaListado.map((b) => `${format(new Date(b.fecha_hora_inicio), 'HH:mm')} - ${format(new Date(b.fecha_hora_fin), 'HH:mm')}`).join(', ');
+                      const motivoPrimero = bloquesDelDiaListado.find((b) => b.motivo?.trim())?.motivo?.trim();
+                      return motivoPrimero ? `Bloqueado - ${motivoPrimero} (${horariosStr})` : `Bloqueado (${horariosStr})`;
+                    })()}
+                  </Badge>
+                )}
+                {profesionalFilter && fechaFilter && (() => {
+                  const excepcionDia = excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter);
+                  return excepcionDia ? (
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium bg-[#D1FAE5] text-[#065F46] border border-[#6EE7B7] hover:bg-[#D1FAE5] ml-1"
+                    >
+                      {excepcionDia.observaciones?.trim() ? `Día puntual - ${excepcionDia.observaciones.trim()}` : 'Día puntual'}
+                    </Badge>
+                  ) : null;
+                })()}
+              </div>
             </div>
             {isLoading ? (
               <div className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando turnos...</p>
               </div>
-            ) : filteredTurnos.length === 0 ? (
+            ) : !profesionalFilter ? (
               <div className="p-16 text-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
                   <Calendar className="h-10 w-10 text-[#2563eb] stroke-[2]" />
                 </div>
-                {!profesionalFilter ? (
-                  <>
-                    <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
-                      Debe seleccionar un profesional
-                    </h3>
-                    <p className="text-[#6B7280] font-['Inter'] text-[15px] max-w-[320px] mx-auto">
-                      Elija un profesional en el filtro superior para ver los turnos de este día y poder crear nuevos.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-lg font-semibold mb-6 text-[#374151] font-['Inter']">
-                      No hay turnos este día
-                    </h3>
-                    {canCreate && !diaCompletamenteBloqueadoListado && (
-                      <Button
-                        onClick={() => setShowCreateModal(true)}
-                        className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 rounded-[12px] px-6 py-3 h-auto font-medium"
-                      >
-                        <Plus className="h-5 w-5 mr-2 stroke-[2]" />
-                        Nuevo Turno
-                      </Button>
-                    )}
-                  </>
+                <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
+                  Seleccione un profesional
+                </h3>
+                <p className="text-[#6B7280] font-['Inter'] text-[15px] max-w-[320px] mx-auto">
+                  Elija un profesional en el filtro superior para ver el calendario y los turnos del día.
+                </p>
+              </div>
+            ) : !fechaFilter ? (
+              <div className="p-16 text-center">
+                <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
+                  <Calendar className="h-10 w-10 text-[#2563eb] stroke-[2]" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2 text-[#374151] font-['Inter']">
+                  Seleccione un día
+                </h3>
+                <p className="text-[#6B7280] font-['Inter'] text-[15px] max-w-[320px] mx-auto">
+                  Elija un día en el calendario para ver los turnos de ese día.
+                </p>
+              </div>
+            ) : filteredTurnos.length === 0 ? (
+              <div className="p-16 text-center">
+                <h3 className="text-lg font-semibold mb-6 text-[#374151] font-['Inter']">
+                  No hay turnos este día
+                </h3>
+                {canCreate && !diaCompletamenteBloqueadoListado && (
+                  <Button
+                    onClick={() => setShowCreateModal(true)}
+                    className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 rounded-[12px] px-6 py-3 h-auto font-medium"
+                  >
+                    <Plus className="h-5 w-5 mr-2 stroke-[2]" />
+                    Nuevo Turno
+                  </Button>
                 )}
               </div>
             ) : (
-              <Table>
+              <Table className="table-fixed w-full">
                 <TableHeader>
                   <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[125px] whitespace-nowrap">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[18%] min-w-[110px] whitespace-nowrap">
                       Hora
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[22%] max-w-[200px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[46%] min-w-0">
                       Paciente
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[155px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[16%] min-w-[100px]">
                       Estado
                     </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[18%] min-w-[90px] max-w-[150px]">
-                      Motivo
-                    </TableHead>
-                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[120px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-3 w-[20%] min-w-[100px] text-center">
                       Acciones
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bloquesDelDiaListado.map((bloque) => (
-                    <TableRow key={bloque.id} className="border-b border-gray-200 bg-gray-50 hover:bg-gray-100/80">
-                      <TableCell className="py-3 font-['Inter'] text-[15px] text-gray-700 whitespace-nowrap w-[125px]">
-                        <span className="font-medium flex items-center gap-1.5">
-                          <Lock className="h-4 w-4 text-gray-600 stroke-[2]" />
-                          {format(new Date(bloque.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(bloque.fecha_hora_fin), 'HH:mm', { locale: es })}
-                        </span>
-                      </TableCell>
-                      <TableCell colSpan={4} className="py-3 font-['Inter'] text-[14px] text-gray-600 italic">
-                        Bloqueado{bloque.motivo ? ` — ${bloque.motivo}` : ''}
-                      </TableCell>
-                    </TableRow>
-                  ))}
                   {filteredTurnos.map((turno) => (
                     <TableRow
                       key={turno.id}
                       className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                     >
-                      <TableCell className="py-3 font-['Inter'] text-[15px] text-[#374151] whitespace-nowrap w-[125px]">
+                      <TableCell className="py-3 font-['Inter'] text-[15px] text-[#374151] whitespace-nowrap w-[18%]">
                         <span className="font-medium">
                           {format(new Date(turno.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(turno.fecha_hora_fin), 'HH:mm', { locale: es })}
                         </span>
                       </TableCell>
-                      <TableCell className="py-3 max-w-0">
-                        <span className="font-medium text-[#374151] font-['Inter'] text-[15px] truncate block">
-                          {turno.paciente_nombre} {turno.paciente_apellido}
-                          {turno.paciente_dni ? ` (${formatDni(turno.paciente_dni)})` : ''}
-                        </span>
+                      <TableCell className="py-3 w-[46%] min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-[#374151] font-['Inter'] text-[15px] truncate block">
+                            {turno.paciente_nombre} {turno.paciente_apellido}
+                            {turno.paciente_dni ? ` (${formatDni(turno.paciente_dni)})` : ''}
+                          </span>
+                          {turno.sobreturno && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="shrink-0 inline-flex text-[#DC2626] cursor-help" aria-label="Sobreturno">
+                                    <AlertTriangle className="h-4 w-4 stroke-[2]" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2">
+                                  Sobreturno
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 w-[16%]">
                         {canUpdate ? (
                           <Select
                             value={turno.estado}
                             onValueChange={(value) => handleUpdateEstado(turno.id, value)}
-                            disabled={updateMutation.isPending}
+                            disabled={updateMutation.isPending && (updateMutation.variables as { id: string } | undefined)?.id === turno.id}
                           >
                             <SelectTrigger className={getEstadoSelectTriggerClass(turno.estado)}>
                               <SelectValue>
@@ -1465,7 +1825,7 @@ export default function AdminTurnos() {
                             </SelectTrigger>
                             <SelectContent className="rounded-[12px] border-[#E5E7EB]" align="start">
                               {estadoOpcionesGrilla.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value} className="font-['Inter'] text-[14px] rounded-[8px]">
+                                <SelectItem key={opt.value} value={opt.value} hideIndicator className="font-['Inter'] text-[14px] rounded-[8px]">
                                   {opt.label}
                                 </SelectItem>
                               ))}
@@ -1475,24 +1835,8 @@ export default function AdminTurnos() {
                           getEstadoBadge(turno.estado)
                         )}
                       </TableCell>
-                      <TableCell className="py-3 font-['Inter'] text-[14px] text-[#374151] max-w-0">
-                        {turno.motivo ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="line-clamp-2 cursor-default">{turno.motivo}</span>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 max-w-[280px]">
-                                {turno.motivo}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          <span className="text-[#9CA3AF]">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <TableCell className="py-3 w-[20%] text-center">
+                        <div className="flex items-center justify-center gap-1">
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1510,6 +1854,23 @@ export default function AdminTurnos() {
                               </TooltipTrigger>
                               <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
                                 Ver detalle
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => navigate(`/pacientes/${turno.paciente_id}`)}
+                                  className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#374151]"
+                                >
+                                  <User className="h-4 w-4 stroke-[2]" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
+                                Ver ficha
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -1545,7 +1906,7 @@ export default function AdminTurnos() {
       </div>
 
       {/* Modal Bloquear agenda / horario */}
-      <Dialog open={showBloqueModal} onOpenChange={setShowBloqueModal}>
+      <Dialog open={showBloqueModal} onOpenChange={(open) => { setShowBloqueModal(open); if (!open) setAbrioModalParaDesbloquear(false); }}>
         <DialogContent
           className="max-w-[900px] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden"
           onInteractOutside={(e) => {
@@ -1578,7 +1939,7 @@ export default function AdminTurnos() {
               <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
                 {(() => {
                   const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                  return p ? `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}` : '—';
+                  return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
                 })()}
               </div>
             </div>
@@ -1659,27 +2020,58 @@ export default function AdminTurnos() {
                 Todo el día (o todos los días completos)
               </Label>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
-                <Input
-                  type="time"
-                  value={bloqueForm.hora_inicio}
-                  onChange={(e) => setBloqueForm((f) => ({ ...f, hora_inicio: e.target.value }))}
-                  disabled={bloqueForm.todo_el_dia}
-                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Franjas horarias</Label>
+                {!bloqueForm.todo_el_dia && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBloqueForm((f) => ({ ...f, franjas: [...f.franjas, { hora_inicio: '14:00', hora_fin: '17:00' }] }))}
+                    className="rounded-[10px] font-['Inter'] border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar franja
+                  </Button>
+                )}
               </div>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora fin</Label>
-                <Input
-                  type="time"
-                  value={bloqueForm.hora_fin}
-                  onChange={(e) => setBloqueForm((f) => ({ ...f, hora_fin: e.target.value }))}
-                  disabled={bloqueForm.todo_el_dia}
-                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-              </div>
+              {!bloqueForm.todo_el_dia && (
+                <div className="space-y-2">
+                  {bloqueForm.franjas.map((fr, idx) => (
+                    <div key={idx} className="flex items-center gap-2 flex-wrap">
+                      <Input
+                        type="time"
+                        value={fr.hora_inicio}
+                        onChange={(e) => setBloqueForm((f) => ({
+                          ...f,
+                          franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_inicio: e.target.value } : x),
+                        }))}
+                        className="h-[44px] w-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                      />
+                      <span className="text-[#6B7280] font-['Inter']">a</span>
+                      <Input
+                        type="time"
+                        value={fr.hora_fin}
+                        onChange={(e) => setBloqueForm((f) => ({
+                          ...f,
+                          franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_fin: e.target.value } : x),
+                        }))}
+                        className="h-[44px] w-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBloqueForm((f) => ({ ...f, franjas: f.franjas.filter((_, i) => i !== idx) }))}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-[8px] h-9"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-3">
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Motivo (opcional)</Label>
@@ -1691,22 +2083,75 @@ export default function AdminTurnos() {
                 className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
               />
             </div>
+
           </div>
-          <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0">
-            <Button variant="outline" onClick={() => setShowBloqueModal(false)} className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto">
+          <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => { setShowBloqueModal(false); setAbrioModalParaDesbloquear(false); setShowDesbloquearTodoConfirm(false); }}
+              className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto"
+            >
               Cancelar
             </Button>
-            <Button
-              onClick={handleSubmitBloque}
-              disabled={isSubmittingBloque}
-              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
-            >
-              {isSubmittingBloque ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Bloquear
-            </Button>
+            {abrioModalParaDesbloquear && bloquesDelDiaEnModal.length > 0 ? (
+              <>
+                <Button
+                  type="button"
+                  onClick={() => setShowDesbloquearTodoConfirm(true)}
+                  disabled={deleteBloqueMutation.isPending}
+                  variant="outline"
+                  className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 focus-visible:ring-offset-0"
+                >
+                  Desbloquear todo
+                </Button>
+                <Button
+                  onClick={handleSubmitBloque}
+                  disabled={isSubmittingBloque}
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
+                >
+                  {isSubmittingBloque ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Editar
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={handleSubmitBloque}
+                disabled={isSubmittingBloque}
+                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto shadow-md shadow-[#2563eb]/20"
+              >
+                {isSubmittingBloque ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Bloquear
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteModal
+        open={showDesbloquearTodoConfirm}
+        onOpenChange={(open) => { setShowDesbloquearTodoConfirm(open); }}
+        title="Desbloquear todo el día"
+        description={
+          <>
+            ¿Estás seguro de que deseas desbloquear todo el día{' '}
+            {bloqueForm.fecha_inicio
+              ? format(new Date(bloqueForm.fecha_inicio + 'T12:00:00'), "d 'de' MMMM", { locale: es })
+              : ''}
+            ? Se eliminarán todos los bloqueos de este día.
+          </>
+        }
+        confirmLabel="Desbloquear todo"
+        loadingLabel="Desbloqueando..."
+        onConfirm={async () => {
+          if (bloquesDelDiaEnModal.length === 0) return;
+          await Promise.all(bloquesDelDiaEnModal.map((b) => deleteBloqueMutation.mutateAsync(b.id)));
+          setShowDesbloquearTodoConfirm(false);
+          setShowBloqueModal(false);
+          setAbrioModalParaDesbloquear(false);
+          reactToastify.success('Día desbloqueado correctamente', { position: 'top-right', autoClose: 3000 });
+        }}
+        isLoading={deleteBloqueMutation.isPending}
+      />
 
       {/* Modal Habilitar día puntual */}
       <Dialog open={showDiaPuntualModal} onOpenChange={setShowDiaPuntualModal}>
@@ -1727,31 +2172,35 @@ export default function AdminTurnos() {
             </div>
           </DialogHeader>
           <div className="px-8 py-6 space-y-5 overflow-y-auto">
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                Profesional
-              </Label>
-              <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                {(() => {
-                  const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                  return p ? `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}` : '—';
-                })()}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
+              <div className="space-y-3">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 h-6">
+                  <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Profesional
+                </Label>
+                <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
+                  {(() => {
+                    const p = profesionales.find((pr) => pr.id === profesionalFilter);
+                    return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
+                  })()}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 h-6">
+                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Fecha
+                </Label>
+                <div className="h-[52px] [&_button]:h-full [&_button]:min-h-0 flex">
+                  <DatePicker
+                    value={diaPuntualForm.fecha}
+                    onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
+                    placeholder="Seleccionar fecha"
+                    className="h-[52px] w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  />
+                </div>
               </div>
             </div>
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                Fecha
-              </Label>
-              <DatePicker
-                value={diaPuntualForm.fecha}
-                onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
-                placeholder="Seleccionar fecha"
-                className="h-[52px] text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-3">
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
                 <Input
@@ -1770,17 +2219,17 @@ export default function AdminTurnos() {
                   className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                 />
               </div>
-            </div>
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración del turno (min)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={480}
-                value={diaPuntualForm.duracion_turno_minutos ?? 30}
-                onChange={(e) => setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-              />
+              <div className="space-y-3">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración (min)</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  max={480}
+                  value={diaPuntualForm.duracion_turno_minutos ?? 30}
+                  onChange={(e) => setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
+                  className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0">
@@ -1803,196 +2252,6 @@ export default function AdminTurnos() {
             >
               {createExcepcionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Habilitar día
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Gestionar bloqueo del día (cuando el día seleccionado tiene bloques) */}
-      <Dialog open={showGestionarBloqueModal} onOpenChange={(open) => { setShowGestionarBloqueModal(open); if (!open) { setBloqueEditando(null); setBloqueToDelete(null); } }}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
-          <DialogHeader className="px-8 pt-8 pb-6 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
-                <Lock className="h-6 w-6 text-white stroke-[2]" />
-              </div>
-              <div>
-                <DialogTitle className="text-[28px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Gestionar bloqueo del día
-                </DialogTitle>
-                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Eliminar o modificar los horarios bloqueados para este día
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="px-8 py-6 space-y-5 overflow-y-auto">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                  Profesional
-                </Label>
-                <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                  {(() => {
-                    const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                    return p ? `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}` : '—';
-                  })()}
-                </div>
-              </div>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                  Fecha
-                </Label>
-                <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
-                  {fechaFilter ? format(new Date(fechaFilter + 'T12:00:00'), "d 'de' MMMM, yyyy", { locale: es }) : '—'}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Bloques del día</Label>
-              <div className="space-y-2">
-                {bloquesDelDiaListado.map((bloque) => (
-                  <div key={bloque.id} className="border border-[#E5E7EB] rounded-[12px] p-4 bg-red-50/50">
-                    {bloqueEditando?.id === bloque.id ? (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-[14px] font-['Inter']">Hora inicio</Label>
-                            <Input
-                              type="time"
-                              value={bloqueEditForm.hora_inicio}
-                              onChange={(e) => setBloqueEditForm((f) => ({ ...f, hora_inicio: e.target.value }))}
-                              className="h-[44px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-[14px] font-['Inter']">Hora fin</Label>
-                            <Input
-                              type="time"
-                              value={bloqueEditForm.hora_fin}
-                              onChange={(e) => setBloqueEditForm((f) => ({ ...f, hora_fin: e.target.value }))}
-                              className="h-[44px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-[14px] font-['Inter']">Motivo (opcional)</Label>
-                          <Input
-                            type="text"
-                            placeholder="Ej: Vacaciones, licencia"
-                            value={bloqueEditForm.motivo}
-                            onChange={(e) => setBloqueEditForm((f) => ({ ...f, motivo: e.target.value }))}
-                            className="h-[44px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            onClick={() => {
-                              if (!fechaFilter || !bloqueEditando) return;
-                              if (bloqueEditForm.hora_inicio >= bloqueEditForm.hora_fin) {
-                                reactToastify.error('La hora fin debe ser posterior a la hora inicio', { position: 'top-right', autoClose: 3000 });
-                                return;
-                              }
-                              updateBloqueMutation.mutate({
-                                id: bloqueEditando.id,
-                                data: {
-                                  fecha_hora_inicio: new Date(fechaFilter + 'T' + bloqueEditForm.hora_inicio + ':00').toISOString(),
-                                  fecha_hora_fin: new Date(fechaFilter + 'T' + bloqueEditForm.hora_fin + ':00').toISOString(),
-                                  motivo: bloqueEditForm.motivo.trim() || undefined,
-                                },
-                              });
-                            }}
-                            disabled={updateBloqueMutation.isPending}
-                            className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] font-['Inter']"
-                          >
-                            {updateBloqueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Guardar
-                          </Button>
-                          <Button type="button" variant="outline" onClick={() => { setBloqueEditando(null); }} className="rounded-[10px] font-['Inter']">
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <div className="flex items-center gap-3">
-                          <Lock className="h-5 w-5 text-red-600 stroke-[2]" />
-                          <span className="font-['Inter'] text-[15px] text-red-700 font-medium">
-                            {format(new Date(bloque.fecha_hora_inicio), 'HH:mm', { locale: es })} - {format(new Date(bloque.fecha_hora_fin), 'HH:mm', { locale: es })}
-                            {bloque.motivo ? ` — ${bloque.motivo}` : ''}
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setBloqueEditando(bloque);
-                              setBloqueEditForm({
-                                hora_inicio: format(new Date(bloque.fecha_hora_inicio), 'HH:mm'),
-                                hora_fin: format(new Date(bloque.fecha_hora_fin), 'HH:mm'),
-                                motivo: bloque.motivo || '',
-                              });
-                            }}
-                            className="rounded-[10px] font-['Inter'] border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
-                          >
-                            <Pencil className="h-4 w-4 mr-1" />
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setBloqueToDelete(bloque)}
-                            className="rounded-[10px] font-['Inter'] border-red-300 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Eliminar
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {bloqueToDelete && (
-              <div className="border border-red-200 rounded-[12px] p-4 bg-red-50">
-                <p className="text-[14px] font-['Inter'] text-red-800 mb-3">
-                  ¿Eliminar el bloque {format(new Date(bloqueToDelete.fecha_hora_inicio), 'HH:mm')} - {format(new Date(bloqueToDelete.fecha_hora_fin), 'HH:mm')}?
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      deleteBloqueMutation.mutate(bloqueToDelete.id);
-                    }}
-                    disabled={deleteBloqueMutation.isPending}
-                    className="bg-red-600 hover:bg-red-700 text-white rounded-[10px] font-['Inter']"
-                  >
-                    {deleteBloqueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Eliminar bloqueo
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setBloqueToDelete(null)} className="rounded-[10px] font-['Inter']">
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="px-8 py-6 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 flex-shrink-0">
-            <Button
-              variant="outline"
-              onClick={() => { setShowGestionarBloqueModal(false); setBloqueEditando(null); setBloqueToDelete(null); }}
-              className="rounded-[12px] font-['Inter'] px-5 py-2.5 h-auto"
-            >
-              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2164,7 +2423,7 @@ export default function AdminTurnos() {
             setPacienteDniInput('');
             setPacienteFound(null);
             setShowQuickCreatePaciente(false);
-            setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '' });
+            setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
           }
         }}
       >
@@ -2201,7 +2460,7 @@ export default function AdminTurnos() {
                     <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
                       {(() => {
                         const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                        return p ? `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}` : '—';
+                        return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
                       })()}
                     </div>
                   </div>
@@ -2316,20 +2575,36 @@ export default function AdminTurnos() {
                       Hora inicio
                     </Label>
                     <Select
-                      value={opcionesHoraInicioFiltradas.includes(createHoraInicio) ? createHoraInicio : (opcionesHoraInicioFiltradas[0] ?? createHoraInicio)}
+                      value={
+                        (() => {
+                          const opt = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
+                          if (opt && !opt.bloqueado) return createHoraInicio;
+                          const first = opcionesHoraInicioConEstado.find((o) => !o.bloqueado);
+                          return first?.value ?? createHoraInicio;
+                        })()
+                      }
                       onValueChange={(v) => setCreateHoraInicio(v)}
                     >
                       <SelectTrigger id="create-hora-inicio" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20">
                         <SelectValue placeholder="Hora inicio" />
                       </SelectTrigger>
                       <SelectContent>
-                        {opcionesHoraInicioFiltradas.map((h) => (
+                        {opcionesHoraInicioConEstado.map((opt) => (
                           <SelectItem
-                            key={h}
-                            value={h}
-                            className={rangoHorarioCreate.min !== undefined ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]' : undefined}
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={opt.bloqueado}
+                            className={
+                              opt.bloqueado
+                                ? 'text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                : opt.ocupado
+                                  ? 'text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                  : rangoHorarioCreate.min !== undefined
+                                    ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]'
+                                    : undefined
+                            }
                           >
-                            {h}
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2339,19 +2614,7 @@ export default function AdminTurnos() {
                         <p className="text-[13px] text-[#6B7280] font-['Inter']">
                           Duración: {minutosEntre(createHoraInicio, createHoraFin)} min
                         </p>
-                        {diaCompletamenteBloqueadoCreate && (
-                          <p className="text-[13px] text-red-600 font-['Inter'] font-medium flex items-center gap-1.5">
-                            <Lock className="h-4 w-4 stroke-[2]" />
-                            Este día está completamente bloqueado. Elija otra fecha.
-                          </p>
-                        )}
-                        {!diaCompletamenteBloqueadoCreate && bloquesDelDiaCreate.length > 0 && (
-                          <p className="text-[13px] text-red-600 font-['Inter'] font-medium flex items-center gap-1.5">
-                            <Lock className="h-4 w-4 stroke-[2] flex-shrink-0" />
-                            Este día tiene bloqueado de {bloquesDelDiaCreate.map((b) => `${format(new Date(b.fecha_hora_inicio), 'HH:mm')} a ${format(new Date(b.fecha_hora_fin), 'HH:mm')}`).join(' y ')}.
-                          </p>
-                        )}
-                        {!diaCompletamenteBloqueadoCreate && esHoyCreate && opcionesHoraInicioFiltradas.length === 0 && (
+                        {!diaCompletamenteBloqueadoCreate && esHoyCreate && opcionesHoraInicioTodas.length === 0 && (
                           <p className="text-[13px] text-[#92400E] font-['Inter']">
                             No hay más horarios disponibles hoy. Seleccione otra fecha.
                           </p>
@@ -2370,20 +2633,36 @@ export default function AdminTurnos() {
                       Hora fin
                     </Label>
                     <Select
-                      value={opcionesHoraFinFiltradas.includes(createHoraFin) ? createHoraFin : (opcionesHoraFinFiltradas[0] ?? createHoraFin)}
+                      value={
+                        (() => {
+                          const opt = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
+                          if (opt && !opt.bloqueado && createHoraFin > createHoraInicio) return createHoraFin;
+                          const first = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
+                          return first?.value ?? createHoraFin;
+                        })()
+                      }
                       onValueChange={(v) => setCreateHoraFin(v)}
                     >
                       <SelectTrigger id="create-hora-fin" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20">
                         <SelectValue placeholder="Hora fin" />
                       </SelectTrigger>
                       <SelectContent>
-                        {opcionesHoraFinFiltradas.map((h) => (
+                        {opcionesHoraFinConEstado.map((opt) => (
                           <SelectItem
-                            key={h}
-                            value={h}
-                            className={rangoHorarioCreate.min !== undefined ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]' : undefined}
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={opt.bloqueado}
+                            className={
+                              opt.bloqueado
+                                ? 'text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                : opt.ocupado
+                                  ? 'text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                  : rangoHorarioCreate.min !== undefined
+                                    ? 'bg-[#dbeafe]/40 data-[highlighted]:bg-[#bfdbfe]'
+                                    : undefined
+                            }
                           >
-                            {h}
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2399,7 +2678,7 @@ export default function AdminTurnos() {
                   {createFormData.paciente_id && pacienteFound ? (
                     <div className="flex items-center gap-3 h-[52px] px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
                       <span className="flex-1">
-                        {pacienteFound.nombre} {pacienteFound.apellido} - DNI: {formatDni(pacienteFound.dni)}
+                        {formatDisplayText(pacienteFound.nombre)} {formatDisplayText(pacienteFound.apellido)} - DNI: {formatDni(pacienteFound.dni)}
                       </span>
                       <button
                         type="button"
@@ -2428,7 +2707,7 @@ export default function AdminTurnos() {
                               size="sm"
                               onClick={() => {
                                 setShowQuickCreatePaciente(false);
-                                setQuickCreatePaciente((p) => ({ ...p, nombre: '', apellido: '', telefono: '' }));
+                                setQuickCreatePaciente((p) => ({ ...p, nombre: '', apellido: '', telefono: '', email: '' }));
                               }}
                               className="text-[#6B7280] hover:text-[#374151] shrink-0 font-['Inter']"
                             >
@@ -2455,7 +2734,19 @@ export default function AdminTurnos() {
                                   className="h-10 font-['Inter'] text-[14px]"
                                 />
                               </div>
-                              <div className="space-y-1.5 col-span-2">
+                              <div className="space-y-1.5">
+                                <Label className="text-[13px] font-['Inter'] flex items-center gap-1">
+                                  <Mail className="h-3.5 w-3.5" /> Email
+                                </Label>
+                                <Input
+                                  type="email"
+                                  value={quickCreatePaciente.email}
+                                  onChange={(e) => setQuickCreatePaciente((p) => ({ ...p, email: e.target.value }))}
+                                  placeholder="Email"
+                                  className="h-10 font-['Inter'] text-[14px]"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
                                 <Label className="text-[13px] font-['Inter'] flex items-center gap-1">
                                   <Phone className="h-3.5 w-3.5" /> Teléfono
                                 </Label>
@@ -2470,7 +2761,7 @@ export default function AdminTurnos() {
                             <Button
                               type="button"
                               onClick={handleQuickCreatePaciente}
-                              disabled={isCreatingPaciente || !quickCreatePaciente.nombre.trim() || !quickCreatePaciente.apellido.trim() || !quickCreatePaciente.telefono.trim()}
+                              disabled={isCreatingPaciente || !quickCreatePaciente.nombre.trim() || !quickCreatePaciente.apellido.trim() || !quickCreatePaciente.email.trim() || !quickCreatePaciente.telefono.trim()}
                               className="h-10 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-['Inter'] text-[14px]"
                             >
                               {isCreatingPaciente ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -2489,7 +2780,7 @@ export default function AdminTurnos() {
                               value={pacienteDniInput}
                               onChange={(e) => setPacienteDniInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
                               onKeyDown={(e) => e.key === 'Enter' && handleBuscarPacientePorDni()}
-                              placeholder="Ingrese DNI (7 u 8 dígitos)"
+                              placeholder="Ingrese DNI (6 a 8 dígitos)"
                               className="h-[52px] pl-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                             />
                           </div>
@@ -2497,7 +2788,7 @@ export default function AdminTurnos() {
                             type="button"
                             variant="outline"
                             onClick={handleBuscarPacientePorDni}
-                            disabled={!pacienteDniInput.trim() || pacienteDniInput.trim().length < 7 || isSearchingPaciente}
+                            disabled={!pacienteDniInput.trim() || pacienteDniInput.trim().length < 6 || isSearchingPaciente}
                             className="h-[52px] px-4 rounded-[10px] border-[#D1D5DB] font-['Inter'] shrink-0"
                           >
                             {isSearchingPaciente ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Buscar'}
@@ -2587,7 +2878,7 @@ export default function AdminTurnos() {
                     <div className="h-[52px] border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] text-[#374151]">
                       {(() => {
                         const p = profesionales.find((pr) => pr.id === selectedTurno.profesional_id);
-                        return p ? `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}` : (selectedTurno.profesional_nombre ? `${selectedTurno.profesional_nombre} ${selectedTurno.profesional_apellido || ''}` : '—');
+                        return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : (selectedTurno.profesional_nombre ? `${formatDisplayText(selectedTurno.profesional_nombre)} ${formatDisplayText(selectedTurno.profesional_apellido || '')}` : '—');
                       })()}
                     </div>
                   </div>
@@ -2757,6 +3048,25 @@ export default function AdminTurnos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modales de agenda: mismo uso que en página Agendas (componentes independientes, mismo árbol) */}
+      <GestionarAgendaModal
+        open={showGestionarAgendaModalFromTurnos}
+        onOpenChange={setShowGestionarAgendaModalFromTurnos}
+        profesionalId={profesionalLogueado?.id ?? ''}
+        profesionalNombre={profesionalLogueado?.nombre ?? ''}
+        profesionalApellido={profesionalLogueado?.apellido ?? ''}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+      />
+      <CreateAgendaModal
+        open={showCreateAgendaModalFromTurnos}
+        onOpenChange={(open) => {
+          setShowCreateAgendaModalFromTurnos(open);
+          if (!open) queryClient.invalidateQueries({ queryKey: ['agendas'] });
+        }}
+        presetProfesionalId={profesionalLogueado?.id}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+      />
     </div>
   );
 }

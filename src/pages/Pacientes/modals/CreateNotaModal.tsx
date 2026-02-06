@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { StickyNote, Loader2, User, Plus, FileText } from 'lucide-react';
 import type { CreateNotaData } from '@/services/notas.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDisplayText } from '@/lib/utils';
 
 interface CreateNotaModalProps {
   open: boolean;
@@ -103,7 +104,7 @@ export function CreateNotaModal({
               Creador de la nota
             </Label>
             <div className="h-[52px] flex items-center px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
-              {user ? `${user.nombre} ${user.apellido}` : '—'}
+              {user ? `${formatDisplayText(user.nombre)} ${formatDisplayText(user.apellido)}` : '—'}
             </div>
           </div>
 

@@ -61,7 +61,7 @@ export interface Profesional {
   fecha_ultimo_pago?: string;
   fecha_inicio_contrato?: string;
   monto_mensual?: number;
-  tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal';
+  tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
   observaciones?: string;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
@@ -91,7 +91,7 @@ export interface Pago {
   profesional_nombre?: string;
   profesional_apellido?: string;
   profesional_email?: string;
-  profesional_tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal';
+  profesional_tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
 }
 
 // Tipos para notificaciones
@@ -173,6 +173,7 @@ export interface Turno {
   fecha_hora_inicio: string; // ISO datetime
   fecha_hora_fin: string; // ISO datetime
   estado: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
+  sobreturno?: boolean;
   motivo?: string;
   cancelado_por?: string;
   razon_cancelacion?: string;
@@ -199,6 +200,8 @@ export interface ConfiguracionAgenda {
   hora_fin: string; // TIME format (HH:mm:ss)
   duracion_turno_minutos: number;
   activo: boolean;
+  vigencia_desde?: string | null; // YYYY-MM-DD
+  vigencia_hasta?: string | null; // YYYY-MM-DD, null = vigente
   fecha_creacion?: string;
   fecha_actualizacion?: string;
   // Datos relacionados

@@ -16,6 +16,7 @@ import { User, Mail, Key, Eye, EyeOff, Loader2, Pencil } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { authService } from '@/services/auth.service';
+import { formatDisplayText } from '@/lib/utils';
 
 function getRolBadge(rol: string) {
   const roleColors: Record<string, string> = {
@@ -169,7 +170,7 @@ export default function AdminPerfil() {
             <div className="space-y-3">
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Nombre</Label>
               <Input
-                value={user.nombre}
+                value={formatDisplayText(user.nombre)}
                 disabled
                 className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
               />
@@ -177,7 +178,7 @@ export default function AdminPerfil() {
             <div className="space-y-3">
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Apellido</Label>
               <Input
-                value={user.apellido}
+                value={formatDisplayText(user.apellido)}
                 disabled
                 className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] bg-[#F9FAFB]"
               />

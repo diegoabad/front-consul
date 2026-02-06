@@ -37,6 +37,7 @@ import { profesionalesService } from '@/services/profesionales.service';
 import type { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { formatDisplayText } from '@/lib/utils';
 
 const ROLES = [
   { value: 'administrador', label: 'Administrador' },
@@ -65,6 +66,7 @@ const TIPO_PERIODO_PAGO = [
   { value: 'mensual', label: 'Mensual' },
   { value: 'quincenal', label: 'Quincenal' },
   { value: 'semanal', label: 'Semanal' },
+  { value: 'anual', label: 'Anual' },
 ];
 
 function getEstadoBadge(activo: boolean) {
@@ -134,7 +136,7 @@ export default function AdminUsuarios() {
   const [profesionalExtraData, setProfesionalExtraData] = useState<{
     matricula: string;
     especialidad: string;
-    tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal';
+    tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual';
     valor: string;
     fecha_inicio: string;
   }>({
@@ -162,7 +164,7 @@ export default function AdminUsuarios() {
   const [editProfesionalData, setEditProfesionalData] = useState<{
     matricula: string;
     especialidad: string;
-    tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal';
+    tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual';
     valor: string;
     fecha_inicio: string;
   }>({
@@ -266,7 +268,7 @@ export default function AdminUsuarios() {
     setEditProfesionalData({
       matricula: profesionalParaEditar.matricula ?? '',
       especialidad: profesionalParaEditar.especialidad ?? '',
-      tipo_periodo_pago: (profesionalParaEditar.tipo_periodo_pago as 'mensual' | 'quincenal' | 'semanal') ?? 'mensual',
+      tipo_periodo_pago: (profesionalParaEditar.tipo_periodo_pago as 'mensual' | 'quincenal' | 'semanal' | 'anual') ?? 'mensual',
       valor: valorStr,
       fecha_inicio: normalizeFechaInicioToYYYYMMDD(profesionalParaEditar.fecha_inicio_contrato ?? undefined),
     });
@@ -815,7 +817,7 @@ export default function AdminUsuarios() {
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Estado
                 </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[140px]">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[140px] text-center">
                   Acciones
                 </TableHead>
               </TableRow>
@@ -834,7 +836,7 @@ export default function AdminUsuarios() {
                         </AvatarFallback>
                       </Avatar>
                       <p className="font-medium text-[#374151] font-['Inter'] text-[15px] m-0">
-                        {usuario.nombre} {usuario.apellido}
+                        {formatDisplayText(usuario.nombre)} {formatDisplayText(usuario.apellido)}
                       </p>
                     </div>
                   </TableCell>
@@ -1216,7 +1218,7 @@ export default function AdminUsuarios() {
                     </Label>
                     <Select
                       value={profesionalExtraData.tipo_periodo_pago}
-                      onValueChange={(value: 'mensual' | 'quincenal' | 'semanal') =>
+                      onValueChange={(value: 'mensual' | 'quincenal' | 'semanal' | 'anual') =>
                         setProfesionalExtraData({ ...profesionalExtraData, tipo_periodo_pago: value })
                       }
                     >
@@ -1772,7 +1774,7 @@ export default function AdminUsuarios() {
                         </Label>
                         <Select
                           value={editProfesionalData.tipo_periodo_pago}
-                          onValueChange={(value: 'mensual' | 'quincenal' | 'semanal') =>
+                          onValueChange={(value: 'mensual' | 'quincenal' | 'semanal' | 'anual') =>
                             setEditProfesionalData({ ...editProfesionalData, tipo_periodo_pago: value })
                           }
                         >
@@ -1869,7 +1871,7 @@ export default function AdminUsuarios() {
         open={showDeleteModal}
         onOpenChange={(open) => { setShowDeleteModal(open); if (!open) setSelectedUsuario(null); }}
         title="Eliminar Usuario"
-        description={<>¿Estás seguro de que deseas eliminar a <span className="font-semibold text-[#374151]">{selectedUsuario?.nombre} {selectedUsuario?.apellido}</span>? Esta acción no se puede deshacer.</>}
+        description={<>¿Estás seguro de que deseas eliminar a <span className="font-semibold text-[#374151]">{formatDisplayText(selectedUsuario?.nombre)} {formatDisplayText(selectedUsuario?.apellido)}</span>? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDelete}
         isLoading={isSubmitting}
       />

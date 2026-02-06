@@ -19,6 +19,7 @@ import { profesionalesService } from '@/services/profesionales.service';
 import { useQuery } from '@tanstack/react-query';
 import type { CreateEvolucionData } from '@/services/evoluciones.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDisplayText } from '@/lib/utils';
 
 interface CreateEvolucionModalProps {
   open: boolean;
@@ -147,7 +148,7 @@ export function CreateEvolucionModal({
                 <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
                   {profesionales.map((prof) => (
                     <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                      {prof.nombre} {prof.apellido} {prof.especialidad ? `- ${prof.especialidad}` : ''}
+                      {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)} {prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

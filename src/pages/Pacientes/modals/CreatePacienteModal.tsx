@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -13,9 +14,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { User, Loader2, Phone, Mail } from 'lucide-react';
+import { User, Loader2, Phone, Mail, ExternalLink, Link2 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import type { CreatePacienteData } from '@/services/pacientes.service';
+import { pacientesService } from '@/services/pacientes.service';
+import type { Paciente } from '@/types';
 import { obrasSocialesService } from '@/services/obras-sociales.service';
 
 interface CreatePacienteModalProps {
@@ -23,6 +26,16 @@ interface CreatePacienteModalProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreatePacienteData) => Promise<void>;
   isSubmitting?: boolean;
+  /** Si es profesional, al crear paciente se asigna; si existe por DNI, se ofrece vincular. */
+  profesionalIdToAssign?: string | null;
+  onVincularExistente?: (pacienteId: string) => Promise<void>;
+}
+
+// DNI con separador de miles (ej: 34.551.481)
+function formatDNI(dni: string): string {
+  if (!dni) return '';
+  const clean = String(dni).replace(/\D/g, '');
+  return clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
 const initialFormData: CreatePacienteData = {
@@ -40,19 +53,41 @@ const initialFormData: CreatePacienteData = {
   activo: true,
 };
 
+type Step = 'dni' | 'form';
+
 export function CreatePacienteModal({
   open,
   onOpenChange,
   onSubmit,
   isSubmitting = false,
+  profesionalIdToAssign,
+  onVincularExistente,
 }: CreatePacienteModalProps) {
   const queryClient = useQueryClient();
+  const [step, setStep] = useState<Step>('dni');
+  const [dniInput, setDniInput] = useState('');
+  const [pacienteExistente, setPacienteExistente] = useState<Paciente | null>(null);
+  const [isSearchingDni, setIsSearchingDni] = useState(false);
   const [formData, setFormData] = useState<CreatePacienteData>(initialFormData);
   const [tieneCobertura, setTieneCobertura] = useState(false);
   const [tieneContactoEmergencia, setTieneContactoEmergencia] = useState(false);
   const [showCreateObraSocialInput, setShowCreateObraSocialInput] = useState(false);
   const [newObraSocialNombre, setNewObraSocialNombre] = useState('');
   const [isCreatingObraSocial, setIsCreatingObraSocial] = useState(false);
+  const [isVincularLoading, setIsVincularLoading] = useState(false);
+  const [vinculadoOk, setVinculadoOk] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (open) {
+      setStep('dni');
+      setDniInput('');
+      setPacienteExistente(null);
+      setIsSearchingDni(false);
+      setVinculadoOk(false);
+      setFormData(initialFormData);
+    }
+  }, [open]);
 
   const { data: obrasSociales = [] } = useQuery({
     queryKey: ['obras-sociales'],
@@ -133,7 +168,58 @@ export function CreatePacienteModal({
     }
   };
 
+  const handleBuscarDni = async () => {
+    const dni = dniInput.replace(/\D/g, '').trim();
+    if (!dni) {
+      reactToastify.error('Ingresá el DNI del paciente', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    setIsSearchingDni(true);
+    setPacienteExistente(null);
+    try {
+      const encontrado = await pacientesService.getByDni(dni);
+      setPacienteExistente(encontrado ?? null);
+      if (!encontrado) {
+        setFormData((prev) => ({ ...prev, dni }));
+        setStep('form');
+      } else {
+        // Si el backend indica que ya estaba vinculado a este profesional, mostrar "Ver ficha"
+        const yaAsignado = (encontrado as Paciente & { ya_asignado?: boolean }).ya_asignado;
+        setVinculadoOk(!!yaAsignado);
+      }
+    } catch {
+      reactToastify.error('Error al buscar por DNI', { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setIsSearchingDni(false);
+    }
+  };
+
+  const handleVincularExistente = async () => {
+    if (!pacienteExistente?.id || !onVincularExistente) return;
+    const pacienteId = String(pacienteExistente.id);
+    setIsVincularLoading(true);
+    try {
+      await onVincularExistente(pacienteId);
+      reactToastify.success('Paciente vinculado a tu lista', { position: 'top-right', autoClose: 3000 });
+      setVinculadoOk(true);
+    } catch {
+      reactToastify.error('Error al vincular paciente', { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setIsVincularLoading(false);
+    }
+  };
+
+  const handleVerFicha = () => {
+    if (!pacienteExistente?.id) return;
+    onOpenChange(false);
+    navigate(`/pacientes/${pacienteExistente.id}`);
+  };
+
   const handleCancel = () => {
+    setStep('dni');
+    setDniInput('');
+    setPacienteExistente(null);
+    setVinculadoOk(false);
     setFormData(initialFormData);
     setTieneCobertura(false);
     setTieneContactoEmergencia(false);
@@ -148,6 +234,10 @@ export function CreatePacienteModal({
       onOpenChange={(openValue) => {
         onOpenChange(openValue);
         if (!openValue) {
+          setStep('dni');
+          setDniInput('');
+          setPacienteExistente(null);
+          setVinculadoOk(false);
           setFormData(initialFormData);
           setTieneCobertura(false);
           setTieneContactoEmergencia(false);
@@ -156,7 +246,11 @@ export function CreatePacienteModal({
         }
       }}
     >
-      <DialogContent className="max-w-[900px] h-[90vh] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col">
+      <DialogContent
+        className={`max-w-[900px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col ${
+          step === 'dni' ? 'max-h-[380px]' : 'h-[90vh] max-h-[90vh]'
+        }`}
+      >
         {/* Header fijo */}
         <DialogHeader className="px-8 pt-8 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
           <div className="flex items-center gap-4">
@@ -168,7 +262,7 @@ export function CreatePacienteModal({
                 Nuevo Paciente
               </DialogTitle>
               <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                Completa la información del nuevo paciente
+                {step === 'dni' ? 'Ingresá el DNI para buscar o crear' : 'Completa la información del nuevo paciente'}
               </DialogDescription>
             </div>
           </div>
@@ -176,6 +270,88 @@ export function CreatePacienteModal({
 
         {/* Contenido scrolleable */}
         <div className="overflow-y-auto flex-1 min-h-0 px-8 py-4 scrollbar-violet">
+          {step === 'dni' ? (
+            <div className="space-y-4">
+              {!pacienteExistente ? (
+                <div className="space-y-2">
+                  <Label htmlFor="dni-buscar" className="text-[14px] font-medium text-[#374151] font-['Inter']">
+                    DNI del paciente
+                  </Label>
+                  <Input
+                    id="dni-buscar"
+                    placeholder="Ej: 12345678"
+                    value={dniInput}
+                    onChange={(e) => setDniInput(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleBuscarDni()}
+                    autoComplete="off"
+                    className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <p className="text-[15px] font-medium text-[#111827] mb-0">
+                        {pacienteExistente.nombre} {pacienteExistente.apellido}
+                      </p>
+                      <span className="text-[14px] text-[#6B7280]">DNI {formatDNI(pacienteExistente.dni)}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-[13px] text-[#2563eb] font-['Inter'] -ml-1"
+                        onClick={() => { setPacienteExistente(null); setDniInput(''); }}
+                      >
+                        Otro DNI
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {profesionalIdToAssign != null && onVincularExistente ? (
+                        vinculadoOk ? (
+                          <Button
+                            type="button"
+                            onClick={handleVerFicha}
+                            size="sm"
+                            className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] inline-flex items-center gap-1.5"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Ver ficha
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={handleVincularExistente}
+                            disabled={isVincularLoading}
+                            size="sm"
+                            className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {isVincularLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <>
+                                <Link2 className="h-3.5 w-3.5" />
+                                Vincular
+                              </>
+                            )}
+                          </Button>
+                        )
+                      ) : (
+                        <Button
+                          type="button"
+                          onClick={handleVerFicha}
+                          size="sm"
+                          className="h-9 px-4 rounded-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-medium font-['Inter'] text-[14px] inline-flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Ver ficha
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="space-y-4">
             {/* Sección: Datos Personales */}
             <div className="space-y-3">
@@ -447,33 +623,66 @@ export function CreatePacienteModal({
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer fijo */}
         <DialogFooter className="px-8 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
           <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancel}
-              className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
-                  Guardando...
-                </>
-              ) : (
-                'Crear Paciente'
-              )}
-            </Button>
+            {step === 'dni' ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancel}
+                  className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                >
+                  Cerrar
+                </Button>
+                {!pacienteExistente ? (
+                  <Button
+                    type="button"
+                    onClick={handleBuscarDni}
+                    disabled={isSearchingDni}
+                    className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50"
+                  >
+                    {isSearchingDni ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                        Buscando...
+                      </>
+                    ) : (
+                      'Buscar por DNI'
+                    )}
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancel}
+                  className="h-[48px] px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="h-[48px] px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Crear Paciente'
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

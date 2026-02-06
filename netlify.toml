@@ -1,0 +1,22 @@
+# Netlify: build y publicación del frontend
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Recomendado: usar Node 20 LTS
+[build.environment]
+  NODE_VERSION = "20"
+
+# =============================================================================
+# VARIABLE DE ENTORNO OBLIGATORIA (Vite, no React CRA)
+# =============================================================================
+# En Netlify: Site configuration → Environment variables → Add variable
+#   Key:   VITE_API_URL   (exactamente así; con Vite se usa VITE_*, no REACT_APP_*)
+#   Value: https://tu-api-produccion.com/api
+#
+# Después: "Trigger deploy" → "Clear cache and deploy site" para que el build
+# use la variable (si ya la habías agregado y seguía yendo a localhost, el
+# clear cache + redeploy suele solucionarlo).
+# =============================================================================

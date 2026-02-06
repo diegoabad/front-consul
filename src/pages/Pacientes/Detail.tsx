@@ -26,6 +26,7 @@ import { profesionalesService } from '@/services/profesionales.service';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { formatDisplayText } from '@/lib/utils';
 import { EditPacienteModal } from './modals';
 import PacienteArchivos from './Archivos';
 import PacienteNotas from './Notas';
@@ -395,7 +396,7 @@ export default function PacienteDetail() {
                     <div className="flex-1">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.nombre || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        {formatDisplayText(paciente.nombre) || <span className="text-[#9CA3AF] italic">No especificado</span>}
                       </p>
                     </div>
                   </div>
@@ -406,7 +407,7 @@ export default function PacienteDetail() {
                     <div className="flex-1">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Apellido</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.apellido || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        {formatDisplayText(paciente.apellido) || <span className="text-[#9CA3AF] italic">No especificado</span>}
                       </p>
                     </div>
                   </div>
@@ -805,7 +806,7 @@ export default function PacienteDetail() {
                           return nombre.includes(q) || esp.includes(q);
                         })
                         .map((p) => {
-                          const label = `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}`;
+                          const label = `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}`;
                           return (
                             <button
                               key={p.id}

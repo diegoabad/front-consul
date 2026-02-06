@@ -94,10 +94,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuth();
       setUserState(null);
       
-      // Mostrar toast de error con mensaje amigable
-      // El backend ya envía mensajes amigables, pero si no hay mensaje, usar uno por defecto
+      // Un solo toast: mensaje del backend, o "credenciales" si 401, o "conexión" si falló la red
       const backendMessage = error.response?.data?.message;
-      const friendlyMessage = backendMessage || 'Tu email o contraseña están incorrectos. Por favor, verifica tus credenciales e intenta nuevamente.';
+      const isNetworkError = !error.response; // timeout, CORS, servidor inalcanzable (ej. localhost en prod)
+      const friendlyMessage = backendMessage
+        || (isNetworkError ? 'Error de conexión. Verifica tu conexión o intenta en unos segundos.' : 'Tu email o contraseña están incorrectos. Por favor, verifica tus credenciales e intenta nuevamente.');
       
       reactToastify.error(friendlyMessage, {
         position: 'top-right',

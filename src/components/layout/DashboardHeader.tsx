@@ -11,18 +11,20 @@ import {
 import { UserAvatar } from '@/components/dashboard/UserAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import { cn, formatDisplayText } from '@/lib/utils';
 
 interface DashboardHeaderProps {
   sidebarCollapsed: boolean;
   onSidebarToggle: () => void;
   onMobileMenuToggle: () => void;
+  mobileMenuOpen?: boolean;
 }
 
 export function DashboardHeader({
   sidebarCollapsed,
   onSidebarToggle,
   onMobileMenuToggle,
+  mobileMenuOpen = false,
 }: DashboardHeaderProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -67,21 +69,28 @@ export function DashboardHeader({
         />
       </div>
 
-      {/* Mobile: hamburguesa para abrir overlay */}
-      <div className="flex items-center pl-4 lg:hidden w-[72px] flex-shrink-0">
+      {/* Mobile: hamburguesa a la izquierda, logo centrado en la barra, usuario a la derecha */}
+      <div className="flex lg:hidden items-center flex-1 min-w-0">
         <Button
           variant="ghost"
           size="icon"
-          className="text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-[10px] transition-all duration-200 h-10 w-10"
+          className="text-[#6B7280] hover:text-[#374151] hover:bg-[#F3F4F6] rounded-[10px] transition-all duration-200 h-10 w-10 flex-shrink-0 ml-1"
           onClick={onMobileMenuToggle}
-          aria-label="Abrir menú"
+          aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
         >
           <Menu className="h-5 w-5 stroke-[2]" />
         </Button>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center w-[55%] max-w-[240px] h-28 overflow-hidden">
+          <img
+            src="/logo.png"
+            alt="Cogniar"
+            className="h-28 w-auto max-w-full object-contain object-center"
+          />
+        </div>
       </div>
 
       {/* Espacio flexible + zona derecha */}
-      <div className="flex-1 flex items-center justify-end pr-4 md:pr-6 min-w-0 gap-3">
+      <div className="flex-1 flex items-center justify-end min-w-0 gap-3">
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -90,19 +99,19 @@ export function DashboardHeader({
               className="flex items-center gap-3 px-3 py-2 h-auto hover:bg-[#F3F4F6] text-[#374151] rounded-[10px] transition-all duration-200 border border-transparent hover:border-[#E5E7EB]"
             >
               <UserAvatar
-                nombre={user?.nombre || 'Usuario'}
-                apellido={user?.apellido}
+                nombre={formatDisplayText(user?.nombre) || 'Usuario'}
+                apellido={formatDisplayText(user?.apellido)}
                 size="sm"
               />
               <div className="hidden md:flex flex-col items-start">
                 <span className="text-sm font-medium text-[#374151] font-['Inter']">
-                  {user?.nombre} {user?.apellido}
+                  {formatDisplayText(user?.nombre)} {formatDisplayText(user?.apellido)}
                 </span>
                 <span className="text-xs text-[#6B7280] font-['Inter']">
                   {user?.rol ? getRoleLabel(user.rol) : 'Usuario'}
                 </span>
               </div>
-              <ChevronDown className="h-4 w-4 text-[#6B7280] stroke-[2] transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              <ChevronDown className="hidden md:block h-4 w-4 text-[#6B7280] stroke-[2] transition-transform duration-200 group-data-[state=open]:rotate-180" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent 

@@ -43,6 +43,7 @@ import { especialidadesService } from '@/services/especialidades.service';
 import type { Profesional } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { formatDisplayText } from '@/lib/utils';
 
 const estadoOptions = [
   { value: 'todos', label: 'Todos los estados' },
@@ -606,7 +607,7 @@ export default function AdminProfesionales() {
                 <TableHead className="hidden sm:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Pago
                 </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[120px]">
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[120px] text-center">
                   Acciones
                 </TableHead>
               </TableRow>
@@ -626,7 +627,7 @@ export default function AdminProfesionales() {
                       </Avatar>
                       <div className="m-0">
                         <p className="font-medium text-[#374151] font-['Inter'] text-[15px] m-0">
-                          {prof.apellido}, {prof.nombre}
+                          {formatDisplayText(prof.apellido)}, {formatDisplayText(prof.nombre)}
                         </p>
                         <p className="text-sm text-[#6B7280] md:hidden font-['Inter'] m-0">
                           {prof.email}
@@ -653,7 +654,7 @@ export default function AdminProfesionales() {
                   <TableCell className="hidden lg:table-cell">
                     {prof.especialidad ? (
                       <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs font-medium">
-                        {prof.especialidad}
+                        {formatDisplayText(prof.especialidad)}
                       </Badge>
                     ) : (
                       <span className="text-[#9CA3AF]">-</span>
@@ -830,7 +831,7 @@ export default function AdminProfesionales() {
                   <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
                     {usuariosProfesionales.map((usuario) => (
                       <SelectItem key={usuario.id} value={usuario.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                        {usuario.nombre} {usuario.apellido} ({usuario.email})
+                        {formatDisplayText(usuario.nombre)} {formatDisplayText(usuario.apellido)} ({usuario.email})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1076,7 +1077,7 @@ export default function AdminProfesionales() {
           <DialogHeader>
             <DialogTitle>Bloquear Profesional</DialogTitle>
             <DialogDescription>
-              Indique la razón del bloqueo para {selectedProfesional?.nombre} {selectedProfesional?.apellido}
+              Indique la razón del bloqueo para {formatDisplayText(selectedProfesional?.nombre)} {formatDisplayText(selectedProfesional?.apellido)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1113,7 +1114,7 @@ export default function AdminProfesionales() {
         open={showDeleteModal}
         onOpenChange={(open) => { setShowDeleteModal(open); if (!open) setProfesionalToDelete(null); }}
         title="Eliminar profesional"
-        description={<>¿Está seguro de que desea eliminar a {profesionalToDelete?.nombre} {profesionalToDelete?.apellido}? Esta acción no se puede deshacer.</>}
+        description={<>¿Está seguro de que desea eliminar a {formatDisplayText(profesionalToDelete?.nombre)} {formatDisplayText(profesionalToDelete?.apellido)}? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDelete}
         isLoading={isSubmitting}
       />

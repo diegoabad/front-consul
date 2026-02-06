@@ -8,6 +8,7 @@ import {
   Calendar,
   GraduationCap,
   Building2,
+  FileText,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -15,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { UserRole } from '@/types';
+import type { UserRole, User } from '@/types';
 
 interface MenuItem {
   title: string;
@@ -28,7 +29,12 @@ const SIDEBAR_WIDTH_COLLAPSED = 72;
 
 interface DashboardSidebarProps {
   role: UserRole;
+  user?: User | null;
   collapsed?: boolean;
+  /** Llamado al hacer clic en un enlace (ej. para cerrar menú móvil) */
+  onNavigate?: () => void;
+  /** true cuando se usa dentro del drawer móvil (sin fixed, sin espacio superior) */
+  mobileDrawer?: boolean;
 }
 
 interface SidebarMenuConfig {
@@ -49,6 +55,7 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Usuarios', url: '/usuarios', icon: UserCog },
       { title: 'Especialidades', url: '/especialidades', icon: GraduationCap },
       { title: 'Obras Sociales', url: '/obras-sociales', icon: Building2 },
+      { title: 'Logs', url: '/logs', icon: FileText },
     ],
   },
   profesional: {
@@ -77,7 +84,8 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
 function renderNavItem(
   item: MenuItem,
   location: ReturnType<typeof useLocation>,
-  collapsed: boolean
+  collapsed: boolean,
+  onNavigate?: () => void
 ) {
   const isActive = location.pathname === item.url || location.pathname.startsWith(item.url + '/');
   const Icon = item.icon;
@@ -86,6 +94,7 @@ function renderNavItem(
     <NavLink
       key={item.url}
       to={item.url}
+      onClick={onNavigate}
       className={cn(
         'flex items-center rounded-[10px] transition-all duration-200 text-[15px] font-medium relative group',
         collapsed ? 'justify-center px-0 py-3 w-full' : 'gap-3 px-4 py-3',
@@ -117,19 +126,24 @@ function renderNavItem(
   return linkContent;
 }
 
-export function DashboardSidebar({ role, collapsed = false }: DashboardSidebarProps) {
+export function DashboardSidebar({ role, user: _user, collapsed = false, onNavigate, mobileDrawer = false }: DashboardSidebarProps) {
   const location = useLocation();
+
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
   const { beforeSeparator, afterSeparator } = config;
+  const isDrawer = mobileDrawer;
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 h-screen bg-white transition-all duration-300 flex flex-col border-r border-[#E5E7EB] shadow-sm overflow-hidden',
-        collapsed ? 'w-[72px]' : 'w-[280px]'
+        'bg-white transition-all duration-300 flex flex-col overflow-hidden',
+        isDrawer ? 'w-full h-full' : 'fixed left-0 top-0 z-40 h-screen border-r border-[#E5E7EB] shadow-sm',
+        !isDrawer && (collapsed ? 'w-[72px]' : 'w-[280px]')
       )}
     >
-      {/* Espacio para que el menú no quede bajo la barra superior */}
-      <div className="h-16 flex-shrink-0" aria-hidden />
+      {!isDrawer && (
+        /* Espacio para que el menú no quede bajo la barra superior (solo desktop) */
+        <div className="h-16 flex-shrink-0" aria-hidden />
+      )}
 
       {/* Menu Items */}
       <nav
@@ -140,13 +154,13 @@ export function DashboardSidebar({ role, collapsed = false }: DashboardSidebarPr
       >
         <TooltipProvider delayDuration={300} skipDelayDuration={0}>
           <div className="space-y-1">
-            {beforeSeparator.map((item) => renderNavItem(item, location, collapsed))}
+            {beforeSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
           </div>
           {afterSeparator.length > 0 && (
             <>
               <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
               <div className="space-y-1">
-                {afterSeparator.map((item) => renderNavItem(item, location, collapsed))}
+                {afterSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
               </div>
             </>
           )}

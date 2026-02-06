@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
+import { formatDisplayText } from '@/lib/utils';
 import {
   Search, Plus, Eye, Edit, Trash2, Phone,
   User, Loader2, UserCheck, UserX, UserPlus
@@ -73,6 +74,14 @@ export default function AdminPacientes() {
   const asignarModalJustOpenedRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Profesional logueado (para rol profesional: asignar al crear/vincular)
+  const isProfesional = user?.rol === 'profesional';
+  const { data: profesionalLogueado } = useQuery({
+    queryKey: ['profesional-by-user', user?.id],
+    queryFn: () => profesionalesService.getByUsuarioId(user!.id),
+    enabled: isProfesional && Boolean(user?.id),
+  });
+
   // Fetch pacientes
   const { data: pacientes = [], isLoading } = useQuery({
     queryKey: ['pacientes'],
@@ -101,6 +110,17 @@ export default function AdminPacientes() {
   const createMutation = useMutation({
     mutationFn: (data: CreatePacienteData) => pacientesService.create(data),
     onSuccess: async (newPaciente) => {
+      // Si es profesional, asignar el nuevo paciente a su lista
+      if (profesionalLogueado?.id) {
+        try {
+          await pacientesService.addAsignacion(newPaciente.id, profesionalLogueado.id);
+        } catch {
+          reactToastify.error('Paciente creado pero no se pudo asignar a tu lista', {
+            position: 'top-right',
+            autoClose: 3000,
+          });
+        }
+      }
       // Cerrar modal primero
       setShowCreateModal(false);
       // Actualizar el cache directamente agregando el nuevo paciente
@@ -435,20 +455,27 @@ export default function AdminPacientes() {
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
                   Paciente
                 </TableHead>
-                <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
                   DNI
                 </TableHead>
-                <TableHead className="hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
                   Teléfono
                 </TableHead>
-                <TableHead className="hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+                {isProfesional && (
+                  <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
+                    Email
+                  </TableHead>
+                )}
+                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "hidden lg:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]"}>
                   Obra Social
                 </TableHead>
-                <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
-                  Estado
-                </TableHead>
-                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[100px]">
-                  Acciones
+                {!isProfesional && (
+                  <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
+                    Estado
+                  </TableHead>
+                )}
+                <TableHead className={isProfesional ? "font-['Inter'] font-medium text-[14px] text-[#374151]" : "font-['Inter'] font-medium text-[14px] text-[#374151] w-[100px] text-center"}>
+                  {isProfesional ? '' : 'Acciones'}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -462,28 +489,32 @@ export default function AdminPacientes() {
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
                         <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
-                          {paciente.nombre[0]}{paciente.apellido[0]}
+                          {(paciente.nombre?.[0] ?? '').toUpperCase()}{(paciente.apellido?.[0] ?? '').toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
-                          {paciente.apellido}, {paciente.nombre}
+                          {formatDisplayText(paciente.apellido)}, {formatDisplayText(paciente.nombre)}
                         </p>
-                        <p className="text-sm text-[#6B7280] md:hidden font-['Inter']">
-                          DNI: {formatDNI(paciente.dni)}
-                        </p>
-                        {paciente.email && (
-                          <p className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter'] mb-0">
-                            {paciente.email}
-                          </p>
+                        {!isProfesional && (
+                          <>
+                            <p className="text-sm text-[#6B7280] md:hidden font-['Inter']">
+                              DNI: {formatDNI(paciente.dni)}
+                            </p>
+                            {paciente.email && (
+                              <p className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter'] mb-0">
+                                {paciente.email}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell text-[#6B7280] font-['Inter'] text-[14px]">
+                  <TableCell className={isProfesional ? "text-[#6B7280] font-['Inter'] text-[14px]" : "hidden md:table-cell text-[#6B7280] font-['Inter'] text-[14px]"}>
                     {formatDNI(paciente.dni)}
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  <TableCell className={isProfesional ? '' : 'hidden lg:table-cell'}>
                     {paciente.telefono ? (
                       <div className="flex items-center gap-2 text-[#6B7280] font-['Inter'] text-[14px]">
                         <Phone className="h-4 w-4 stroke-[2]" />
@@ -493,21 +524,36 @@ export default function AdminPacientes() {
                       <span className="text-[#9CA3AF]">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  {isProfesional && (
+                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px]">
+                      {paciente.email || '-'}
+                    </TableCell>
+                  )}
+                  <TableCell className={isProfesional ? '' : 'hidden lg:table-cell'}>
                     <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs font-medium">
                       {paciente.obra_social || 'Sin cobertura'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge className={
-                      paciente.activo
-                        ? 'bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] rounded-full px-3 py-1 text-xs font-medium'
-                        : 'bg-[#F3F4F6] text-[#4B5563] border-[#D1D5DB] hover:bg-[#E5E7EB] rounded-full px-3 py-1 text-xs font-medium'
-                    }>
-                      {paciente.activo ? 'Activo' : 'Inactivo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
+                  {!isProfesional && (
+                    <TableCell className="hidden md:table-cell">
+                      <Badge className={
+                        paciente.activo
+                          ? 'bg-[#D1FAE5] text-[#065F46] border-[#6EE7B7] hover:bg-[#A7F3D0] rounded-full px-3 py-1 text-xs font-medium'
+                          : 'bg-[#F3F4F6] text-[#4B5563] border-[#D1D5DB] hover:bg-[#E5E7EB] rounded-full px-3 py-1 text-xs font-medium'
+                      }>
+                        {paciente.activo ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </TableCell>
+                  )}
+                  <TableCell className={isProfesional ? '' : 'text-right'}>
+                    {isProfesional ? (
+                      <Button
+                        onClick={() => navigate(`/pacientes/${paciente.id}`)}
+                        className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-4 py-2 font-['Inter'] text-[14px] font-medium"
+                      >
+                        Ver ficha
+                      </Button>
+                    ) : (
                     <TooltipProvider>
                       <div className="flex items-center justify-end gap-1">
                         <Tooltip>
@@ -621,6 +667,7 @@ export default function AdminPacientes() {
                         )}
                       </div>
                     </TooltipProvider>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -635,6 +682,15 @@ export default function AdminPacientes() {
         onOpenChange={setShowCreateModal}
         onSubmit={handleCreate}
         isSubmitting={isSubmitting}
+        profesionalIdToAssign={isProfesional ? (profesionalLogueado?.id ?? null) : null}
+        onVincularExistente={
+          isProfesional && profesionalLogueado?.id
+            ? async (pacienteId) => {
+                await pacientesService.addAsignacion(pacienteId, profesionalLogueado.id);
+                await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+              }
+            : undefined
+        }
       />
 
       <EditPacienteModal
@@ -658,7 +714,7 @@ export default function AdminPacientes() {
               Desactivar Paciente
             </DialogTitle>
             <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-2 mb-0">
-              ¿Está seguro de que desea desactivar a <span className="font-semibold text-[#374151]">{pacienteToDeactivate?.nombre} {pacienteToDeactivate?.apellido}</span>? No se podrán crear turnos, notas o evoluciones para pacientes inactivos.
+              ¿Está seguro de que desea desactivar a <span className="font-semibold text-[#374151]">{formatDisplayText(pacienteToDeactivate?.nombre)} {formatDisplayText(pacienteToDeactivate?.apellido)}</span>? No se podrán crear turnos, notas o evoluciones para pacientes inactivos.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-row justify-end gap-3 mt-6">
@@ -707,7 +763,7 @@ export default function AdminPacientes() {
               Activar Paciente
             </DialogTitle>
             <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-2 mb-0">
-              ¿Está seguro de que desea activar a <span className="font-semibold text-[#374151]">{pacienteToActivate?.nombre} {pacienteToActivate?.apellido}</span>? Una vez activado, se podrán crear turnos, notas y evoluciones.
+              ¿Está seguro de que desea activar a <span className="font-semibold text-[#374151]">{formatDisplayText(pacienteToActivate?.nombre)} {formatDisplayText(pacienteToActivate?.apellido)}</span>? Una vez activado, se podrán crear turnos, notas y evoluciones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-row justify-end gap-3 mt-6">
@@ -747,7 +803,7 @@ export default function AdminPacientes() {
         open={showDeleteModal}
         onOpenChange={(open) => { setShowDeleteModal(open); if (!open) setPacienteToDelete(null); }}
         title="Eliminar Paciente"
-        description={<>¿Estás seguro de que deseas eliminar a <span className="font-semibold text-[#374151]">{pacienteToDelete?.nombre} {pacienteToDelete?.apellido}</span>? Esta acción no se puede deshacer y se eliminará permanentemente.</>}
+        description={<>¿Estás seguro de que deseas eliminar a <span className="font-semibold text-[#374151]">{formatDisplayText(pacienteToDelete?.nombre)} {formatDisplayText(pacienteToDelete?.apellido)}</span>? Esta acción no se puede deshacer y se eliminará permanentemente.</>}
         onConfirm={handleConfirmDelete}
         isLoading={isSubmitting}
       />
@@ -779,7 +835,7 @@ export default function AdminPacientes() {
               </div>
               <div>
                 <DialogTitle className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Asignar profesionales a {pacienteForAsignar ? `${pacienteForAsignar.nombre} ${pacienteForAsignar.apellido}` : 'paciente'}
+                  Asignar profesionales a {pacienteForAsignar ? `${formatDisplayText(pacienteForAsignar.nombre)} ${formatDisplayText(pacienteForAsignar.apellido)}` : 'paciente'}
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1.5 mb-0">
                   Solo los profesionales asignados al paciente podrán verlo y generar evoluciones, notas y subir archivos.
@@ -829,7 +885,7 @@ export default function AdminPacientes() {
                           return nombre.includes(q) || esp.includes(q);
                         })
                         .map((p) => {
-                          const label = `${p.nombre} ${p.apellido}${p.especialidad ? ` - ${p.especialidad}` : ''}`;
+                          const label = `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}`;
                           return (
                             <button
                               key={p.id}

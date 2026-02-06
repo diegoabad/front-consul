@@ -12,6 +12,7 @@ import { Clock, Loader2, User, Calendar, ChevronLeft, ChevronRight, X } from 'lu
 import { turnosService } from '@/services/turnos.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDisplayText } from '@/lib/utils';
 
 interface PacienteTurnosProps {
   pacienteId: string;
@@ -65,16 +66,16 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
   const isProfesional = user?.rol === 'profesional';
 
   const { data: turnos = [], isLoading } = useQuery({
-    queryKey: ['turnos', 'paciente', pacienteId, profesionalLogueado?.id],
+    queryKey: ['turnos', 'paciente', pacienteId, isProfesional ? profesionalLogueado?.id : 'todos'],
     queryFn: () => {
-      // Si es profesional, filtrar por profesional_id
+      // Profesional: solo turnos de este paciente con este profesional
       if (isProfesional && profesionalLogueado) {
         return turnosService.getAll({
           paciente_id: pacienteId,
           profesional_id: profesionalLogueado.id,
         });
       }
-      // Si no es profesional, obtener todos los turnos del paciente
+      // Admin/secretaria: todos los turnos del paciente
       return turnosService.getByPaciente(pacienteId);
     },
     enabled: !isProfesional || !!profesionalLogueado,
@@ -84,6 +85,13 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
   const [filterEstado, setFilterEstado] = useState<string>('todos');
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+
+  // Si es profesional, fijar el filtro a su id y no permitir cambiarlo
+  useEffect(() => {
+    if (isProfesional && profesionalLogueado) {
+      setFilterProfesionalId(profesionalLogueado.id);
+    }
+  }, [isProfesional, profesionalLogueado?.id]);
 
   const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
@@ -189,15 +197,19 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
               <div className="flex-1 min-w-[280px]">
-                <Select value={filterProfesionalId} onValueChange={setFilterProfesionalId}>
-                  <SelectTrigger className="h-12 w-full min-w-0 rounded-[12px] border-[#E5E7EB] font-['Inter'] text-[15px]">
+                <Select
+                  value={isProfesional ? (profesionalLogueado?.id ?? filterProfesionalId) : filterProfesionalId}
+                  onValueChange={setFilterProfesionalId}
+                  disabled={isProfesional}
+                >
+                  <SelectTrigger className="h-12 w-full min-w-0 rounded-[12px] border-[#E5E7EB] font-['Inter'] text-[15px] disabled:opacity-100 disabled:cursor-default">
                     <SelectValue placeholder="Profesional" />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px]">
                     <SelectItem value="todos">Todos los profesionales</SelectItem>
                     {profesionalesEnTurnos.map(p => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.nombre} {p.apellido}
+                        {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
                       </SelectItem>
                     ))}
                   </SelectContent>

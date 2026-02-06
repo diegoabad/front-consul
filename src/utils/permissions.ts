@@ -30,12 +30,15 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     // ... todos los demás
   ],
   profesional: [
+    'pacientes.crear',
     'pacientes.leer',
     'pacientes.buscar',
     'turnos.crear',
     'turnos.leer',
     'turnos.actualizar',
     'agenda.leer',
+    'agenda.crear',
+    'agenda.actualizar',
     'agenda.bloques.crear',
     'agenda.bloques.eliminar',
     'evoluciones.crear',

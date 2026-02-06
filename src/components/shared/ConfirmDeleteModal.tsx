@@ -17,6 +17,8 @@ export interface ConfirmDeleteModalProps {
   onConfirm: () => void | Promise<void>;
   isLoading?: boolean;
   confirmLabel?: string;
+  /** Texto del botón mientras carga (ej. "Desbloqueando..."). Si no se pasa, se usa "Eliminando...". */
+  loadingLabel?: string;
 }
 
 /**
@@ -31,6 +33,7 @@ export function ConfirmDeleteModal({
   onConfirm,
   isLoading = false,
   confirmLabel = 'Eliminar',
+  loadingLabel = 'Eliminando...',
 }: ConfirmDeleteModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -65,7 +68,7 @@ export function ConfirmDeleteModal({
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
-                Eliminando...
+                {loadingLabel}
               </>
             ) : (
               <>

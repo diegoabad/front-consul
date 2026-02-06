@@ -22,6 +22,7 @@ import AgendasList from './pages/Agendas/List';
 import TurnosList from './pages/Turnos/List';
 import EspecialidadesList from './pages/Especialidades/List';
 import ObrasSocialesList from './pages/ObrasSociales/List';
+import LogsList from './pages/Logs/List';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,6 +54,7 @@ function App() {
                 <Route path="/usuarios" element={<UsuariosList />} />
                 <Route path="/especialidades" element={<EspecialidadesList />} />
                 <Route path="/obras-sociales" element={<ObrasSocialesList />} />
+                <Route path="/logs" element={<LogsList />} />
                 <Route path="/perfil" element={<PerfilList />} />
               </Route>
 

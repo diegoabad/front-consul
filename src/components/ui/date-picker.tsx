@@ -12,9 +12,13 @@ export interface DatePickerProps {
   placeholder?: string;
   className?: string;
   id?: string;
+  /** Fecha mínima seleccionable (YYYY-MM-DD). No se pueden elegir días anteriores. */
+  min?: string;
+  /** Fecha máxima seleccionable (YYYY-MM-DD). No se pueden elegir días posteriores. */
+  max?: string;
 }
 
-export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha', className, id }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha', className, id, min, max }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState<Date>(() =>
     value ? startOfMonth(new Date(value + 'T12:00:00')) : startOfMonth(new Date())
@@ -59,7 +63,7 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
         id={id}
         onClick={handleOpen}
         className={cn(
-          'h-[48px] w-full justify-start gap-2 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-[\'Inter\'] text-left font-normal text-[#374151] hover:bg-[#F9FAFB] hover:text-[#374151] focus-visible:ring-2 focus-visible:ring-[#2563eb]/20 focus-visible:ring-offset-0',
+          'mt-0 h-[48px] w-full justify-start gap-2 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-[\'Inter\'] text-left font-normal text-[#374151] hover:bg-[#F9FAFB] hover:text-[#374151] focus-visible:ring-2 focus-visible:ring-[#2563eb]/20 focus-visible:ring-offset-0',
           !value && 'text-[#9CA3AF]',
           className
         )}
@@ -120,14 +124,18 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
                 const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
                 const days = eachDayOfInterval({ start: calStart, end: calEnd });
                 const selectedDate = value ? new Date(value + 'T12:00:00') : null;
+                const dayStr = (d: Date) => format(d, 'yyyy-MM-dd');
                 return days.map((day) => {
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                  const isDisabled = (min && dayStr(day) < min) || (max && dayStr(day) > max);
                   return (
                     <button
                       key={day.toISOString()}
                       type="button"
+                      disabled={Boolean(isDisabled)}
                       onClick={() => {
+                        if (isDisabled) return;
                         onChange(format(day, 'yyyy-MM-dd'));
                         setCurrentMonth(startOfMonth(day));
                         setOpen(false);
@@ -136,8 +144,9 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
                       className={cn(
                         'h-9 rounded-[10px] text-[13px] font-medium font-[\'Inter\'] transition-all',
                         isSelected && 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]',
-                        !isSelected && !isCurrentMonth && 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer',
-                        !isSelected && isCurrentMonth && 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer'
+                        isDisabled && 'opacity-40 cursor-not-allowed pointer-events-none',
+                        !isSelected && !isDisabled && !isCurrentMonth && 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer',
+                        !isSelected && !isDisabled && isCurrentMonth && 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer'
                       )}
                     >
                       {format(day, 'd')}

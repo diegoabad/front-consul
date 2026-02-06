@@ -28,12 +28,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { formatDisplayText } from '@/lib/utils';
 import { 
   CreditCard, DollarSign, CheckCircle2, Calendar, 
   Eye, Loader2, Plus, User, Pencil, Trash2, FileText, AlertCircle, ChevronLeft, ChevronRight
@@ -132,6 +134,15 @@ function getPeriodOptions(prof: Profesional | undefined): PeriodOption[] {
         value: format(d, 'yyyy-MM-dd'),
       });
     }
+  } else if (tipo === 'anual') {
+    const startYear = start.getFullYear();
+    const endYear = today.getFullYear() + 2;
+    for (let y = startYear; y <= endYear; y++) {
+      options.push({
+        label: `Año ${y}`,
+        value: `${y}-01-01`,
+      });
+    }
   } else if (tipo === 'quincenal') {
     const startMonth = startOfMonth(start);
     const endMonth = addMonths(startOfMonth(today), 6);
@@ -150,7 +161,7 @@ function getPeriodOptions(prof: Profesional | undefined): PeriodOption[] {
     const endWeek = addWeeks(startOfWeek(today, { weekStartsOn: 1 }), 12);
     for (let d = startWeek; d <= endWeek; d = addWeeks(d, 1)) {
       options.push({
-        label: `Semana del ${capitalizeFirst(format(d, 'd MMM yyyy', { locale: es }))}`,
+        label: `Semana del ${formatDisplayText(format(d, 'd MMM yyyy', { locale: es }))}`,
         value: format(d, 'yyyy-MM-dd'),
       });
     }
@@ -167,12 +178,13 @@ function formatPeriodoDisplay(pago: Pago): string {
   if (!isValid(d)) return '—';
   const tipo = pago.profesional_tipo_periodo_pago || 'mensual';
   if (tipo === 'mensual') return capitalizeFirst(format(d, 'MMMM yyyy', { locale: es }));
+  if (tipo === 'anual') return `Año ${d.getFullYear()}`;
   if (tipo === 'quincenal') {
     const day = getDate(d);
     const quincena = day <= 15 ? '1ª quincena' : '2ª quincena';
     return capitalizeFirst(`${format(d, 'MMMM yyyy', { locale: es })} ${quincena}`);
   }
-  return `Semana del ${capitalizeFirst(format(d, 'd MMM yyyy', { locale: es }))}`;
+  return `Semana del ${formatDisplayText(format(d, 'd MMM yyyy', { locale: es }))}`;
 }
 
 export default function AdminPagos() {
@@ -190,7 +202,7 @@ export default function AdminPagos() {
   // Contrato por profesional
   const [showEditContratoModal, setShowEditContratoModal] = useState(false);
   const [contratoEditando, setContratoEditando] = useState<Profesional | null>(null);
-  const [editContratoForm, setEditContratoForm] = useState<{ fecha_inicio_contrato: string; monto_mensual: string; tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' }>({ fecha_inicio_contrato: '', monto_mensual: '', tipo_periodo_pago: 'mensual' });
+  const [editContratoForm, setEditContratoForm] = useState<{ fecha_inicio_contrato: string; monto_mensual: string; tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual' }>({ fecha_inicio_contrato: '', monto_mensual: '', tipo_periodo_pago: 'mensual' });
   const [showEliminarContratoConfirm, setShowEliminarContratoConfirm] = useState(false);
   const [contratoToEliminar, setContratoToEliminar] = useState<Profesional | null>(null);
 
@@ -402,10 +414,10 @@ export default function AdminPagos() {
     },
   });
 
-  // Quitar contrato (limpiar fecha y monto)
+  // Quitar contrato (limpiar fecha, monto y tipo período; null se envía en JSON, undefined se omite)
   const eliminarContratoMutation = useMutation({
     mutationFn: (id: string) =>
-      profesionalesService.update(id, { fecha_inicio_contrato: undefined, monto_mensual: undefined }),
+      profesionalesService.update(id, { fecha_inicio_contrato: undefined, monto_mensual: undefined, tipo_periodo_pago: undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profesionales'] });
       reactToastify.success('Contrato eliminado', {
@@ -648,8 +660,8 @@ export default function AdminPagos() {
                       </SelectItem>
                       {profesionales.map((prof) => (
                         <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                          {prof.nombre} {prof.apellido}
-                          {prof.especialidad ? ` — ${prof.especialidad}` : ''}
+                          {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
+                          {prof.especialidad ? ` — ${formatDisplayText(prof.especialidad)}` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -693,16 +705,16 @@ export default function AdminPagos() {
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
               <TabsContent value="vencidos" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} />
+                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
               </TabsContent>
               <TabsContent value="pendientes" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} />
+                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
               </TabsContent>
               <TabsContent value="pagados" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={false} onDelete={canUpdatePago ? handleDeletePago : undefined} />
+                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={false} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
               </TabsContent>
               <TabsContent value="todos" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} />
+                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
               </TabsContent>
             </Tabs>
           )}
@@ -745,7 +757,7 @@ export default function AdminPagos() {
                 <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
                   {profesionales.map((prof) => (
                     <SelectItem key={prof.id} value={prof.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
-                      {prof.nombre} {prof.apellido} {prof.especialidad ? `- ${prof.especialidad}` : ''}
+                      {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)} {prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -951,7 +963,7 @@ export default function AdminPagos() {
                   Editar contrato
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  {contratoEditando ? `${contratoEditando.nombre} ${contratoEditando.apellido}` : ''}
+                  {contratoEditando ? `${formatDisplayText(contratoEditando.nombre)} ${formatDisplayText(contratoEditando.apellido)}` : ''}
                 </DialogDescription>
               </div>
             </div>
@@ -961,12 +973,12 @@ export default function AdminPagos() {
               <Label htmlFor="edit-contrato-fecha" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                 Fecha de inicio
               </Label>
-              <Input
+              <DatePicker
                 id="edit-contrato-fecha"
-                type="date"
                 value={editContratoForm.fecha_inicio_contrato}
-                onChange={(e) => setEditContratoForm((f) => ({ ...f, fecha_inicio_contrato: e.target.value }))}
-                className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                onChange={(value) => setEditContratoForm((f) => ({ ...f, fecha_inicio_contrato: value }))}
+                placeholder="Seleccionar fecha"
+                className="h-[52px]"
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1008,7 +1020,7 @@ export default function AdminPagos() {
                 </Label>
                 <Select
                   value={editContratoForm.tipo_periodo_pago}
-                  onValueChange={(v: 'mensual' | 'quincenal' | 'semanal') => setEditContratoForm((f) => ({ ...f, tipo_periodo_pago: v }))}
+                  onValueChange={(v: 'mensual' | 'quincenal' | 'semanal' | 'anual') => setEditContratoForm((f) => ({ ...f, tipo_periodo_pago: v }))}
                 >
                   <SelectTrigger className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
                     <SelectValue />
@@ -1017,6 +1029,7 @@ export default function AdminPagos() {
                     <SelectItem value="mensual" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Mensual</SelectItem>
                     <SelectItem value="quincenal" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Quincenal</SelectItem>
                     <SelectItem value="semanal" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Semanal</SelectItem>
+                    <SelectItem value="anual" className="rounded-[8px] font-['Inter'] text-[15px] py-3">Anual</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1117,7 +1130,7 @@ export default function AdminPagos() {
         open={showEliminarContratoConfirm}
         onOpenChange={(open) => { setShowEliminarContratoConfirm(open); if (!open) setContratoToEliminar(null); }}
         title="Eliminar contrato"
-        description={<>¿Estás seguro de que deseas quitar el contrato de <span className="font-semibold text-[#374151]">{contratoToEliminar ? `${contratoToEliminar.nombre} ${contratoToEliminar.apellido}` : ''}</span>? Se borrarán la fecha de inicio y el monto mensual.</>}
+        description={<>¿Estás seguro de que deseas quitar el contrato de <span className="font-semibold text-[#374151]">{contratoToEliminar ? `${formatDisplayText(contratoToEliminar.nombre)} ${formatDisplayText(contratoToEliminar.apellido)}` : ''}</span>? Se borrarán la fecha de inicio y el monto mensual.</>}
         onConfirm={handleConfirmEliminarContrato}
         isLoading={eliminarContratoMutation.isPending}
       />
@@ -1156,19 +1169,21 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Fecha inicio</TableHead>
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Monto</TableHead>
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">Período</TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-[120px]">Acciones</TableHead>
+            {canEditContrato && (
+              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-[120px] text-center">Acciones</TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
           {profesionales.map((p) => {
-            const periodoLabel = { mensual: 'Mensual', quincenal: 'Quincenal', semanal: 'Semanal' }[p.tipo_periodo_pago || 'mensual'];
+            const periodoLabel = { mensual: 'Mensual', quincenal: 'Quincenal', semanal: 'Semanal', anual: 'Anual' }[p.tipo_periodo_pago || 'mensual'];
             return (
             <TableRow key={p.id} className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB]">
               <TableCell className="py-4 font-['Inter'] text-[15px] text-[#374151]">
-                {p.nombre} {p.apellido}
+                {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
               </TableCell>
               <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
-                {p.especialidad || '—'}
+                {formatDisplayText(p.especialidad) || '—'}
               </TableCell>
               <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
                 {(() => {
@@ -1187,8 +1202,8 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
               <TableCell className="py-4 font-['Inter'] text-[14px] text-[#6B7280]">
                 {p.monto_mensual != null && p.monto_mensual > 0 ? periodoLabel : '—'}
               </TableCell>
+              {canEditContrato && (
               <TableCell className="py-4 text-right">
-                {canEditContrato && (
                 <TooltipProvider>
                   <div className="flex items-center justify-end gap-1">
                     <Tooltip>
@@ -1225,8 +1240,8 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
                     )}
                   </div>
                 </TooltipProvider>
-                )}
               </TableCell>
+              )}
             </TableRow>
           );})}
         </TableBody>
@@ -1242,9 +1257,11 @@ interface PagosTableProps {
   onPay?: (pago: Pago) => void;
   onMora?: (pago: Pago) => void;
   onDelete?: (pago: Pago) => void;
+  /** Si false, no se muestra la columna Acciones (ej. cuando el usuario es profesional) */
+  showAcciones?: boolean;
 }
 
-function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMora, onDelete }: PagosTableProps) {
+function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMora, onDelete, showAcciones = true }: PagosTableProps) {
   if (pagos.length === 0) {
     return (
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
@@ -1286,9 +1303,11 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
             <TableHead className="hidden md:table-cell font-['Inter'] font-medium text-[14px] text-[#374151]">
               Método
             </TableHead>
-            <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[160px]">
-              Acciones
-            </TableHead>
+            {showAcciones && (
+              <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[160px] text-center">
+                Acciones
+              </TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1348,6 +1367,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
                   <span className="text-[#9CA3AF]">-</span>
                 )}
               </TableCell>
+              {showAcciones && (
               <TableCell className="text-right">
                 <TooltipProvider>
                   <div className="flex items-center justify-end gap-1">
@@ -1394,6 +1414,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
                   </div>
                 </TooltipProvider>
               </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

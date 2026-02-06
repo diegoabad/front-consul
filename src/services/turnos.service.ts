@@ -8,6 +8,7 @@ export interface Turno {
   fecha_hora_inicio: string; // ISO datetime
   fecha_hora_fin: string; // ISO datetime
   estado: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
+  sobreturno?: boolean;
   motivo?: string;
   cancelado_por?: string;
   razon_cancelacion?: string;
@@ -39,6 +40,7 @@ export interface CreateTurnoData {
   fecha_hora_inicio: string; // ISO datetime
   fecha_hora_fin: string; // ISO datetime
   estado?: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
+  sobreturno?: boolean;
   motivo?: string;
 }
 

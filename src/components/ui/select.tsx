@@ -100,22 +100,24 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { hideIndicator?: boolean }
+>(({ className, children, hideIndicator, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-lg py-3 pl-10 pr-3 text-base outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-[#dbeafe] focus:text-[#2563eb] hover:bg-[#F3F4F6] transition-colors duration-150",
+      "relative flex w-full cursor-pointer select-none items-center rounded-lg py-3 pr-3 text-base outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-[#dbeafe] focus:text-[#2563eb] hover:bg-[#F3F4F6] transition-colors duration-150",
+      hideIndicator ? "pl-3 data-[state=checked]:bg-[#dbeafe] data-[state=checked]:text-[#2563eb]" : "pl-10",
       className,
     )}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
-
+    {!hideIndicator && (
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="h-4 w-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+    )}
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ));
