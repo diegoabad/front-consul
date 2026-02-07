@@ -19,6 +19,21 @@ export interface UpdateEspecialidadData extends Partial<CreateEspecialidadData> 
   activo?: boolean;
 }
 
+export interface PaginatedEspecialidadesResponse {
+  data: Especialidad[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface EspecialidadesQueryParams {
+  page?: number;
+  limit?: number;
+  includeInactive?: boolean;
+  q?: string;
+}
+
 export const especialidadesService = {
   /**
    * Obtener todas las especialidades activas
@@ -28,6 +43,28 @@ export const especialidadesService = {
     const response = await api.get<ApiResponse<Especialidad[]>>(`/especialidades${params}`);
     const data = getData(response);
     return data || [];
+  },
+
+  /**
+   * Obtener especialidades paginadas (page, limit, includeInactive, q)
+   */
+  getAllPaginated: async (params: {
+    page: number;
+    limit: number;
+    includeInactive?: boolean;
+    q?: string;
+  }): Promise<PaginatedEspecialidadesResponse> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('page', String(params.page));
+    searchParams.set('limit', String(params.limit));
+    if (params.includeInactive) searchParams.set('includeInactive', 'true');
+    if (params.q?.trim()) searchParams.set('q', params.q.trim());
+    const response = await api.get<ApiResponse<PaginatedEspecialidadesResponse>>(
+      `/especialidades?${searchParams.toString()}`
+    );
+    const data = getData(response);
+    if (!data) return { data: [], total: 0, page: 1, limit: params.limit, totalPages: 0 };
+    return data;
   },
 
   /**

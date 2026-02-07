@@ -10,7 +10,7 @@ import type { UserRole } from '@/types';
 // Rutas permitidas por rol (deben coincidir con el sidebar). Incluye /perfil para todos.
 const RUTAS_POR_ROL: Record<UserRole, string[]> = {
   administrador: ['/dashboard', '/contrato', '/turnos', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/logs', '/perfil'],
-  profesional: ['/turnos', '/pacientes', '/agendas', '/contrato', '/perfil'],
+  profesional: ['/turnos', '/pacientes', '/contrato', '/perfil'],
   secretaria: ['/turnos', '/contrato', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/perfil'],
 };
 
@@ -57,8 +57,8 @@ export function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Desktop Sidebar */}
+    <div className="h-screen overflow-hidden flex flex-col bg-white">
+      {/* Desktop Sidebar (fixed, no scroll) */}
       <div className="hidden lg:block">
         <DashboardSidebar role={user.rol} user={user} collapsed={sidebarCollapsed} />
       </div>
@@ -82,7 +82,7 @@ export function DashboardLayout() {
         </div>
       )}
 
-      {/* Header: en móvil siempre visible (z-50) con hamburguesa + logo; la hamburguesa hace toggle del menú */}
+      {/* Header: fijo arriba, no hace scroll con el contenido */}
       <DashboardHeader
         sidebarCollapsed={sidebarCollapsed}
         onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -90,10 +90,10 @@ export function DashboardLayout() {
         mobileMenuOpen={mobileMenuOpen}
       />
 
-      {/* Main Content */}
+      {/* Main Content: único área con scroll vertical en desktop */}
       <main
         className={cn(
-          'pt-16 min-h-screen bg-white transition-all duration-300',
+          'flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white transition-all duration-300 pt-16',
           sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
         )}
       >

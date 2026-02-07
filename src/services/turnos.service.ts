@@ -32,6 +32,16 @@ export interface TurnoFilters {
   estado?: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
   fecha_inicio?: string; // ISO date
   fecha_fin?: string; // ISO date
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedTurnosResponse {
+  data: Turno[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CreateTurnoData {
@@ -83,6 +93,24 @@ export const turnosService = {
     );
     const data = getData(response);
     return data || [];
+  },
+
+  /**
+   * Obtener turnos paginados (filtros en backend). Usar para historial de turnos de un paciente.
+   */
+  getAllPaginated: async (filters: TurnoFilters & { page: number; limit: number }): Promise<PaginatedTurnosResponse> => {
+    const params = new URLSearchParams();
+    params.append('page', String(filters.page));
+    params.append('limit', String(filters.limit));
+    if (filters.profesional_id) params.append('profesional_id', filters.profesional_id);
+    if (filters.paciente_id) params.append('paciente_id', filters.paciente_id);
+    if (filters.estado) params.append('estado', filters.estado);
+    if (filters.fecha_inicio) params.append('fecha_inicio', filters.fecha_inicio);
+    if (filters.fecha_fin) params.append('fecha_fin', filters.fecha_fin);
+
+    const response = await api.get<ApiResponse<PaginatedTurnosResponse>>(`/turnos?${params.toString()}`);
+    const data = getData(response);
+    return data ?? { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
   },
 
   /**

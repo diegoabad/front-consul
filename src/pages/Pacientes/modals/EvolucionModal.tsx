@@ -58,11 +58,12 @@ export function EvolucionModal({
   const [formData, setFormData] = useState<CreateEvolucionData & { fecha_consulta_edit?: string }>(initialFormData);
   const [activeTab, setActiveTab] = useState('evolucion');
 
-  const { data: profesionales = [] } = useQuery({
+  const { data: profesionalesData = [] } = useQuery({
     queryKey: ['profesionales', 'for-evoluciones', mode],
     queryFn: () => profesionalesService.getAll({ bloqueado: false }),
     enabled: open && (mode === 'create' || mode === 'edit'),
   });
+  const profesionales = Array.isArray(profesionalesData) ? profesionalesData : [];
 
   const profesionalLogueado = profesionales.find(p => p.usuario_id === user?.id);
   const isProfesional = user?.rol === 'profesional';

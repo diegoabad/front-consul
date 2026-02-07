@@ -38,6 +38,7 @@ import type { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
+import { PAGE_SIZE } from '@/lib/constants';
 
 const ROLES = [
   { value: 'administrador', label: 'Administrador' },
@@ -108,6 +109,8 @@ export default function AdminUsuarios() {
   const [search, setSearch] = useState('');
   const [rolFilter, setRolFilter] = useState('todos');
   const [estadoFilter, setEstadoFilter] = useState('todos');
+  const [page, setPage] = useState(1);
+  const limit = PAGE_SIZE;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -189,22 +192,34 @@ export default function AdminUsuarios() {
     confirm_password: '',
   });
 
-  // Fetch usuarios con filtros
-  const filters = useMemo(() => {
-    const f: { rol?: string; activo?: boolean } = {};
-    if (rolFilter !== 'todos') {
-      f.rol = rolFilter;
-    }
-    if (estadoFilter !== 'todos') {
-      f.activo = estadoFilter === 'true';
-    }
-    return f;
-  }, [rolFilter, estadoFilter]);
+  // Solo buscar cuando hay al menos 3 caracteres
+  const effectiveSearch = search.trim().length >= 3 ? search.trim() : '';
 
-  const { data: usuarios = [], isLoading } = useQuery({
+  // Reset page when filters that affect results change
+  useEffect(() => {
+    setPage(1);
+  }, [effectiveSearch, rolFilter, estadoFilter]);
+
+  // Fetch usuarios paginados (filtros en backend); la búsqueda solo se aplica con 3+ letras
+  const filters = useMemo(() => {
+    const f: { page: number; limit: number; q?: string; rol?: string; activo?: boolean } = {
+      page,
+      limit,
+    };
+    if (effectiveSearch) f.q = effectiveSearch;
+    if (rolFilter !== 'todos') f.rol = rolFilter;
+    if (estadoFilter !== 'todos') f.activo = estadoFilter === 'true';
+    return f;
+  }, [page, limit, effectiveSearch, rolFilter, estadoFilter]);
+
+  const { data: paginatedResponse, isLoading } = useQuery({
     queryKey: ['usuarios', filters],
     queryFn: () => usuariosService.getAll(filters),
   });
+
+  const usuarios = paginatedResponse?.data ?? [];
+  const total = paginatedResponse?.total ?? 0;
+  const totalPages = paginatedResponse?.totalPages ?? 0;
 
   const { data: especialidades = [] } = useQuery({
     queryKey: ['especialidades'],
@@ -315,18 +330,7 @@ export default function AdminUsuarios() {
     return trimmed.length >= 10 ? trimmed.slice(0, 10) : trimmed;
   };
 
-  // Filtrar por búsqueda
-  const filteredUsuarios = useMemo(() => {
-    if (!search) return usuarios;
-    const searchLower = search.toLowerCase();
-    return usuarios.filter(
-      (u) =>
-        u.nombre?.toLowerCase().includes(searchLower) ||
-        u.apellido?.toLowerCase().includes(searchLower) ||
-        u.email.toLowerCase().includes(searchLower) ||
-        u.telefono?.includes(search)
-    );
-  }, [usuarios, search]);
+  const filteredUsuarios = usuarios; // Filtrado en backend (búsqueda y filtros)
 
   const getApiErrorMessage = (
     error: { response?: { data?: { error?: { message?: string; details?: Array<{ field?: string; message?: string }> }; message?: string } }; message?: string },
@@ -667,7 +671,7 @@ export default function AdminUsuarios() {
     setEstadoFilter('todos');
   };
 
-  const hasActiveFilters = search || rolFilter !== 'todos' || estadoFilter !== 'todos';
+  const hasActiveFilters = effectiveSearch || rolFilter !== 'todos' || estadoFilter !== 'todos';
   const canCreate = hasPermission(user, 'usuarios.crear');
   const canUpdate = hasPermission(user, 'usuarios.actualizar');
   const canDelete = hasPermission(user, 'usuarios.eliminar');
@@ -695,7 +699,7 @@ export default function AdminUsuarios() {
             Usuarios del Sistema
           </h1>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
-            {isLoading ? 'Cargando...' : `${filteredUsuarios.length} ${filteredUsuarios.length === 1 ? 'usuario registrado' : 'usuarios registrados'}`}
+            {isLoading ? 'Cargando...' : totalPages > 0 ? `Mostrando ${(page - 1) * limit + 1}-${Math.min(page * limit, total)} de ${total} usuarios` : `${total} ${total === 1 ? 'usuario' : 'usuarios'}`}
           </p>
         </div>
         {canCreate && (
@@ -770,15 +774,8 @@ export default function AdminUsuarios() {
         </CardContent>
       </Card>
 
-      {/* Tabla o Empty State */}
-      {isLoading ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-          <CardContent className="p-16 text-center">
-            <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
-            <p className="text-[#6B7280] font-['Inter'] text-base">Cargando usuarios...</p>
-          </CardContent>
-        </Card>
-      ) : filteredUsuarios.length === 0 ? (
+      {/* Tabla o Empty State - filtros y header siempre visibles; carga solo en la tabla */}
+      {!isLoading && filteredUsuarios.length === 0 ? (
         <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -823,7 +820,15 @@ export default function AdminUsuarios() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsuarios.map((usuario) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-16 text-center">
+                    <Loader2 className="h-10 w-10 animate-spin mx-auto mb-2 text-[#2563eb]" />
+                    <p className="text-[#6B7280] font-['Inter'] text-sm m-0">Cargando usuarios...</p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+              filteredUsuarios.map((usuario) => (
                 <TableRow
                   key={usuario.id}
                   className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
@@ -904,18 +909,41 @@ export default function AdminUsuarios() {
                     </TooltipProvider>
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+              )}
             </TableBody>
           </Table>
+          {(totalPages >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {page} de {totalPages || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
-
-      {/* Info de paginación */}
-      <div className="flex items-center justify-between text-sm text-[#6B7280] font-['Inter']">
-        <span>
-          Mostrando {filteredUsuarios.length} de {usuarios.length} usuarios
-        </span>
-      </div>
 
       {/* FAB móvil: Nuevo Usuario */}
       {canCreate && (

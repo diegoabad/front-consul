@@ -32,6 +32,7 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
   profesional: [
     'pacientes.crear',
     'pacientes.leer',
+    'pacientes.actualizar',
     'pacientes.buscar',
     'turnos.crear',
     'turnos.leer',
@@ -47,6 +48,7 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'archivos.subir',
     'archivos.leer',
     'archivos.descargar',
+    'archivos.eliminar',
     'notas.crear',
     'notas.leer',
     'notas.actualizar',

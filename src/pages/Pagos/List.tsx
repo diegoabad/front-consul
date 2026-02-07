@@ -45,6 +45,7 @@ import { profesionalesService, type UpdateProfesionalData } from '@/services/pro
 import type { Pago, Profesional } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { PAGE_SIZE } from '@/lib/constants';
 
 function getEstadoPagoBadge(estado: string) {
   switch (estado) {
@@ -201,6 +202,8 @@ export default function AdminPagos() {
   // Contrato por profesional
   const [filterContratoProfesionalId, setFilterContratoProfesionalId] = useState<string>('all');
   const [filterContratoPeriodo, setFilterContratoPeriodo] = useState<string>('todos');
+  const [pageContrato, setPageContrato] = useState(1);
+  const [pagePagos, setPagePagos] = useState(1);
   const [showEditContratoModal, setShowEditContratoModal] = useState(false);
   const [contratoEditando, setContratoEditando] = useState<Profesional | null>(null);
   const [editContratoForm, setEditContratoForm] = useState<{ fecha_inicio_contrato: string; monto_mensual: string; tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual' }>({ fecha_inicio_contrato: '', monto_mensual: '', tipo_periodo_pago: 'mensual' });
@@ -243,7 +246,7 @@ export default function AdminPagos() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [payDatePickerOpen]);
 
-  // Fetch profesionales para contrato y para crear pago (y para saber profesional logueado si es rol profesional)
+  // Fetch profesionales para dropdown (y para saber profesional logueado si es rol profesional)
   const { data: profesionales = [], isLoading: isLoadingProfesionales } = useQuery({
     queryKey: ['profesionales', 'all'],
     queryFn: () => profesionalesService.getAll(),
@@ -256,8 +259,23 @@ export default function AdminPagos() {
   );
   const profesionalIdForFilter = isProfesional ? profesionalLogueado?.id : null;
 
+  // Contratos paginados (solo cuando no es profesional; si es profesional se usa profesionalLogueado)
+  const contratosQueryFilters = useMemo(() => ({
+    page: pageContrato,
+    limit: PAGE_SIZE,
+    bloqueado: false,
+    id: filterContratoProfesionalId && filterContratoProfesionalId !== 'all' ? filterContratoProfesionalId : undefined,
+    tipo_periodo_pago: filterContratoPeriodo && filterContratoPeriodo !== 'todos' ? (filterContratoPeriodo as 'mensual' | 'quincenal' | 'semanal' | 'anual') : undefined,
+  }), [pageContrato, filterContratoProfesionalId, filterContratoPeriodo]);
+
+  const { data: contratosPaginatedResponse, isLoading: isLoadingContratos } = useQuery({
+    queryKey: ['profesionales', 'contratos-paginados', contratosQueryFilters],
+    queryFn: () => profesionalesService.getAllPaginated(contratosQueryFilters),
+    enabled: !isProfesional,
+  });
+
   // Fetch todos los pagos (si es profesional, solo los suyos)
-  const { data: allPagos = [], isLoading: isLoadingAll } = useQuery({
+  const { data: allPagos = [], isLoading: _isLoadingAll } = useQuery({
     queryKey: ['pagos', 'all', profesionalIdForFilter ?? 'all'],
     queryFn: () =>
       profesionalIdForFilter
@@ -267,7 +285,7 @@ export default function AdminPagos() {
   });
 
   // Fetch pagos pendientes (admin: endpoint; profesional: derivado de allPagos)
-  const { data: pendingPagosFromApi = [], isLoading: isLoadingPending } = useQuery({
+  const { data: pendingPagosFromApi = [], isLoading: _isLoadingPending } = useQuery({
     queryKey: ['pagos', 'pending'],
     queryFn: () => pagosService.getPending(),
     enabled: !isProfesional,
@@ -275,7 +293,7 @@ export default function AdminPagos() {
   const pendingPagos = isProfesional ? allPagos.filter((p) => p.estado === 'pendiente') : pendingPagosFromApi;
 
   // Fetch pagos vencidos (admin: endpoint; profesional: derivado de allPagos)
-  const { data: overduePagosFromApi = [], isLoading: isLoadingOverdue } = useQuery({
+  const { data: overduePagosFromApi = [], isLoading: _isLoadingOverdue } = useQuery({
     queryKey: ['pagos', 'overdue'],
     queryFn: () => pagosService.getOverdue(),
     enabled: !isProfesional,
@@ -300,30 +318,47 @@ export default function AdminPagos() {
     }
   }, [isProfesional, profesionalLogueado?.id]);
 
-  // Lista de profesionales para contratos: si es profesional solo ve el suyo
+  useEffect(() => {
+    setPageContrato(1);
+  }, [filterContratoProfesionalId, filterContratoPeriodo]);
+
+  // Paginación órdenes de pago (tab Pagos)
+  const pagosQueryFilters = useMemo(() => ({
+    page: pagePagos,
+    limit: PAGE_SIZE,
+    profesional_id: filterProfesionalId && filterProfesionalId !== 'all' ? filterProfesionalId : undefined,
+    estado: activeTab !== 'todos' ? (activeTab as 'pendiente' | 'pagado' | 'vencido') : undefined,
+  }), [pagePagos, filterProfesionalId, activeTab]);
+
+  const { data: pagosPaginatedResponse, isLoading: isLoadingPagosPaginated } = useQuery({
+    queryKey: ['pagos', 'paginated', pagosQueryFilters],
+    queryFn: () => pagosService.getAllPaginated(pagosQueryFilters),
+    enabled: activeMainTab === 'pagos',
+  });
+
+  const pagosParaTabla = pagosPaginatedResponse?.data ?? [];
+  const totalPagesPagos = pagosPaginatedResponse?.totalPages ?? 0;
+
+  useEffect(() => {
+    setPagePagos(1);
+  }, [activeTab, filterProfesionalId]);
+
+  // Lista de profesionales para contratos: si es profesional solo ve el suyo; si no, usa la respuesta paginada
   const profesionalesParaContrato = useMemo(
-    () => (isProfesional && profesionalLogueado ? [profesionalLogueado] : profesionales),
-    [isProfesional, profesionalLogueado, profesionales]
+    () => (isProfesional && profesionalLogueado ? [profesionalLogueado] : (contratosPaginatedResponse?.data ?? [])),
+    [isProfesional, profesionalLogueado, contratosPaginatedResponse?.data]
   );
 
-  // Filtrar contratos por profesional y tipo de período
-  const filteredProfesionalesParaContrato = useMemo(() => {
-    let list = profesionalesParaContrato;
-    if (!isProfesional && filterContratoProfesionalId && filterContratoProfesionalId !== 'all') {
-      list = list.filter((p) => p.id === filterContratoProfesionalId);
-    }
-    if (filterContratoPeriodo && filterContratoPeriodo !== 'todos') {
-      list = list.filter((p) => (p.tipo_periodo_pago || 'mensual') === filterContratoPeriodo);
-    }
-    return list;
-  }, [profesionalesParaContrato, isProfesional, filterContratoProfesionalId, filterContratoPeriodo]);
+  const totalPagesContratos = contratosPaginatedResponse?.totalPages ?? 0;
+  const isLoadingContratosTab = isProfesional ? isLoadingProfesionales : isLoadingContratos;
 
-  // Filtrar por profesional y estado
+  // Para tabla de órdenes de pago usamos datos paginados cuando estamos en tab Pagos
   const filteredPagos = useMemo(() => {
+    if (activeMainTab === 'pagos') return pagosParaTabla;
     const pagosActuales = pagosByEstado[activeTab as keyof typeof pagosByEstado] || [];
     if (filterProfesionalId === 'all' || !filterProfesionalId) return pagosActuales;
     return pagosActuales.filter(p => p.profesional_id === filterProfesionalId);
-  }, [pagosByEstado, activeTab, filterProfesionalId]);
+  }, [activeMainTab, pagosParaTabla, pagosByEstado, activeTab, filterProfesionalId]);
 
   // Períodos que ya tienen orden de pago para el profesional seleccionado (modal crear)
   const existingPeriodsForSelectedProf = useMemo(() => {
@@ -547,7 +582,6 @@ export default function AdminPagos() {
     await eliminarContratoMutation.mutateAsync(contratoToEliminar.id);
   };
 
-  const isLoading = isProfesional ? isLoadingAll : (isLoadingAll || isLoadingPending || isLoadingOverdue);
   const canCreate = hasPermission(user, 'pagos.crear');
   const canMarkPaid = hasPermission(user, 'pagos.marcar_pagado');
   const canUpdatePago = hasPermission(user, 'pagos.actualizar');
@@ -629,7 +663,7 @@ export default function AdminPagos() {
         </div>
 
         <TabsContent value="contrato" className="mt-0 space-y-6 max-lg:space-y-5 max-lg:pb-6">
-          {isLoadingProfesionales ? (
+          {isLoadingContratosTab ? (
             <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
@@ -691,11 +725,16 @@ export default function AdminPagos() {
                 </CardContent>
               </Card>
               <ContratosTable
-                profesionales={filteredProfesionalesParaContrato}
+                profesionales={profesionalesParaContrato}
                 formatCurrency={formatCurrency}
                 onEdit={handleOpenEditContrato}
                 onEliminar={(p) => { setContratoToEliminar(p); setShowEliminarContratoConfirm(true); }}
                 canEditContrato={!isProfesional}
+                pagination={!isProfesional && totalPagesContratos >= 1 && !isLoadingContratos ? {
+                  page: pageContrato,
+                  totalPages: totalPagesContratos,
+                  onPageChange: setPageContrato,
+                } : undefined}
               />
             </>
           )}
@@ -751,18 +790,19 @@ export default function AdminPagos() {
               </div>
             </CardContent>
           </Card>
-          {isLoading ? (
+          {isLoadingPagosPaginated && pagosParaTabla.length === 0 ? (
             <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
-                <p className="text-[#6B7280] font-['Inter'] text-base">Cargando pagos...</p>
+                <p className="text-[#6B7280] font-['Inter'] text-base">Cargando órdenes de pago...</p>
               </CardContent>
             </Card>
           ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
-              <TabsContent value="vencidos" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-              </TabsContent>
+            <>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
+                <TabsContent value="vencidos" className="mt-0">
+<PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
+                </TabsContent>
               <TabsContent value="pendientes" className="mt-0">
                 <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
               </TabsContent>
@@ -771,8 +811,38 @@ export default function AdminPagos() {
               </TabsContent>
               <TabsContent value="todos" className="mt-0">
                 <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-              </TabsContent>
-            </Tabs>
+                </TabsContent>
+              </Tabs>
+              {(totalPagesPagos >= 1) && !isLoadingPagosPaginated && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+                  <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                    Página {pagePagos} de {totalPagesPagos || 1}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPagePagos((p) => Math.max(1, p - 1))}
+                      disabled={pagePagos <= 1}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPagePagos((p) => Math.min(totalPagesPagos, p + 1))}
+                      disabled={pagePagos >= totalPagesPagos}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>
@@ -1229,9 +1299,10 @@ interface ContratosTableProps {
   onEdit: (p: Profesional) => void;
   onEliminar: (p: Profesional) => void;
   canEditContrato?: boolean;
+  pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void };
 }
 
-function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, canEditContrato = true }: ContratosTableProps) {
+function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, canEditContrato = true, pagination }: ContratosTableProps) {
   const tieneContrato = (p: Profesional) =>
     (p.fecha_inicio_contrato && p.fecha_inicio_contrato.trim() !== '') || (p.monto_mensual != null && p.monto_mensual > 0);
 
@@ -1324,6 +1395,35 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
         </TableBody>
       </Table>
       </div>
+      {pagination && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+          <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+            Página {pagination.page} de {pagination.totalPages || 1}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+              disabled={pagination.page <= 1}
+              className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pagination.onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+              disabled={pagination.page >= pagination.totalPages}
+              className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+            >
+              Siguiente
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

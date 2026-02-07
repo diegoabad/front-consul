@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -23,7 +24,6 @@ import {
 } from 'lucide-react';
 import { pacientesService, type AsignacionPacienteProfesional } from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
-import { useToast } from '@/hooks/use-toast';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -57,7 +57,6 @@ const calcularEdad = (fechaNacimiento?: string): number | null => {
 export default function PacienteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('datos');
@@ -95,18 +94,11 @@ export default function PacienteDetail() {
     onSuccess: async (updatedPaciente) => {
       queryClient.setQueryData(['paciente', id], updatedPaciente);
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      toast({
-        title: 'Éxito',
-        description: 'Paciente activado correctamente',
-      });
+      reactToastify.success('Paciente activado correctamente', { position: 'top-right', autoClose: 3000 });
       setShowActivateModal(false);
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.response?.data?.error?.message || 'Error al activar paciente',
-      });
+      reactToastify.error(error.response?.data?.error?.message || 'Error al activar paciente', { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -116,18 +108,11 @@ export default function PacienteDetail() {
     onSuccess: async (updatedPaciente) => {
       queryClient.setQueryData(['paciente', id], updatedPaciente);
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      toast({
-        title: 'Éxito',
-        description: 'Paciente desactivado correctamente',
-      });
+      reactToastify.success('Paciente desactivado correctamente', { position: 'top-right', autoClose: 3000 });
       setShowDeactivateModal(false);
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.response?.data?.error?.message || 'Error al desactivar paciente',
-      });
+      reactToastify.error(error.response?.data?.error?.message || 'Error al desactivar paciente', { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -137,17 +122,14 @@ export default function PacienteDetail() {
       pacientesService.update(id!, data),
     onSuccess: async (updatedPaciente) => {
       queryClient.setQueryData(['paciente', id], updatedPaciente);
+      await queryClient.invalidateQueries({ queryKey: ['paciente', id] });
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      toast({ title: 'Éxito', description: 'Paciente actualizado correctamente' });
+      reactToastify.success('Paciente actualizado correctamente', { position: 'top-right', autoClose: 3000 });
       setShowEditModal(false);
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { error?: { message?: string } } } };
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: err?.response?.data?.error?.message || 'Error al actualizar paciente',
-      });
+      reactToastify.error(err?.response?.data?.error?.message || 'Error al actualizar paciente', { position: 'top-right', autoClose: 3000 });
     },
   });
 
@@ -159,26 +141,22 @@ export default function PacienteDetail() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      toast({
-        title: 'Éxito',
-        description: 'Paciente eliminado correctamente',
-      });
+      reactToastify.success('Paciente eliminado correctamente', { position: 'top-right', autoClose: 3000 });
       setShowDeleteModal(false);
       navigate('/pacientes');
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.response?.data?.error?.message || 'Error al eliminar paciente',
-      });
+      reactToastify.error(error.response?.data?.error?.message || 'Error al eliminar paciente', { position: 'top-right', autoClose: 3000 });
     },
   });
 
   const canUpdate = hasPermission(user, 'pacientes.actualizar');
+  const canReadPaciente = hasPermission(user, 'pacientes.leer');
   void hasPermission(user, 'pacientes.eliminar');
   // Pestaña Profesionales solo para administrador y secretaria (no profesionales)
   const canSeeTabProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
+  // Botón/FAB Editar datos: mostrar si puede actualizar, puede leer, o es profesional (backend valida al guardar)
+  const canShowFabDatos = canUpdate || canReadPaciente || user?.rol === 'profesional';
   // Pestaña Evoluciones no para secretaria (solo administrador y profesional)
   const canSeeTabEvoluciones = user?.rol !== 'secretaria';
 
@@ -187,17 +165,19 @@ export default function PacienteDetail() {
     if (!canSeeTabEvoluciones && activeTab === 'evoluciones') setActiveTab('datos');
   }, [canSeeTabEvoluciones, activeTab]);
 
-  const { data: asignaciones = [], refetch: refetchAsignaciones, isFetched: asignacionesFetched } = useQuery({
+  const { data: asignacionesData = [], refetch: refetchAsignaciones, isFetched: asignacionesFetched } = useQuery({
     queryKey: ['paciente-asignaciones', id],
     queryFn: () => pacientesService.getAsignaciones(id!),
     enabled: !!id && canSeeTabProfesionales,
   });
+  const asignaciones = Array.isArray(asignacionesData) ? asignacionesData : [];
 
-  const { data: profesionales = [] } = useQuery({
+  const { data: profesionalesData = [] } = useQuery({
     queryKey: ['profesionales'],
     queryFn: () => profesionalesService.getAll({ activo: true }),
     enabled: showAddAsignacionModal,
   });
+  const profesionales = Array.isArray(profesionalesData) ? profesionalesData : [];
 
   const removeAsignacionMutation = useMutation({
     mutationFn: (profesionalId: string) => pacientesService.removeAsignacion(id!, profesionalId),
@@ -246,13 +226,9 @@ export default function PacienteDetail() {
 
   useEffect(() => {
     if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'No se pudo cargar la información del paciente',
-      });
+      reactToastify.error('No se pudo cargar la información del paciente', { position: 'top-right', autoClose: 3000 });
     }
-  }, [error, toast]);
+  }, [error]);
 
   if (isLoading) {
     return (
@@ -398,7 +374,7 @@ export default function PacienteDetail() {
                 Información personal y de contacto del paciente
               </p>
             </div>
-            {canUpdate && (
+            {canShowFabDatos && (
               <Button
                 onClick={() => setShowEditModal(true)}
                 className="max-lg:hidden bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 h-12 font-medium shrink-0"
@@ -526,25 +502,38 @@ export default function PacienteDetail() {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <FileText className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                  <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Obra Social</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : <span className="text-[#9CA3AF] italic">No especificada</span>}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Obra Social</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.obra_social || <span className="text-[#9CA3AF] italic">No especificada</span>}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">N° de Afiliado</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          {paciente.numero_afiliado || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
                       <FileText className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">N° de Afiliado</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Plan</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.numero_afiliado || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        {paciente.plan?.trim() ? paciente.plan : <span className="text-[#9CA3AF] italic">No especificado</span>}
                       </p>
                     </div>
                   </div>
@@ -568,7 +557,7 @@ export default function PacienteDetail() {
                     <div className="flex-1">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.contacto_emergencia_nombre || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        {paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : <span className="text-[#9CA3AF] italic">No especificado</span>}
                       </p>
                     </div>
                   </div>
@@ -670,27 +659,30 @@ export default function PacienteDetail() {
         </TabsContent>
       </Tabs>
 
-      {/* FAB móvil: acción principal según pestaña */}
-      {((activeTab === 'datos' && canUpdate) || (activeTab === 'profesionales' && canSeeTabProfesionales)) && (
-        <div className="lg:hidden fixed bottom-6 right-6 z-40">
-          <Button
-            onClick={() => {
-              if (activeTab === 'datos') setShowEditModal(true);
-              if (activeTab === 'profesionales') {
-                refetchAsignaciones().then(() => setShowAddAsignacionModal(true));
-              }
-            }}
-            className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
-            title={activeTab === 'datos' ? 'Editar Datos Personales' : 'Vincular profesional'}
-          >
-            {activeTab === 'datos' ? (
-              <Edit className="h-6 w-6 stroke-[2]" />
-            ) : (
-              <UserPlus className="h-6 w-6 stroke-[2]" />
-            )}
-          </Button>
-        </div>
-      )}
+      {/* FAB móvil: renderizado en portal para que no quede oculto por overflow en mobile */}
+      {((activeTab === 'datos' && canShowFabDatos) || (activeTab === 'profesionales' && canSeeTabProfesionales)) &&
+        createPortal(
+          <div className="lg:hidden fixed bottom-6 right-6 z-[100]">
+            <Button
+              onClick={() => {
+                if (activeTab === 'datos') setShowEditModal(true);
+                if (activeTab === 'profesionales') {
+                  refetchAsignaciones().then(() => setShowAddAsignacionModal(true));
+                }
+              }}
+              className="h-14 w-14 rounded-full shadow-lg shadow-[#2563eb]/30 bg-[#2563eb] hover:bg-[#1d4ed8] text-white p-0"
+              title={activeTab === 'datos' ? 'Editar Datos Personales' : 'Vincular profesional'}
+              aria-label={activeTab === 'datos' ? 'Editar Datos Personales' : 'Vincular profesional'}
+            >
+              {activeTab === 'datos' ? (
+                <Edit className="h-6 w-6 stroke-[2]" />
+              ) : (
+                <UserPlus className="h-6 w-6 stroke-[2]" />
+              )}
+            </Button>
+          </div>,
+          document.body
+        )}
 
       {/* Modal Editar */}
       {showEditModal && paciente && (

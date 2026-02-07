@@ -51,13 +51,18 @@ export function UploadArchivoModal({
   const [formData, setFormData] = useState(initialFormData);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: usuarios = [] } = useQuery({
+  const isAdmin = user?.rol === 'administrador';
+
+  // Solo administrador puede elegir usuario; profesional y secretaria suben siempre como ellos (no requieren usuarios.leer)
+  const { data: usuariosResponse } = useQuery({
     queryKey: ['usuarios', 'for-archivos'],
     queryFn: () => usuariosService.getAll({ activo: true }),
-    enabled: open,
+    enabled: open && isAdmin,
   });
+  const usuariosLista = Array.isArray(usuariosResponse?.data) ? usuariosResponse.data : [];
 
-  const isAdmin = user?.rol === 'administrador';
+  // Opciones para el Select: admin ve todos; profesional/secretaria solo ven su usuario (sin llamar API)
+  const usuariosOpciones = isAdmin ? usuariosLista : (user ? [{ id: user.id, nombre: user.nombre, apellido: user.apellido, rol: user.rol }] : []);
 
   // Al abrir: resetear y marcar usuario actual (no-admin tiene preselección; admin elige)
   useEffect(() => {
@@ -165,7 +170,7 @@ export function UploadArchivoModal({
               <span className="text-[#EF4444]">*</span>
             </Label>
             <Select
-              value={formData.usuario_id}
+              value={formData.usuario_id || (usuariosOpciones.length === 1 ? usuariosOpciones[0].id : '')}
               onValueChange={(value) => setFormData({ ...formData, usuario_id: value })}
               disabled={!isAdmin}
             >
@@ -173,13 +178,13 @@ export function UploadArchivoModal({
                 <SelectValue placeholder="Seleccionar usuario" />
               </SelectTrigger>
               <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                {usuarios.map((u) => (
+                {usuariosOpciones.map((u) => (
                   <SelectItem
                     key={u.id}
                     value={u.id}
                     className="rounded-[8px] font-['Inter'] text-[15px] py-3"
                   >
-                    {formatDisplayText(u.nombre)} {formatDisplayText(u.apellido)} — {rolLabel[u.rol]}
+                    {formatDisplayText(u.nombre)} {formatDisplayText(u.apellido)} — {(rolLabel as Record<string, string>)[u.rol] ?? u.rol ?? ''}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -25,6 +25,7 @@ import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText, formatEvolucionDateTime } from '@/lib/utils';
 import { AlertCircle } from 'lucide-react';
 import { CreateEvolucionModal, EditEvolucionModal, ViewEvolucionModal } from './modals';
+import { PAGE_SIZE } from '@/lib/constants';
 
 interface PacienteEvolucionesProps {
   pacienteId: string;
@@ -44,6 +45,7 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
   const [filterProfesionalId, setFilterProfesionalId] = useState<string>('todos');
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+  const [pageEvoluciones, setPageEvoluciones] = useState(1);
 
   const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
@@ -62,15 +64,16 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
   });
 
   // Obtener el profesional asociado al usuario logueado si es profesional
-  const { data: profesionales = [] } = useQuery({
+  const { data: profesionalesData = [] } = useQuery({
     queryKey: ['profesionales', 'for-filter'],
     queryFn: () => profesionalesService.getAll({ bloqueado: false }),
   });
+  const profesionales = Array.isArray(profesionalesData) ? profesionalesData : [];
 
   const profesionalLogueado = profesionales.find(p => p.usuario_id === user?.id);
   const isProfesional = user?.rol === 'profesional';
 
-  const { data: evoluciones = [], isLoading } = useQuery({
+  const { data: evolucionesData = [], isLoading } = useQuery({
     queryKey: ['evoluciones', 'paciente', pacienteId, profesionalLogueado?.id],
     queryFn: () => {
       // Si es profesional, filtrar por profesional_id
@@ -85,7 +88,7 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
     },
     enabled: !isProfesional || !!profesionalLogueado,
   });
-
+  const evoluciones = Array.isArray(evolucionesData) ? evolucionesData : [];
 
   const sortedEvoluciones = useMemo(() => {
     return [...evoluciones].sort((a, b) => new Date(b.fecha_consulta).getTime() - new Date(a.fecha_consulta).getTime());
@@ -106,6 +109,17 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
     }
     return list;
   }, [sortedEvoluciones, filterProfesionalId, filterFechaDesde, filterFechaHasta]);
+
+  const totalEvoluciones = filteredEvoluciones.length;
+  const totalPagesEvoluciones = Math.ceil(totalEvoluciones / PAGE_SIZE) || 0;
+  const evolucionesPaginadas = useMemo(() => {
+    const start = (pageEvoluciones - 1) * PAGE_SIZE;
+    return filteredEvoluciones.slice(start, start + PAGE_SIZE);
+  }, [filteredEvoluciones, pageEvoluciones]);
+
+  useEffect(() => {
+    setPageEvoluciones(1);
+  }, [filterProfesionalId, filterFechaDesde, filterFechaHasta]);
 
   const profesionalesEnEvoluciones = useMemo(() => {
     const ids = new Set(evoluciones.map(e => e.profesional_id));
@@ -483,7 +497,7 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
         </Card>
       ) : (
         <div className="space-y-2">
-          {filteredEvoluciones.map((evolucion) => (
+          {evolucionesPaginadas.map((evolucion) => (
             <Card key={evolucion.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200">
               <CardContent className="p-4 flex items-center min-h-[72px]">
                 <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-3 lg:gap-4 lg:flex-nowrap w-full">
@@ -577,6 +591,35 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
               </CardContent>
             </Card>
           ))}
+          {(totalPagesEvoluciones >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] rounded-b-[16px]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {pageEvoluciones} de {totalPagesEvoluciones || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageEvoluciones((p) => Math.max(1, p - 1))}
+                  disabled={pageEvoluciones <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageEvoluciones((p) => Math.min(totalPagesEvoluciones, p + 1))}
+                  disabled={pageEvoluciones >= totalPagesEvoluciones}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

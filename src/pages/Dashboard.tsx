@@ -44,8 +44,8 @@ export default function AdminDashboard() {
     );
   }
 
-  const totalPacientes = pacientes?.length || 0;
-  const totalProfesionales = profesionales?.length || 0;
+  const totalPacientes = pacientes?.data?.length ?? 0;
+  const totalProfesionales = profesionales?.length ?? 0;
 
   const hoy = new Date();
   const inicioMes = startOfMonth(hoy);

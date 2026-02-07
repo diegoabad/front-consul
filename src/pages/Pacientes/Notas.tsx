@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
-import { Plus, Edit, Trash2, Loader2, StickyNote, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Loader2, StickyNote, Calendar, ChevronLeft, ChevronRight, X, Eye } from 'lucide-react';
 import { notasService, type CreateNotaData, type UpdateNotaData } from '@/services/notas.service';
 import { pacientesService } from '@/services/pacientes.service';
 import type { Nota } from '@/types';
@@ -23,7 +23,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText, formatEvolucionDateTime } from '@/lib/utils';
 import { AlertCircle } from 'lucide-react';
-import { CreateNotaModal, EditNotaModal } from './modals';
+import { CreateNotaModal, EditNotaModal, ViewNotaModal } from './modals';
+import { PAGE_SIZE } from '@/lib/constants';
 
 interface PacienteNotasProps {
   pacienteId: string;
@@ -35,6 +36,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedNota, setSelectedNota] = useState<Nota | null>(null);
   const [notaToDelete, setNotaToDelete] = useState<Nota | null>(null);
@@ -43,6 +45,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
   const [filterCreadorId, setFilterCreadorId] = useState<string>('todos');
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+  const [pageNotas, setPageNotas] = useState(1);
 
   const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
@@ -61,8 +64,10 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
   });
 
   const isProfesional = user?.rol === 'profesional';
+  const isSecretaria = user?.rol === 'secretaria';
+  const filtroCreadorFijo = isProfesional || isSecretaria;
 
-  const { data: notas = [], isLoading } = useQuery({
+  const { data: notasData = [], isLoading } = useQuery({
     queryKey: ['notas', 'paciente', pacienteId, user?.id],
     queryFn: () => {
       if (isProfesional && user?.id) {
@@ -75,6 +80,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     },
     enabled: !isProfesional || !!user?.id,
   });
+  const notas = Array.isArray(notasData) ? notasData : [];
 
   const sortedNotas = useMemo(() => {
     return [...notas].sort((a, b) => {
@@ -100,6 +106,17 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     return list;
   }, [sortedNotas, filterCreadorId, filterFechaDesde, filterFechaHasta]);
 
+  const totalNotas = filteredNotas.length;
+  const totalPagesNotas = Math.ceil(totalNotas / PAGE_SIZE) || 0;
+  const notasPaginadas = useMemo(() => {
+    const start = (pageNotas - 1) * PAGE_SIZE;
+    return filteredNotas.slice(start, start + PAGE_SIZE);
+  }, [filteredNotas, pageNotas]);
+
+  useEffect(() => {
+    setPageNotas(1);
+  }, [filterCreadorId, filterFechaDesde, filterFechaHasta]);
+
   const creadoresEnNotas = useMemo(() => {
     const seen = new Set<string>();
     const result: { id: string; nombre: string; apellido: string; especialidad?: string }[] = [];
@@ -114,8 +131,23 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
         });
       }
     }
+    // Profesional y secretaria: el usuario actual siempre debe aparecer en el filtro (aunque no tenga notas aún)
+    if (filtroCreadorFijo && user?.id && !seen.has(user.id)) {
+      result.unshift({
+        id: user.id,
+        nombre: user.nombre ?? '',
+        apellido: user.apellido ?? '',
+      });
+    }
     return result;
-  }, [sortedNotas]);
+  }, [sortedNotas, filtroCreadorFijo, user?.id, user?.nombre, user?.apellido]);
+
+  // Profesional y secretaria: fijar filtro al usuario actual y no permitir cambiarlo
+  useEffect(() => {
+    if (filtroCreadorFijo && user?.id) {
+      setFilterCreadorId(user.id);
+    }
+  }, [filtroCreadorFijo, user?.id]);
 
   useEffect(() => {
     if (!datePickerDesdeOpen) return;
@@ -227,6 +259,11 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
     }
   };
 
+  const handleView = (nota: Nota) => {
+    setSelectedNota(nota);
+    setShowViewModal(true);
+  };
+
   const handleEdit = (nota: Nota) => {
     setSelectedNota(nota);
     setShowEditModal(true);
@@ -298,13 +335,13 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
         </Card>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header más compacto */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[24px] max-lg:text-[20px] font-bold text-[#111827] font-['Poppins'] mb-0">
+          <h2 className="text-[20px] max-lg:text-[18px] font-bold text-[#111827] font-['Poppins'] mb-0">
             Notas del Paciente
           </h2>
-          <p className="text-base max-lg:text-sm text-[#6B7280] mt-1 font-['Inter']">
+          <p className="text-sm text-[#6B7280] mt-0.5 font-['Inter']">
             {filteredNotas.length === sortedNotas.length
               ? `${sortedNotas.length} ${sortedNotas.length === 1 ? 'nota registrada' : 'notas registradas'}`
               : `${filteredNotas.length} de ${sortedNotas.length} notas`}
@@ -331,12 +368,16 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
               <div className="flex-1 min-w-[200px]">
                 <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Creador</Label>
-                <Select value={filterCreadorId} onValueChange={setFilterCreadorId}>
-                  <SelectTrigger className="h-11 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
+                <Select
+                  value={filterCreadorId}
+                  onValueChange={setFilterCreadorId}
+                  disabled={filtroCreadorFijo}
+                >
+                  <SelectTrigger className="h-11 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px] disabled:opacity-90 disabled:cursor-default">
                     <SelectValue placeholder="Todos los creadores" />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px]">
-                    <SelectItem value="todos">Todos los creadores</SelectItem>
+                    {!filtroCreadorFijo && <SelectItem value="todos">Todos los creadores</SelectItem>}
                     {creadoresEnNotas.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {formatDisplayText(c.nombre)} {formatDisplayText(c.apellido)}
@@ -449,81 +490,86 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {filteredNotas.map((nota) => (
-            <Card key={nota.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200">
-              <CardContent className="p-4">
-                <div className="flex items-center min-h-[72px]">
-                  <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-3 lg:gap-4 lg:flex-nowrap w-full">
-                    {/* Renglón 1 mobile / Col 1 desktop: Creador — Especialidad */}
-                    <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left lg:min-w-0 lg:max-w-[240px] w-full lg:w-auto">
-                      <div className="max-lg:hidden h-10 w-10 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center shadow-sm flex-shrink-0 mr-3">
-                        <StickyNote className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                      </div>
-                      <div className="min-w-0 overflow-hidden flex flex-col items-center lg:items-start">
-                        <p className="text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0 lg:truncate text-center lg:text-left">
-                          {formatDisplayText(nota.usuario_nombre)} {formatDisplayText(nota.usuario_apellido)}
-                          {nota.especialidad && (
-                            <span className="font-normal text-[#6B7280] lg:hidden"> — {formatDisplayText(nota.especialidad)}</span>
-                          )}
-                        </p>
-                        {nota.especialidad && (
-                          <p className="hidden lg:block text-[14px] text-[#6B7280] font-['Inter'] mb-0 truncate">
-                            {formatDisplayText(nota.especialidad)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {/* Renglón 2 mobile / Col 2 desktop: Fecha */}
-                    <div className="w-full lg:flex-1 flex justify-center min-w-0">
-                      <p className="text-[14px] text-[#6B7280] font-['Inter'] whitespace-nowrap mb-0 text-center">
-                        {nota.fecha_creacion ? formatEvolucionDateTime(nota.fecha_creacion) : '—'}
-                      </p>
-                    </div>
-                    {/* Renglón 3 mobile / Col 3 desktop: Acciones */}
-                    <div className="flex items-center justify-center lg:justify-end gap-2 flex-shrink-0">
-                      {canUpdate && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                onClick={() => handleEdit(nota)}
-                                variant="ghost"
-                                size="icon"
-                                className="h-10 w-10 rounded-[8px] hover:bg-[#F3F4F6]"
-                              >
-                                <Edit className="h-5 w-5 text-[#6B7280] stroke-[2]" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                              <p className="text-white">Editar</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {notasPaginadas.map((nota) => (
+            <Card key={nota.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200 flex flex-col w-full">
+              <CardContent className="p-4 flex flex-col flex-1 min-h-0">
+                {/* Ícono arriba a la izquierda + nombre/especialidad y acciones */}
+                <div className="flex items-start gap-3 flex-shrink-0">
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center flex-shrink-0">
+                    <StickyNote className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-[#111827] font-['Inter'] mb-0 truncate">
+                      {formatDisplayText(nota.usuario_nombre)} {formatDisplayText(nota.usuario_apellido)}
+                      {nota.especialidad && (
+                        <span className="font-normal text-[#6B7280]"> — {formatDisplayText(nota.especialidad)}</span>
                       )}
-                      {canDelete && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                onClick={() => handleDelete(nota)}
-                                variant="ghost"
-                                size="icon"
-                                className="h-10 w-10 rounded-[8px] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
-                              >
-                                <Trash2 className="h-5 w-5 text-[#EF4444] stroke-[2]" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                              <p className="text-white">Eliminar</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
+                    </p>
+                    <p className="text-[13px] text-[#6B7280] font-['Inter'] mt-0.5 mb-0">
+                      {nota.fecha_creacion ? formatEvolucionDateTime(nota.fecha_creacion) : '—'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => handleView(nota)}
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6]"
+                          >
+                            <Eye className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                          <p className="text-white">Ver</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {canUpdate && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              onClick={() => handleEdit(nota)}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6]"
+                            >
+                              <Edit className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                            <p className="text-white">Editar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {canDelete && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              onClick={() => handleDelete(nota)}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-[8px] hover:bg-[#FEE2E2] hover:text-[#DC2626]"
+                            >
+                              <Trash2 className="h-4 w-4 text-[#EF4444] stroke-[2]" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                            <p className="text-white">Eliminar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-[#E5E7EB]">
+                <div className="mt-4 pt-4 border-t border-[#E5E7EB] flex-1 min-h-[140px]">
                   <p className="text-[15px] text-[#374151] font-['Inter'] whitespace-pre-wrap leading-relaxed">
                     {nota.contenido}
                   </p>
@@ -531,6 +577,36 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
               </CardContent>
             </Card>
           ))}
+          </div>
+          {(totalPagesNotas >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border border-[#E5E7EB] border-t-0 rounded-b-[16px] bg-[#F9FAFB]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {pageNotas} de {totalPagesNotas || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageNotas((p) => Math.max(1, p - 1))}
+                  disabled={pageNotas <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageNotas((p) => Math.min(totalPagesNotas, p + 1))}
+                  disabled={pageNotas >= totalPagesNotas}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -557,6 +633,13 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
         isSubmitting={isSubmitting}
       />
 
+      {selectedNota && (
+        <ViewNotaModal
+          open={showViewModal}
+          onOpenChange={setShowViewModal}
+          nota={selectedNota}
+        />
+      )}
       {selectedNota && (
         <EditNotaModal
           open={showEditModal}

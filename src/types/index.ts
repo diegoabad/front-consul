@@ -42,6 +42,7 @@ export interface Paciente {
   direccion?: string;
   obra_social?: string;
   numero_afiliado?: string;
+  plan?: string;
   contacto_emergencia_nombre?: string;
   contacto_emergencia_telefono?: string;
   activo: boolean;

@@ -44,6 +44,7 @@ import { formatDisplayText } from '@/lib/utils';
 import { CreateAgendaModal, GestionarAgendaModal } from '@/pages/Agendas/modals';
 
 const estadoOptions = [
+  { value: 'activos', label: 'Todos (excepto cancelados)' },
   { value: 'todos', label: 'Todos los estados' },
   { value: 'pendiente', label: 'Pendiente' },
   { value: 'confirmado', label: 'Confirmados' },
@@ -157,7 +158,7 @@ function generarOpcionesHora(inicio: string, finExcl: string, pasoMinutos: numbe
 export default function AdminTurnos() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [estadoFilter, setEstadoFilter] = useState('todos');
+  const [estadoFilter, setEstadoFilter] = useState('activos');
   const [profesionalFilter, setProfesionalFilter] = useState('');
   const [fechaFilter, setFechaFilter] = useState<string>('');
   const [calendarViewMonth, setCalendarViewMonth] = useState<Date>(() => startOfMonth(new Date()));
@@ -316,7 +317,7 @@ export default function AdminTurnos() {
   // Fetch turnos con filtros
   const filters = useMemo(() => {
     const f: Record<string, string | undefined> = {};
-    if (estadoFilter && estadoFilter !== 'todos') {
+    if (estadoFilter && estadoFilter !== 'todos' && estadoFilter !== 'activos') {
       f.estado = estadoFilter;
     }
     if (profesionalFilter) {
@@ -338,11 +339,14 @@ export default function AdminTurnos() {
     enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
   });
 
-  // Sin profesional seleccionado no se muestran turnos (aunque el backend pudiera devolverlos)
-  const filteredTurnos = useMemo(
-    () => (profesionalFilter ? turnos : []),
-    [profesionalFilter, turnos]
-  );
+  // Sin profesional seleccionado no se muestran turnos (aunque el backend pudiera devolverlos). Si estado = activos, excluir cancelados.
+  const filteredTurnos = useMemo(() => {
+    if (!profesionalFilter) return [];
+    if (estadoFilter === 'activos') {
+      return turnos.filter((t) => t.estado !== 'cancelado');
+    }
+    return turnos;
+  }, [profesionalFilter, turnos, estadoFilter]);
 
   // Turnos del día seleccionado en el modal de crear (para mostrar Bloqueado/Ocupado y validar sobreturno)
   const filtersCreateDay = useMemo(() => {
@@ -1744,8 +1748,8 @@ export default function AdminTurnos() {
               </div>
                 );
               })()}
-              {/* En mobile: Bloquear / Habilitar día / Eliminar fecha como texto debajo del título */}
-              {profesionalFilter && fechaFilter && !sinAgendaDelProfesional && (
+              {/* En mobile: Habilitar y Bloquear siempre cuando hay agenda; Deshabilitar día solo con día seleccionado */}
+              {profesionalFilter && !sinAgendaDelProfesional && (
                 <div className="max-lg:flex max-lg:flex-wrap max-lg:gap-x-4 max-lg:gap-y-1 lg:hidden">
                   <button
                     type="button"
@@ -1755,7 +1759,7 @@ export default function AdminTurnos() {
                   >
                     {bloquesDelDiaListado.length > 0 ? (deleteBloqueMutation.isPending ? 'Desbloqueando...' : 'Desbloquear') : 'Bloquear'}
                   </button>
-                  {excepcionDelDiaSeleccionado ? (
+                  {fechaFilter && excepcionDelDiaSeleccionado ? (
                     <button
                       type="button"
                       onClick={handleEliminarFechaEspecial}
@@ -1851,7 +1855,7 @@ export default function AdminTurnos() {
                       <TableCell className="py-3 w-[38%] min-w-[200px]">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-[#374151] font-['Inter'] text-[14px] truncate block">
-                            {turno.paciente_nombre} {turno.paciente_apellido}
+                            {formatDisplayText(turno.paciente_nombre)} {formatDisplayText(turno.paciente_apellido)}
                             {turno.paciente_dni ? ` (${formatDni(turno.paciente_dni)})` : ''}
                           </span>
                           {turno.sobreturno && (
@@ -2391,6 +2395,7 @@ export default function AdminTurnos() {
                     value={diaPuntualForm.fecha}
                     onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
                     placeholder="Seleccionar fecha"
+                    min={format(new Date(), 'yyyy-MM-dd')}
                     className="h-[52px] max-lg:h-10 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                     open={diaPuntualDatePickerOpen}
                     onOpenChange={setDiaPuntualDatePickerOpen}
@@ -2425,8 +2430,17 @@ export default function AdminTurnos() {
                 type="number"
                 min={5}
                 max={480}
-                value={diaPuntualForm.duracion_turno_minutos ?? 30}
-                onChange={(e) => setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
+                placeholder="30"
+                value={diaPuntualForm.duracion_turno_minutos != null ? diaPuntualForm.duracion_turno_minutos : ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: undefined }));
+                    return;
+                  }
+                  const n = parseInt(raw, 10);
+                  if (!Number.isNaN(n)) setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: n }));
+                }}
                 className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
               />
             </div>
@@ -2437,7 +2451,15 @@ export default function AdminTurnos() {
             </Button>
             <Button
               className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 max-lg:w-full"
-              disabled={createExcepcionMutation.isPending || !diaPuntualForm.profesional_id || !diaPuntualForm.fecha}
+              disabled={
+                createExcepcionMutation.isPending ||
+                !diaPuntualForm.profesional_id ||
+                !diaPuntualForm.fecha ||
+                (diaPuntualForm.fecha ? isBefore(startOfDay(new Date(diaPuntualForm.fecha + 'T12:00:00')), startOfDay(new Date())) : false) ||
+                diaPuntualForm.duracion_turno_minutos == null ||
+                diaPuntualForm.duracion_turno_minutos < 5 ||
+                diaPuntualForm.duracion_turno_minutos > 480
+              }
               onClick={() => {
                 const { profesional_id, fecha, hora_inicio, hora_fin, duracion_turno_minutos } = diaPuntualForm;
                 createExcepcionMutation.mutate({
@@ -2914,7 +2936,7 @@ export default function AdminTurnos() {
                 <div className="space-y-2">
                   <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Paciente</Label>
                   <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
-                    {selectedTurno.paciente_nombre} {selectedTurno.paciente_apellido}
+                    {formatDisplayText(selectedTurno.paciente_nombre)} {formatDisplayText(selectedTurno.paciente_apellido)}
                     {selectedTurno.paciente_dni ? ` (${formatDni(selectedTurno.paciente_dni)})` : ''}
                   </div>
                 </div>
@@ -2977,7 +2999,7 @@ export default function AdminTurnos() {
         open={showDeleteTurnoModal}
         onOpenChange={(open) => { setShowDeleteTurnoModal(open); if (!open) setTurnoToDelete(null); }}
         title="Eliminar Turno"
-        description={<>¿Estás seguro de que deseas eliminar el turno de <span className="font-semibold text-[#374151]">{turnoToDelete?.paciente_nombre} {turnoToDelete?.paciente_apellido}</span>? Esta acción no se puede deshacer.</>}
+        description={<>¿Estás seguro de que deseas eliminar el turno de <span className="font-semibold text-[#374151]">{formatDisplayText(turnoToDelete?.paciente_nombre)} {formatDisplayText(turnoToDelete?.paciente_apellido)}</span>? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDeleteTurno}
         isLoading={deleteMutation.isPending}
       />
@@ -3005,7 +3027,7 @@ export default function AdminTurnos() {
             {selectedTurno && (
               <div className="p-4 bg-[#F9FAFB] rounded-[12px] border border-[#E5E7EB]">
                 <p className="font-medium text-[#374151] font-['Inter'] text-[15px]">
-                  {selectedTurno.paciente_nombre} {selectedTurno.paciente_apellido}
+                  {formatDisplayText(selectedTurno.paciente_nombre)} {formatDisplayText(selectedTurno.paciente_apellido)}
                 </p>
                 <p className="text-sm text-[#6B7280] font-['Inter'] mt-1">
                   {format(new Date(selectedTurno.fecha_hora_inicio), "dd 'de' MMMM 'de' yyyy 'a las' HH:mm", {

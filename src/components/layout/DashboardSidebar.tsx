@@ -64,7 +64,6 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
     beforeSeparator: [
       { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
-      { title: 'Agendas', url: '/agendas', icon: Calendar },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
     ],
     afterSeparator: [],

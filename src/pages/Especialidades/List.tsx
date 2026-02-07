@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { GraduationCap, Plus, Pencil, Lock, Unlock, Trash2, Loader2, Search } from 'lucide-react';
+import { GraduationCap, Plus, Pencil, Lock, Unlock, Trash2, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import {
   especialidadesService,
@@ -29,10 +29,12 @@ import {
   type CreateEspecialidadData,
   type UpdateEspecialidadData,
 } from '@/services/especialidades.service';
+import { PAGE_SIZE } from '@/lib/constants';
 
 export default function AdminEspecialidades() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -42,16 +44,26 @@ export default function AdminEspecialidades() {
   const [createData, setCreateData] = useState<CreateEspecialidadData>({ nombre: '' });
   const [editData, setEditData] = useState<UpdateEspecialidadData>({ nombre: '', activo: true });
 
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ['especialidades', true],
-    queryFn: () => especialidadesService.getAll(true),
+  const effectiveSearch = search.trim().length >= 3 ? search.trim() : '';
+
+  const { data: paginatedResponse, isLoading } = useQuery({
+    queryKey: ['especialidades', 'paginated', page, effectiveSearch],
+    queryFn: () =>
+      especialidadesService.getAllPaginated({
+        page,
+        limit: PAGE_SIZE,
+        includeInactive: true,
+        q: effectiveSearch || undefined,
+      }),
   });
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return items;
-    const s = search.toLowerCase();
-    return items.filter((e) => e.nombre.toLowerCase().includes(s));
-  }, [items, search]);
+  const items = paginatedResponse?.data ?? [];
+  const total = paginatedResponse?.total ?? 0;
+  const totalPages = paginatedResponse?.totalPages ?? 0;
+
+  useEffect(() => {
+    setPage(1);
+  }, [effectiveSearch]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateEspecialidadData) => especialidadesService.create(data),
@@ -179,7 +191,7 @@ data: {
             Especialidades Médicas
           </h1>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
-            {isLoading ? 'Cargando...' : `${filtered.length} ${filtered.length === 1 ? 'especialidad registrada' : 'especialidades registradas'}`}
+            {isLoading ? 'Cargando...' : totalPages > 0 ? `Mostrando ${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, total)} de ${total} especialidades` : `${total} ${total === 1 ? 'especialidad registrada' : 'especialidades registradas'}`}
           </p>
         </div>
         <Button
@@ -194,13 +206,13 @@ data: {
       {/* Filtros */}
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
         <CardContent className="p-6">
-          <div className="relative max-w-md">
+          <div className="relative w-full min-w-0">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#9CA3AF] stroke-[2]" />
             <Input
               placeholder="Buscar por nombre o descripción..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-[#2563eb]/20 transition-all duration-200"
+              className="pl-12 h-12 w-full min-w-0 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-[#2563eb]/20 transition-all duration-200"
             />
           </div>
         </CardContent>
@@ -214,7 +226,7 @@ data: {
             <p className="text-[#6B7280] font-['Inter'] text-base">Cargando especialidades...</p>
           </CardContent>
         </Card>
-      ) : filtered.length === 0 ? (
+      ) : items.length === 0 ? (
         <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -224,11 +236,11 @@ data: {
               No hay especialidades
             </h3>
             <p className="text-[#6B7280] mb-6 font-['Inter']">
-              {items.length === 0
+              {total === 0 && search.trim().length < 3
                 ? 'Comienza agregando tu primera especialidad médica'
                 : 'No se encontraron especialidades con la búsqueda aplicada'}
             </p>
-            {items.length === 0 && (
+            {total === 0 && search.trim().length < 3 && (
               <Button
                 onClick={() => setShowCreateModal(true)}
                 className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
@@ -256,7 +268,7 @@ data: {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((item) => (
+              {items.map((item) => (
                 <TableRow
                   key={item.id}
                   className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
@@ -341,6 +353,35 @@ data: {
               ))}
             </TableBody>
           </Table>
+          {(totalPages >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {page} de {totalPages || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

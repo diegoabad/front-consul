@@ -26,6 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { UploadArchivoModal, ViewImageModal } from './modals';
+import { PAGE_SIZE } from '@/lib/constants';
 
 interface PacienteArchivosProps {
   pacienteId: string;
@@ -123,6 +124,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   const [filterProfesionalId, setFilterProfesionalId] = useState<string>('todos');
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
+  const [pageArchivos, setPageArchivos] = useState(1);
 
   const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
@@ -136,15 +138,16 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   const datePickerHastaRef = useRef<HTMLDivElement>(null);
 
   // Obtener el profesional asociado al usuario logueado si es profesional
-  const { data: profesionales = [] } = useQuery({
+  const { data: profesionalesData = [] } = useQuery({
     queryKey: ['profesionales', 'for-filter-archivos'],
     queryFn: () => profesionalesService.getAll({ bloqueado: false }),
   });
+  const profesionales = Array.isArray(profesionalesData) ? profesionalesData : [];
 
   const profesionalLogueado = profesionales.find((p: Profesional) => p.usuario_id === user?.id);
   const isProfesional = user?.rol === 'profesional';
 
-  const { data: archivos = [], isLoading } = useQuery({
+  const { data: archivosData = [], isLoading } = useQuery({
     queryKey: ['archivos', 'paciente', pacienteId, profesionalLogueado?.id],
     queryFn: () => {
       // Si es profesional, filtrar por profesional_id
@@ -159,6 +162,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
     },
     enabled: !isProfesional || !!profesionalLogueado,
   });
+  const archivos = Array.isArray(archivosData) ? archivosData : [];
 
   const sortedArchivos = useMemo(() => {
     return [...archivos].sort((a, b) => {
@@ -184,10 +188,30 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
     return list;
   }, [sortedArchivos, filterProfesionalId, filterFechaDesde, filterFechaHasta]);
 
+  const totalArchivos = filteredArchivos.length;
+  const totalPagesArchivos = Math.ceil(totalArchivos / PAGE_SIZE) || 0;
+  const archivosPaginados = useMemo(() => {
+    const start = (pageArchivos - 1) * PAGE_SIZE;
+    return filteredArchivos.slice(start, start + PAGE_SIZE);
+  }, [filteredArchivos, pageArchivos]);
+
+  useEffect(() => {
+    setPageArchivos(1);
+  }, [filterProfesionalId, filterFechaDesde, filterFechaHasta]);
+
   const profesionalesEnArchivos = useMemo(() => {
     const ids = new Set(archivos.map((a) => a.profesional_id));
     return profesionales.filter((p) => ids.has(p.id));
   }, [archivos, profesionales]);
+
+  // Opciones del filtro: si es profesional logueado, siempre incluir su nombre (aunque no tenga archivos)
+  const opcionesFiltroProfesional = useMemo(() => {
+    const list = [...profesionalesEnArchivos];
+    if (isProfesional && profesionalLogueado && !list.some((p) => p.id === profesionalLogueado.id)) {
+      list.unshift(profesionalLogueado);
+    }
+    return list;
+  }, [profesionalesEnArchivos, isProfesional, profesionalLogueado]);
 
   useEffect(() => {
     if (!datePickerDesdeOpen) return;
@@ -369,7 +393,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
                   <SelectItem value="todos">Todos los profesionales</SelectItem>
-                  {profesionalesEnArchivos.map((p) => (
+                  {opcionesFiltroProfesional.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
                       {p.especialidad ? ` — ${formatDisplayText(p.especialidad)}` : ''}
@@ -481,8 +505,9 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-lg:gap-5">
-          {filteredArchivos.map((archivo) => (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-lg:gap-5">
+            {archivosPaginados.map((archivo) => (
             <Card key={archivo.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden w-full max-w-[360px] max-lg:max-w-none">
               <CardContent className="p-4 max-lg:p-5">
                 {/* Imagen o Icono */}
@@ -593,6 +618,36 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
               </CardContent>
             </Card>
           ))}
+          </div>
+          {(totalPagesArchivos >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border border-[#E5E7EB] border-t-0 rounded-b-[16px] bg-[#F9FAFB]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {pageArchivos} de {totalPagesArchivos || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageArchivos((p) => Math.max(1, p - 1))}
+                  disabled={pageArchivos <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageArchivos((p) => Math.min(totalPagesArchivos, p + 1))}
+                  disabled={pageArchivos >= totalPagesArchivos}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

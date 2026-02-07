@@ -6,5 +6,6 @@ export { ViewEvolucionModal } from './ViewEvolucionModal';
 export { NotaModal } from './NotaModal';
 export { CreateNotaModal } from './CreateNotaModal';
 export { EditNotaModal } from './EditNotaModal';
+export { ViewNotaModal } from './ViewNotaModal';
 export { UploadArchivoModal } from './UploadArchivoModal';
 export { ViewImageModal } from './ViewImageModal';

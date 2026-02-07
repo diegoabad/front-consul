@@ -8,6 +8,19 @@ export interface PagoFilters {
   periodo_hasta?: string; // Date ISO string
 }
 
+export interface PaginatedPagosResponse {
+  data: Pago[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface PagoFiltersPaginated extends PagoFilters {
+  page?: number;
+  limit?: number;
+}
+
 export interface CreatePagoData {
   profesional_id: string;
   periodo: string; // Date ISO string (YYYY-MM-DD)
@@ -52,6 +65,25 @@ export const pagosService = {
     );
     const data = getData(response);
     return data || [];
+  },
+
+  /**
+   * Obtener pagos con paginación y filtros
+   */
+  getAllPaginated: async (filters?: PagoFiltersPaginated): Promise<PaginatedPagosResponse> => {
+    const params = new URLSearchParams();
+    if (filters?.page != null) params.set('page', String(filters.page));
+    if (filters?.limit != null) params.set('limit', String(filters.limit));
+    if (filters?.profesional_id) params.set('profesional_id', filters.profesional_id);
+    if (filters?.estado) params.set('estado', filters.estado);
+    if (filters?.periodo_desde) params.set('periodo_desde', filters.periodo_desde);
+    if (filters?.periodo_hasta) params.set('periodo_hasta', filters.periodo_hasta);
+    const qs = params.toString();
+    const response = await api.get<ApiResponse<PaginatedPagosResponse>>(
+      `/pagos${qs ? `?${qs}` : ''}`
+    );
+    const data = getData(response);
+    return data ?? { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
   },
 
   /**

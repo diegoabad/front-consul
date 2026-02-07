@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,9 +25,10 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { formatDisplayText } from '@/lib/utils';
+import { PAGE_SIZE } from '@/lib/constants';
 import {
   Search, Plus, Eye, Edit, Trash2,
-  User, Loader2, UserCheck, UserX, UserPlus
+  User, Loader2, UserCheck, UserX, UserPlus, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import {
   Tooltip,
@@ -56,6 +57,8 @@ export default function AdminPacientes() {
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const limit = PAGE_SIZE;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -85,29 +88,30 @@ export default function AdminPacientes() {
     enabled: isProfesional && Boolean(user?.id),
   });
 
-  // Fetch pacientes
-  const { data: pacientes = [], isLoading } = useQuery({
-    queryKey: ['pacientes'],
+  // Solo buscar cuando hay al menos 3 caracteres; si hay menos, no enviar filtro
+  const effectiveSearchTerm = searchTerm.trim().length >= 3 ? searchTerm.trim() : '';
+
+  // Reset page when search term that triggers search changes
+  useEffect(() => {
+    setPage(1);
+  }, [effectiveSearchTerm]);
+
+  // Fetch pacientes paginados (filtros en backend); la búsqueda solo se aplica con 3+ letras
+  const { data: paginatedResponse, isLoading } = useQuery({
+    queryKey: ['pacientes', page, limit, effectiveSearchTerm],
     queryFn: async () => {
-      return pacientesService.getAll();
+      return pacientesService.getAll({
+        page,
+        limit,
+        q: effectiveSearchTerm || undefined,
+      });
     },
   });
 
-  // Filter pacientes
-  const filteredPacientes = useMemo(() => {
-    let result = pacientes;
-
-    if (searchTerm && searchTerm.length >= 2) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(p =>
-        `${p.nombre} ${p.apellido}`.toLowerCase().includes(term) ||
-        p.dni.includes(term) ||
-        p.email?.toLowerCase().includes(term)
-      );
-    }
-
-    return result;
-  }, [pacientes, searchTerm]);
+  const pacientes = Array.isArray(paginatedResponse?.data) ? paginatedResponse.data : [];
+  const total = paginatedResponse?.total ?? 0;
+  const totalPages = paginatedResponse?.totalPages ?? 0;
+  const filteredPacientes = pacientes;
 
   // Create mutation
   const createMutation = useMutation({
@@ -126,11 +130,6 @@ export default function AdminPacientes() {
       }
       // Cerrar modal primero
       setShowCreateModal(false);
-      // Actualizar el cache directamente agregando el nuevo paciente
-      queryClient.setQueryData<Paciente[]>(['pacientes'], (oldData = []) => {
-        return [...oldData, newPaciente];
-      });
-      // Invalidar para asegurar que los datos estén sincronizados
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       reactToastify.success('Paciente creado correctamente', {
         position: 'top-right',
@@ -165,11 +164,8 @@ export default function AdminPacientes() {
     onSuccess: async (updatedPaciente) => {
       setShowEditModal(false);
       setSelectedPaciente(null);
-      // Actualizar el cache directamente
-      queryClient.setQueryData<Paciente[]>(['pacientes'], (oldData = []) => {
-        return oldData.map(p => p.id === updatedPaciente.id ? updatedPaciente : p);
-      });
-      // Invalidar para asegurar sincronización
+      // Actualizar cache del paciente individual (para que al abrir la ficha o editar de nuevo se vean los datos)
+      queryClient.setQueryData(['paciente', updatedPaciente.id], updatedPaciente);
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       reactToastify.success('Paciente actualizado correctamente', {
         position: 'top-right',
@@ -203,14 +199,8 @@ export default function AdminPacientes() {
       await pacientesService.delete(id);
       return id; // Retornar el id para usarlo en onSuccess
     },
-    onSuccess: async (deletedId) => {
-      // Actualizar el cache directamente removiendo el paciente
-      queryClient.setQueryData<Paciente[]>(['pacientes'], (oldData = []) => {
-        return oldData.filter(p => p.id !== deletedId);
-      });
-      // Invalidar y refetch para asegurar sincronización
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      await queryClient.refetchQueries({ queryKey: ['pacientes'] });
       reactToastify.success('Paciente eliminado correctamente', {
         position: 'top-right',
         autoClose: 3000,
@@ -228,10 +218,7 @@ export default function AdminPacientes() {
 
   const activateMutation = useMutation({
     mutationFn: (id: string) => pacientesService.activate(id),
-    onSuccess: async (updatedPaciente) => {
-      queryClient.setQueryData<Paciente[]>(['pacientes'], (oldData = []) => {
-        return oldData.map(p => p.id === updatedPaciente.id ? updatedPaciente : p);
-      });
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       setShowActivateModal(false);
       setPacienteToActivate(null);
@@ -252,10 +239,7 @@ export default function AdminPacientes() {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => pacientesService.deactivate(id),
-    onSuccess: async (updatedPaciente) => {
-      queryClient.setQueryData<Paciente[]>(['pacientes'], (oldData = []) => {
-        return oldData.map(p => p.id === updatedPaciente.id ? updatedPaciente : p);
-      });
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       setShowDeactivateModal(false);
       setPacienteToDeactivate(null);
@@ -325,17 +309,19 @@ export default function AdminPacientes() {
   const canDeactivate = hasPermission(user, 'pacientes.desactivar');
   const canAsignarProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
 
-  const { data: asignacionesLista = [], isFetched: asignacionesListaFetched } = useQuery({
+  const { data: asignacionesListaData = [], isFetched: asignacionesListaFetched } = useQuery({
     queryKey: ['paciente-asignaciones', pacienteForAsignar?.id],
     queryFn: () => pacientesService.getAsignaciones(pacienteForAsignar!.id),
     enabled: !!showAsignarModal && !!pacienteForAsignar?.id,
   });
+  const asignacionesLista = Array.isArray(asignacionesListaData) ? asignacionesListaData : [];
 
-  const { data: profesionalesLista = [] } = useQuery({
+  const { data: profesionalesListaData = [] } = useQuery({
     queryKey: ['profesionales-list'],
     queryFn: () => profesionalesService.getAll({ activo: true }),
     enabled: showAsignarModal,
   });
+  const profesionalesLista = Array.isArray(profesionalesListaData) ? profesionalesListaData : [];
 
   // Al abrir el modal (desde icono de acciones o de otro lado), sincronizar draft cuando lleguen las asignaciones
   useEffect(() => {
@@ -387,7 +373,7 @@ export default function AdminPacientes() {
             Pacientes
           </h1>
           <p className="text-base max-lg:text-sm text-[#6B7280] mt-2 font-['Inter']">
-            {isLoading ? 'Cargando...' : `${filteredPacientes.length} ${filteredPacientes.length === 1 ? 'paciente registrado' : 'pacientes registrados'}`}
+            {isLoading ? 'Cargando...' : totalPages > 0 ? `Mostrando ${(page - 1) * limit + 1}-${Math.min(page * limit, total)} de ${total} pacientes` : `${total} ${total === 1 ? 'paciente' : 'pacientes'}`}
           </p>
         </div>
         {canCreate && (
@@ -419,15 +405,8 @@ export default function AdminPacientes() {
         </CardContent>
       </Card>
 
-      {/* Tabla / Empty States */}
-      {isLoading ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
-          <CardContent className="p-16 text-center">
-            <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
-            <p className="text-[#6B7280] font-['Inter'] text-base">Cargando pacientes...</p>
-          </CardContent>
-        </Card>
-      ) : filteredPacientes.length === 0 ? (
+      {/* Tabla / Empty States - filtros y header siempre visibles; carga solo en la tabla */}
+      {!isLoading && filteredPacientes.length === 0 ? (
         <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -437,9 +416,9 @@ export default function AdminPacientes() {
               No hay pacientes
             </h3>
             <p className="text-[#6B7280] mb-6 font-['Inter']">
-              {searchTerm ? 'No se encontraron pacientes con los filtros aplicados' : 'Comienza agregando tu primer paciente'}
+              {searchTerm.trim().length >= 3 ? 'No se encontraron pacientes con los filtros aplicados' : 'Comienza agregando tu primer paciente'}
             </p>
-            {canCreate && !searchTerm && (
+            {canCreate && searchTerm.trim().length < 3 && (
               <Button
                 onClick={() => setShowCreateModal(true)}
                 className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
@@ -484,7 +463,15 @@ export default function AdminPacientes() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPacientes.map((paciente) => (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={isProfesional ? 6 : 7} className="py-16 text-center">
+                      <Loader2 className="h-10 w-10 animate-spin mx-auto mb-2 text-[#2563eb]" />
+                      <p className="text-[#6B7280] font-['Inter'] text-sm m-0">Cargando pacientes...</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                filteredPacientes.map((paciente) => (
                   <TableRow
                     key={paciente.id}
                     className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
@@ -525,7 +512,7 @@ export default function AdminPacientes() {
                   )}
                   <TableCell>
                     <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium">
-                      {paciente.obra_social || 'Sin cobertura'}
+                      {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : 'Sin cobertura'}
                     </Badge>
                   </TableCell>
                   {!isProfesional && (
@@ -664,10 +651,40 @@ export default function AdminPacientes() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+                )}
             </TableBody>
           </Table>
           </div>
+          {(totalPages >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                Página {page} de {totalPages || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

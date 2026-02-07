@@ -8,6 +8,22 @@ export interface ProfesionalFilters {
   estado_pago?: 'al_dia' | 'pendiente' | 'moroso';
 }
 
+export interface ProfesionalFiltersPaginated extends ProfesionalFilters {
+  page?: number;
+  limit?: number;
+  /** Filtrar por un único profesional (id) */
+  id?: string;
+  tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
+}
+
+export interface PaginatedProfesionalesResponse {
+  data: Profesional[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface CreateProfesionalData {
   usuario_id: string;
   matricula?: string;
@@ -52,6 +68,27 @@ export const profesionalesService = {
     );
     const data = getData(response);
     return data || [];
+  },
+
+  /**
+   * Obtener profesionales con paginación y filtros (para Contratos)
+   */
+  getAllPaginated: async (filters?: ProfesionalFiltersPaginated): Promise<PaginatedProfesionalesResponse> => {
+    const params = new URLSearchParams();
+    if (filters?.page !== undefined) params.append('page', String(filters.page));
+    if (filters?.limit !== undefined) params.append('limit', String(filters.limit));
+    if (filters?.activo !== undefined) params.append('activo', String(filters.activo));
+    if (filters?.bloqueado !== undefined) params.append('bloqueado', String(filters.bloqueado));
+    if (filters?.especialidad) params.append('especialidad', filters.especialidad);
+    if (filters?.estado_pago) params.append('estado_pago', filters.estado_pago);
+    if (filters?.id) params.append('id', filters.id);
+    if (filters?.tipo_periodo_pago) params.append('tipo_periodo_pago', filters.tipo_periodo_pago);
+
+    const response = await api.get<ApiResponse<PaginatedProfesionalesResponse>>(
+      `/profesionales${params.toString() ? `?${params.toString()}` : ''}`
+    );
+    const data = getData(response);
+    return data ?? { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
   },
 
   /**

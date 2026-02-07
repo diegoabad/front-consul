@@ -2,8 +2,19 @@ import api, { getData } from './api';
 import type { User, ApiResponse } from '@/types';
 
 export interface UsuarioFilters {
+  page?: number;
+  limit?: number;
+  q?: string;
   rol?: string;
   activo?: boolean;
+}
+
+export interface PaginatedUsuariosResponse {
+  data: User[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CreateUsuarioData {
@@ -25,22 +36,21 @@ export interface UpdatePasswordData {
 
 export const usuariosService = {
   /**
-   * Obtener todos los usuarios con filtros opcionales
+   * Obtener usuarios paginados con filtros (búsqueda y filtros en backend)
    */
-  getAll: async (filters?: UsuarioFilters): Promise<User[]> => {
+  getAll: async (filters?: UsuarioFilters): Promise<PaginatedUsuariosResponse> => {
     const params = new URLSearchParams();
-    if (filters?.rol) {
-      params.append('rol', filters.rol);
-    }
-    if (filters?.activo !== undefined) {
-      params.append('activo', filters.activo.toString());
-    }
+    if (filters?.page !== undefined) params.append('page', String(filters.page));
+    if (filters?.limit !== undefined) params.append('limit', String(filters.limit));
+    if (filters?.q?.trim()) params.append('q', filters.q.trim());
+    if (filters?.rol) params.append('rol', filters.rol);
+    if (filters?.activo !== undefined) params.append('activo', String(filters.activo));
 
-    const response = await api.get<ApiResponse<User[]>>(
+    const response = await api.get<ApiResponse<PaginatedUsuariosResponse>>(
       `/usuarios${params.toString() ? `?${params.toString()}` : ''}`
     );
     const data = getData(response);
-    return data || [];
+    return data ?? { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
   },
 
   /**

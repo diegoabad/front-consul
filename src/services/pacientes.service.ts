@@ -2,8 +2,19 @@ import api, { getData } from './api';
 import type { Paciente, ApiResponse } from '@/types';
 
 export interface PacienteFilters {
+  page?: number;
+  limit?: number;
+  q?: string;
   activo?: boolean;
   obra_social?: string;
+}
+
+export interface PaginatedPacientesResponse {
+  data: Paciente[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CreatePacienteData {
@@ -16,6 +27,7 @@ export interface CreatePacienteData {
   direccion?: string;
   obra_social?: string;
   numero_afiliado?: string;
+  plan?: string;
   contacto_emergencia_nombre?: string;
   contacto_emergencia_telefono?: string;
   activo?: boolean;
@@ -25,22 +37,21 @@ export interface UpdatePacienteData extends Partial<CreatePacienteData> {}
 
 export const pacientesService = {
   /**
-   * Obtener todos los pacientes con filtros opcionales
+   * Obtener pacientes paginados con filtros (búsqueda y filtros en backend)
    */
-  getAll: async (filters?: PacienteFilters): Promise<Paciente[]> => {
+  getAll: async (filters?: PacienteFilters): Promise<PaginatedPacientesResponse> => {
     const params = new URLSearchParams();
-    if (filters?.activo !== undefined) {
-      params.append('activo', filters.activo.toString());
-    }
-    if (filters?.obra_social) {
-      params.append('obra_social', filters.obra_social);
-    }
+    if (filters?.page !== undefined) params.append('page', String(filters.page));
+    if (filters?.limit !== undefined) params.append('limit', String(filters.limit));
+    if (filters?.q?.trim()) params.append('q', filters.q.trim());
+    if (filters?.activo !== undefined) params.append('activo', String(filters.activo));
+    if (filters?.obra_social) params.append('obra_social', filters.obra_social);
 
-    const response = await api.get<ApiResponse<Paciente[]>>(
+    const response = await api.get<ApiResponse<PaginatedPacientesResponse>>(
       `/pacientes${params.toString() ? `?${params.toString()}` : ''}`
     );
     const data = getData(response);
-    return data || [];
+    return data ?? { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
   },
 
   /**

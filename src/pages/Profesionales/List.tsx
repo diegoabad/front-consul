@@ -158,11 +158,12 @@ export default function AdminProfesionales() {
   });
 
   // Fetch usuarios con rol profesional para el select
-  const { data: usuariosProfesionales = [] } = useQuery({
+  const { data: usuariosProfesionalesResponse } = useQuery({
     queryKey: ['usuarios', 'profesional'],
     queryFn: () => usuariosService.getAll({ rol: 'profesional', activo: true }),
     enabled: showCreateModal || showEditModal,
   });
+  const usuariosProfesionales = Array.isArray(usuariosProfesionalesResponse?.data) ? usuariosProfesionalesResponse.data : [];
 
   const { data: especialidades = [] } = useQuery({
     queryKey: ['especialidades'],
@@ -829,7 +830,7 @@ export default function AdminProfesionales() {
                     <SelectValue placeholder="Seleccionar usuario con rol profesional" />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                    {usuariosProfesionales.map((usuario) => (
+                    {usuariosProfesionales.map((usuario: { id: string; nombre?: string; apellido?: string; email?: string }) => (
                       <SelectItem key={usuario.id} value={usuario.id} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                         {formatDisplayText(usuario.nombre)} {formatDisplayText(usuario.apellido)} ({usuario.email})
                       </SelectItem>

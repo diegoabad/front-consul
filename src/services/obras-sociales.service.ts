@@ -21,6 +21,21 @@ export interface UpdateObraSocialData extends Partial<CreateObraSocialData> {
   activo?: boolean;
 }
 
+export interface PaginatedObrasSocialesResponse {
+  data: ObraSocial[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface ObrasSocialesQueryParams {
+  page?: number;
+  limit?: number;
+  includeInactive?: boolean;
+  q?: string;
+}
+
 export const obrasSocialesService = {
   /**
    * Obtener todas las obras sociales activas
@@ -30,6 +45,24 @@ export const obrasSocialesService = {
     const response = await api.get<ApiResponse<ObraSocial[]>>(`/obras-sociales${params}`);
     const data = getData(response);
     return data || [];
+  },
+
+  /**
+   * Obtener obras sociales paginadas con filtros
+   */
+  getAllPaginated: async (params: ObrasSocialesQueryParams = {}): Promise<PaginatedObrasSocialesResponse> => {
+    const search = new URLSearchParams();
+    if (params.page != null) search.set('page', String(params.page));
+    if (params.limit != null) search.set('limit', String(params.limit));
+    if (params.includeInactive) search.set('includeInactive', 'true');
+    if (params.q?.trim()) search.set('q', params.q.trim());
+    const qs = search.toString();
+    const response = await api.get<ApiResponse<PaginatedObrasSocialesResponse>>(
+      `/obras-sociales${qs ? `?${qs}` : ''}`
+    );
+    const data = getData(response);
+    if (!data) return { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+    return data;
   },
 
   /**

@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { formatDisplayText } from '@/lib/utils';
-import { Calendar, Plus, Edit, Loader2, User } from 'lucide-react';
+import { Calendar, Plus, Edit, Loader2, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { agendaService } from '@/services/agenda.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { ConfiguracionAgenda } from '@/types';
@@ -30,6 +30,7 @@ import { toast as reactToastify } from 'react-toastify';
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
 import { formatTime, formatDiasYHorarios, getDiaSemanaLabel } from './utils';
 import { CreateAgendaModal, GestionarAgendaModal } from './modals';
+import { PAGE_SIZE } from '@/lib/constants';
 
 function getEstadoBadge(activo: boolean) {
   return activo ? (
@@ -57,6 +58,7 @@ export default function AdminAgendas() {
   const [agendaToDelete, setAgendaToDelete] = useState<ConfiguracionAgenda | null>(null);
   const [profesionalGestionar, setProfesionalGestionar] = useState<{ id: string; nombre: string; apellido: string } | null>(null);
   const [editingAgenda, setEditingAgenda] = useState<ConfiguracionAgenda | null>(null);
+  const [pageAgendas, setPageAgendas] = useState(1);
 
   // Queries
   const { data: profesionales = [], isLoading: loadingProfesionales } = useQuery({
@@ -159,6 +161,17 @@ export default function AdminAgendas() {
     return Array.from(byProf.values());
   }, [filteredAgendas, todasLasExcepciones, profesionales, isProfesional, profesionalLogueado]);
 
+  const totalAgendas = agendasPorProfesional.length;
+  const totalPagesAgendas = Math.ceil(totalAgendas / PAGE_SIZE) || 0;
+  const agendasPorProfesionalPaginado = useMemo(() => {
+    const start = (pageAgendas - 1) * PAGE_SIZE;
+    return agendasPorProfesional.slice(start, start + PAGE_SIZE);
+  }, [agendasPorProfesional, pageAgendas]);
+
+  useEffect(() => {
+    setPageAgendas(1);
+  }, [profesionalFilter]);
+
   // Profesional: fijar filtro a su propio profesional (solo hay uno en la lista)
   useEffect(() => {
     if (isProfesional && profesionales.length > 0 && profesionalFilter === 'todos') {
@@ -204,7 +217,7 @@ export default function AdminAgendas() {
             Agendas
           </h1>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
-            Horarios de trabajo por profesional
+            {loadingAgendas || loadingProfesionales ? 'Cargando...' : totalPagesAgendas > 0 ? `Mostrando ${(pageAgendas - 1) * PAGE_SIZE + 1}-${Math.min(pageAgendas * PAGE_SIZE, totalAgendas)} de ${totalAgendas} profesionales` : 'Horarios de trabajo por profesional'}
           </p>
         </div>
         <Button
@@ -248,7 +261,7 @@ export default function AdminAgendas() {
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando configuraciones...</p>
               </CardContent>
             </Card>
-          ) : agendasPorProfesional.length === 0 ? (
+          ) : totalAgendas === 0 ? (
             <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -292,7 +305,7 @@ export default function AdminAgendas() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {agendasPorProfesional.map((grupo) => (
+                  {agendasPorProfesionalPaginado.map((grupo) => (
                     <TableRow
                       key={grupo.profesional_id}
                       className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
@@ -377,6 +390,35 @@ export default function AdminAgendas() {
                   ))}
                 </TableBody>
               </Table>
+              {(totalPagesAgendas >= 1) && !isLoading && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+                  <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                    Página {pageAgendas} de {totalPagesAgendas || 1}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPageAgendas((p) => Math.max(1, p - 1))}
+                      disabled={pageAgendas <= 1}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPageAgendas((p) => Math.min(totalPagesAgendas, p + 1))}
+                      disabled={pageAgendas >= totalPagesAgendas}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 

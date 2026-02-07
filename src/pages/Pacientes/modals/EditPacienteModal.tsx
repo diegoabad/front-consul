@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -18,6 +18,7 @@ import { toast as reactToastify } from 'react-toastify';
 import type { CreatePacienteData } from '@/services/pacientes.service';
 import type { Paciente } from '@/types';
 import { obrasSocialesService } from '@/services/obras-sociales.service';
+import { formatDisplayText } from '@/lib/utils';
 
 interface EditPacienteModalProps {
   open: boolean;
@@ -45,6 +46,7 @@ export function EditPacienteModal({
     direccion: '',
     obra_social: '',
     numero_afiliado: '',
+    plan: '',
     contacto_emergencia_nombre: '',
     contacto_emergencia_telefono: '',
     activo: true,
@@ -55,11 +57,24 @@ export function EditPacienteModal({
   const [newObraSocialNombre, setNewObraSocialNombre] = useState('');
   const [isCreatingObraSocial, setIsCreatingObraSocial] = useState(false);
 
-  const { data: obrasSociales = [] } = useQuery({
+  const { data: obrasSocialesData } = useQuery({
     queryKey: ['obras-sociales'],
     queryFn: () => obrasSocialesService.getAll(),
     enabled: open,
   });
+  const obrasSociales = Array.isArray(obrasSocialesData) ? obrasSocialesData : [];
+
+  // Incluir la obra social del paciente en las opciones si no está en la lista (ej. guardada en minúsculas en BD)
+  const obrasSocialesOpciones = useMemo(() => {
+    const lista = [...obrasSociales];
+    const valorActual = formData.obra_social?.trim();
+    if (!valorActual) return lista;
+    const yaExiste = lista.some((os) => os.nombre.trim().toLowerCase() === valorActual.toLowerCase());
+    if (!yaExiste) {
+      lista.push({ id: '__actual__', nombre: valorActual, activo: true });
+    }
+    return lista;
+  }, [obrasSociales, formData.obra_social]);
 
   const handleCreateObraSocial = async () => {
     const nombre = newObraSocialNombre.trim();
@@ -83,6 +98,14 @@ export function EditPacienteModal({
     }
   };
 
+  // Normalizar obra_social al valor exacto de la lista (mismo texto que en el Select) para que quede seleccionada
+  const obraSocialInicial = useMemo(() => {
+    const valor = paciente?.obra_social?.trim();
+    if (!valor || obrasSociales.length === 0) return valor || '';
+    const match = obrasSociales.find((os) => (os.nombre || '').trim().toLowerCase() === valor.toLowerCase());
+    return match ? match.nombre : valor;
+  }, [paciente?.obra_social, obrasSociales]);
+
   useEffect(() => {
     if (paciente) {
       setFormData({
@@ -93,22 +116,28 @@ export function EditPacienteModal({
         telefono: paciente.telefono || '',
         email: paciente.email || '',
         direccion: paciente.direccion || '',
-        obra_social: paciente.obra_social || '',
+        obra_social: obraSocialInicial,
         numero_afiliado: paciente.numero_afiliado || '',
-        contacto_emergencia_nombre: paciente.contacto_emergencia_nombre || '',
+        plan: paciente.plan || '',
+        contacto_emergencia_nombre: paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : '',
         contacto_emergencia_telefono: paciente.contacto_emergencia_telefono || '',
         activo: paciente.activo,
       });
       setTieneCobertura(!!(paciente.obra_social?.trim() || paciente.numero_afiliado?.trim()));
       setTieneContactoEmergencia(!!(paciente.contacto_emergencia_nombre?.trim() || paciente.contacto_emergencia_telefono?.trim()));
     }
-  }, [paciente]);
+  }, [paciente, obraSocialInicial]);
 
   const handleSubmit = async () => {
     try {
       const telefonoTrim = formData.telefono?.trim();
       if (!telefonoTrim) {
         reactToastify.error('El teléfono es requerido', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+      const digitosTelefono = telefonoTrim.replace(/\D/g, '');
+      if (digitosTelefono.length < 6) {
+        reactToastify.error('El teléfono debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
         return;
       }
       if (tieneCobertura) {
@@ -130,6 +159,11 @@ export function EditPacienteModal({
           reactToastify.error('El teléfono de emergencia es requerido', { position: 'top-right', autoClose: 3000 });
           return;
         }
+        const digitosEmergencia = formData.contacto_emergencia_telefono.trim().replace(/\D/g, '');
+        if (digitosEmergencia.length < 6) {
+          reactToastify.error('El teléfono de emergencia debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
+          return;
+        }
       }
       const dataToSubmit: CreatePacienteData = {
         dni: formData.dni.trim(),
@@ -141,6 +175,7 @@ export function EditPacienteModal({
         direccion: formData.direccion?.trim() || undefined,
         obra_social: tieneCobertura ? (formData.obra_social?.trim() || undefined) : undefined,
         numero_afiliado: tieneCobertura ? (formData.numero_afiliado?.trim() || undefined) : undefined,
+        plan: formData.plan?.trim() || undefined,
         contacto_emergencia_nombre: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre?.trim() || undefined) : undefined,
         contacto_emergencia_telefono: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono?.trim() || undefined) : undefined,
         activo: formData.activo,
@@ -382,7 +417,7 @@ export function EditPacienteModal({
                           <SelectValue placeholder="Seleccionar obra social" />
                         </SelectTrigger>
                         <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                          {obrasSociales.map((os) => (
+                          {obrasSocialesOpciones.map((os) => (
                             <SelectItem key={os.id} value={os.nombre} className="rounded-[8px] font-['Inter'] text-[15px] py-3">
                               {os.nombre}
                             </SelectItem>
@@ -401,6 +436,19 @@ export function EditPacienteModal({
                       placeholder="Ej: 123456789"
                       value={formData.numero_afiliado}
                       onChange={(e) => setFormData({ ...formData, numero_afiliado: e.target.value })}
+                      autoComplete="off"
+                      className="h-[48px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] max-lg:rounded-[8px] text-[15px] max-lg:text-[14px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="edit-plan" className="text-[14px] font-medium text-[#374151] font-['Inter'] mb-0">
+                      Plan <span className="text-[#6B7280] font-normal">(opcional)</span>
+                    </Label>
+                    <Input
+                      id="edit-plan"
+                      placeholder="Ej: Plan 210, Plan familiar"
+                      value={formData.plan ?? ''}
+                      onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
                       autoComplete="off"
                       className="h-[48px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] max-lg:rounded-[8px] text-[15px] max-lg:text-[14px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                     />

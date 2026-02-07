@@ -49,6 +49,7 @@ const initialFormData: CreatePacienteData = {
   direccion: '',
   obra_social: '',
   numero_afiliado: '',
+  plan: '',
   contacto_emergencia_nombre: '',
   contacto_emergencia_telefono: '',
   activo: true,
@@ -90,11 +91,12 @@ export function CreatePacienteModal({
     }
   }, [open]);
 
-  const { data: obrasSociales = [] } = useQuery({
+  const { data: obrasSocialesData } = useQuery({
     queryKey: ['obras-sociales'],
     queryFn: () => obrasSocialesService.getAll(),
     enabled: open,
   });
+  const obrasSociales = Array.isArray(obrasSocialesData) ? obrasSocialesData : [];
 
   const handleCreateObraSocial = async () => {
     const nombre = newObraSocialNombre.trim();
@@ -125,6 +127,11 @@ export function CreatePacienteModal({
         reactToastify.error('El teléfono es requerido', { position: 'top-right', autoClose: 3000 });
         return;
       }
+      const digitosTelefono = telefonoTrim.replace(/\D/g, '');
+      if (digitosTelefono.length < 6) {
+        reactToastify.error('El teléfono debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
       if (tieneCobertura) {
         if (!formData.obra_social?.trim()) {
           reactToastify.error('Seleccione una obra social', { position: 'top-right', autoClose: 3000 });
@@ -144,6 +151,11 @@ export function CreatePacienteModal({
           reactToastify.error('El teléfono de emergencia es requerido', { position: 'top-right', autoClose: 3000 });
           return;
         }
+        const digitosEmergencia = formData.contacto_emergencia_telefono.trim().replace(/\D/g, '');
+        if (digitosEmergencia.length < 6) {
+          reactToastify.error('El teléfono de emergencia debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
+          return;
+        }
       }
       const dataToSubmit: CreatePacienteData = {
         dni: formData.dni.trim(),
@@ -155,6 +167,7 @@ export function CreatePacienteModal({
         direccion: formData.direccion?.trim() || undefined,
         obra_social: tieneCobertura ? (formData.obra_social?.trim() || undefined) : undefined,
         numero_afiliado: tieneCobertura ? (formData.numero_afiliado?.trim() || undefined) : undefined,
+        plan: formData.plan?.trim() || undefined,
         contacto_emergencia_nombre: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre?.trim() || undefined) : undefined,
         contacto_emergencia_telefono: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono?.trim() || undefined) : undefined,
         activo: formData.activo,
@@ -514,6 +527,19 @@ export function CreatePacienteModal({
                       placeholder="Ej: 123456789"
                       value={formData.numero_afiliado}
                       onChange={(e) => setFormData({ ...formData, numero_afiliado: e.target.value })}
+                      autoComplete="off"
+                      className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="plan" className="text-[14px] font-medium text-[#374151] font-['Inter'] mb-0">
+                      Plan <span className="text-[#6B7280] font-normal">(opcional)</span>
+                    </Label>
+                    <Input
+                      id="plan"
+                      placeholder="Ej: Plan 210, Plan familiar"
+                      value={formData.plan ?? ''}
+                      onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
                       autoComplete="off"
                       className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                     />
