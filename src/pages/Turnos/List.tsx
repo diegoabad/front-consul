@@ -311,6 +311,8 @@ export default function AdminTurnos() {
     }
   }, [isProfesional, profesionalFilter, loadingAgendasDelProfesional, agendasDelProfesional.length]);
 
+  const sinAgendaDelProfesional = Boolean(profesionalFilter && !loadingAgendasDelProfesional && agendasDelProfesional.length === 0);
+
   // Fetch turnos con filtros
   const filters = useMemo(() => {
     const f: Record<string, string | undefined> = {};
@@ -1442,7 +1444,7 @@ export default function AdminTurnos() {
                 type="button"
                 variant="outline"
                 onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
-                disabled={bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending}
+                disabled={sinAgendaDelProfesional || (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending)}
                 className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
               >
                 {bloquesDelDiaListado.length > 0 ? (
@@ -1462,7 +1464,7 @@ export default function AdminTurnos() {
                   type="button"
                   variant="outline"
                   onClick={handleEliminarFechaEspecial}
-                  disabled={deleteExcepcionMutation.isPending}
+                  disabled={sinAgendaDelProfesional || deleteExcepcionMutation.isPending}
                   className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
                   {deleteExcepcionMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <Calendar className="h-5 w-5 mr-2 stroke-[2]" />}
@@ -1473,10 +1475,11 @@ export default function AdminTurnos() {
                   type="button"
                   variant="outline"
                   onClick={() => setShowDiaPuntualModal(true)}
-                  className="border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] hover:text-[#1d4ed8] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter']"
+                  disabled={sinAgendaDelProfesional}
+                  className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-700 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
                   <CalendarPlus className="h-5 w-5 mr-2 stroke-[2]" />
-                  Habilitar día
+                  Habilitar
                 </Button>
               )}
             </>
@@ -1488,7 +1491,7 @@ export default function AdminTurnos() {
                   <span className="inline-block max-lg:hidden">
                     <Button
                       onClick={() => setShowCreateModal(true)}
-                      disabled={!profesionalFilter || diaCompletamenteBloqueadoListado}
+                      disabled={!profesionalFilter || !fechaFilter || diaCompletamenteBloqueadoListado}
                       className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-5 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
                     >
                       <Plus className="h-5 w-5 mr-2 stroke-[2]" />
@@ -1519,12 +1522,12 @@ export default function AdminTurnos() {
                 Profesional
               </label>
               {isProfesional ? (
-                <div className="h-12 max-lg:h-8 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[15px] max-lg:text-[13px] text-[#374151]">
+                <div className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[15px] max-lg:text-[13px] text-[#374151]">
                   {profesionalLogueado ? `${formatDisplayText(profesionalLogueado.nombre)} ${formatDisplayText(profesionalLogueado.apellido)}` : 'Cargando...'}
                 </div>
               ) : (
               <Select value={profesionalFilter || undefined} onValueChange={setProfesionalFilter}>
-                <SelectTrigger className="h-12 max-lg:h-8 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5">
+                <SelectTrigger className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5 flex items-center">
                   <SelectValue placeholder="Seleccionar profesional" />
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
@@ -1551,7 +1554,7 @@ export default function AdminTurnos() {
                 Estado
               </label>
               <Select value={estadoFilter} onValueChange={setEstadoFilter}>
-                <SelectTrigger className="h-12 max-lg:h-8 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5">
+                <SelectTrigger className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5 flex items-center">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
@@ -1742,7 +1745,7 @@ export default function AdminTurnos() {
                 );
               })()}
               {/* En mobile: Bloquear / Habilitar día / Eliminar fecha como texto debajo del título */}
-              {profesionalFilter && fechaFilter && (
+              {profesionalFilter && fechaFilter && !sinAgendaDelProfesional && (
                 <div className="max-lg:flex max-lg:flex-wrap max-lg:gap-x-4 max-lg:gap-y-1 lg:hidden">
                   <button
                     type="button"
@@ -1765,9 +1768,9 @@ export default function AdminTurnos() {
                     <button
                       type="button"
                       onClick={() => setShowDiaPuntualModal(true)}
-                      className="text-[13px] font-medium font-['Inter'] text-[#2563eb] hover:text-[#1d4ed8] hover:underline"
+                      className="text-[13px] font-medium font-['Inter'] text-emerald-600 hover:text-emerald-700 hover:underline"
                     >
-                      Habilitar día
+                      Habilitar
                     </button>
                   )}
                 </div>
@@ -1783,6 +1786,19 @@ export default function AdminTurnos() {
                 <h3 className="text-lg max-lg:text-[15px] font-semibold mb-0 text-[#374151] font-['Inter']">
                   Seleccione un profesional
                 </h3>
+              </div>
+            ) : sinAgendaDelProfesional ? (
+              <div className="p-16 text-center max-lg:p-8">
+                <h3 className="text-lg max-lg:text-[15px] font-semibold mb-4 text-[#374151] font-['Inter']">
+                  Tiene que crear su agenda
+                </h3>
+                <Button
+                  type="button"
+                  onClick={() => setShowCreateAgendaModalFromTurnos(true)}
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 py-2.5 font-medium font-['Inter']"
+                >
+                  Crear agenda
+                </Button>
               </div>
             ) : !fechaFilter ? (
               <div className="p-16 text-center">
@@ -1956,7 +1972,7 @@ export default function AdminTurnos() {
             <TooltipTrigger asChild>
               <Button
                 onClick={() => setShowCreateModal(true)}
-                disabled={!profesionalFilter || diaCompletamenteBloqueadoListado}
+                disabled={!profesionalFilter || !fechaFilter || diaCompletamenteBloqueadoListado}
                 aria-label="Nuevo turno"
                 className="lg:hidden fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/40 hover:shadow-xl hover:scale-105 transition-all duration-200 p-0 disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
               >
@@ -2434,7 +2450,7 @@ export default function AdminTurnos() {
               }}
             >
               {createExcepcionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Habilitar día
+              Habilitar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3063,7 +3079,7 @@ export default function AdminTurnos() {
           setShowCreateAgendaModalFromTurnos(open);
           if (!open) queryClient.invalidateQueries({ queryKey: ['agendas'] });
         }}
-        presetProfesionalId={profesionalLogueado?.id ?? ''}
+        presetProfesionalId={profesionalLogueado?.id ?? profesionalFilter ?? ''}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
       />
     </div>
