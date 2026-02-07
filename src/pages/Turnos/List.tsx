@@ -881,15 +881,6 @@ export default function AdminTurnos() {
     return excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter) ?? null;
   }, [excepcionesDelRango, fechaFilter, profesionalFilter]);
 
-  const handleEliminarFechaEspecial = async () => {
-    if (!excepcionDelDiaSeleccionado?.id) return;
-    try {
-      await deleteExcepcionMutation.mutateAsync(excepcionDelDiaSeleccionado.id);
-    } catch {
-      // toast ya en onError
-    }
-  };
-
   const handleOpenBloqueModal = () => {
     const diaInicial = fechaFilter || new Date().toISOString().slice(0, 10);
     const tieneBloques = bloquesDelDiaListado.length > 0;
