@@ -35,7 +35,7 @@ import { toast as reactToastify } from 'react-toastify';
 import { turnosService, type CreateTurnoData, type CancelTurnoData, type UpdateTurnoData } from '@/services/turnos.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { pacientesService } from '@/services/pacientes.service';
-import { agendaService, type CreateBloqueData, type CreateExcepcionAgendaData } from '@/services/agenda.service';
+import { agendaService, type CreateBloqueData, type CreateExcepcionAgendaData, type UpdateExcepcionAgendaData } from '@/services/agenda.service';
 import { DatePicker } from '@/components/ui/date-picker';
 import type { Turno, Paciente } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -201,6 +201,8 @@ export default function AdminTurnos() {
   const bloqueHastaButtonRef = useRef<HTMLButtonElement>(null);
 
   const [showDiaPuntualModal, setShowDiaPuntualModal] = useState(false);
+  const [diaPuntualEditId, setDiaPuntualEditId] = useState<string | null>(null);
+  const [showDeshabilitarDiaPuntualConfirm, setShowDeshabilitarDiaPuntualConfirm] = useState(false);
   const [diaPuntualDatePickerOpen, setDiaPuntualDatePickerOpen] = useState(false);
   const [diaPuntualForm, setDiaPuntualForm] = useState<CreateExcepcionAgendaData & { profesional_id: string }>({
     profesional_id: '',
@@ -657,14 +659,13 @@ export default function AdminTurnos() {
     return generarOpcionesHora(primerFin, sumarMinutos(max, 1), duracionMinutos);
   }, [rangoHorarioCreate, createHoraInicio]);
 
-  /** Si la fecha del turno es hoy (para filtrar horarios ya pasados). */
+  /** Si la fecha del turno es hoy (solo para mensajes; ya no filtramos horarios pasados para que se vea lo configurado). */
   const esHoyCreate = createFecha === format(new Date(), 'yyyy-MM-dd');
-  const horaActual = format(new Date(), 'HH:mm');
   const duracionCreate = rangoHorarioCreate.duracionMinutos ?? 30;
-  /** Todas las opciones de hora inicio (solo excluir pasados si es hoy); no se ocultan bloqueados/ocupados */
+  /** Todas las opciones de hora inicio (siempre lo configurado en la agenda, sin ocultar horas pasadas). */
   const opcionesHoraInicioTodas = useMemo(() => {
-    return esHoyCreate ? opcionesHoraInicio.filter((h) => h > horaActual) : opcionesHoraInicio;
-  }, [opcionesHoraInicio, esHoyCreate, horaActual]);
+    return opcionesHoraInicio;
+  }, [opcionesHoraInicio]);
   /** Opciones de hora inicio con estado (Bloqueado/Ocupado) para mostrar en gris pero seleccionables */
   const opcionesHoraInicioConEstado = useMemo(() => {
     const activos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
@@ -681,10 +682,10 @@ export default function AdminTurnos() {
       return { value: h, label, bloqueado, ocupado };
     });
   }, [opcionesHoraInicioTodas, createFecha, duracionCreate, bloquesDelDiaCreate, turnosDelDiaCreate]);
-  /** Todas las opciones de hora fin (solo excluir pasados si es hoy) */
+  /** Todas las opciones de hora fin (siempre lo configurado en la agenda, sin ocultar horas pasadas). */
   const opcionesHoraFinTodas = useMemo(() => {
-    return esHoyCreate ? opcionesHoraFin.filter((h) => h > horaActual) : opcionesHoraFin;
-  }, [opcionesHoraFin, esHoyCreate, horaActual]);
+    return opcionesHoraFin;
+  }, [opcionesHoraFin]);
   /** Opciones de hora fin con estado: Bloqueado = el intervalo [inicio, h] toca un bloque. Ocupado = la hora h cae dentro de un turno existente (solo esa hora, no todo el intervalo). */
   const opcionesHoraFinConEstado = useMemo(() => {
     const activos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
@@ -750,7 +751,7 @@ export default function AdminTurnos() {
   }, [showBloqueModal]);
 
   useEffect(() => {
-    if (showDiaPuntualModal && profesionalFilter) {
+    if (showDiaPuntualModal && profesionalFilter && !diaPuntualEditId) {
       setDiaPuntualDatePickerOpen(false);
       setDiaPuntualForm((prev) => ({
         ...prev,
@@ -758,7 +759,7 @@ export default function AdminTurnos() {
         fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
       }));
     }
-  }, [showDiaPuntualModal, profesionalFilter, fechaFilter]);
+  }, [showDiaPuntualModal, profesionalFilter, fechaFilter, diaPuntualEditId]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -843,11 +844,32 @@ export default function AdminTurnos() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['excepciones'] });
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
+      setShowDiaPuntualModal(false);
+      setDiaPuntualEditId(null);
       reactToastify.success('Fecha especial eliminada correctamente', { position: 'top-right', autoClose: 3000 });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
       reactToastify.error(err?.response?.data?.message || 'Error al eliminar fecha especial', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    },
+  });
+
+  const updateExcepcionMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateExcepcionAgendaData }) =>
+      agendaService.updateExcepcion(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
+      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+      setShowDiaPuntualModal(false);
+      setDiaPuntualEditId(null);
+      reactToastify.success('Día puntual actualizado correctamente', { position: 'top-right', autoClose: 3000 });
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      reactToastify.error(err?.response?.data?.message || 'Error al actualizar día puntual', {
         position: 'top-right',
         autoClose: 3000,
       });
@@ -1181,14 +1203,6 @@ export default function AdminTurnos() {
       });
       return;
     }
-    const ahora = new Date();
-    if (inicioLocal.getTime() <= ahora.getTime()) {
-      reactToastify.error('No se pueden crear turnos en días u horarios que ya pasaron', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
-      return;
-    }
     if (createHoraFin <= createHoraInicio) {
       reactToastify.error('La hora fin debe ser posterior a la hora inicio', {
         position: 'top-right',
@@ -1467,18 +1481,41 @@ export default function AdminTurnos() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleEliminarFechaEspecial}
-                  disabled={sinAgendaDelProfesional || deleteExcepcionMutation.isPending}
-                  className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
+                  onClick={() => {
+                    const e = excepcionDelDiaSeleccionado;
+                    setDiaPuntualEditId(e.id);
+                    setDiaPuntualForm({
+                      profesional_id: e.profesional_id,
+                      fecha: e.fecha?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
+                      hora_inicio: e.hora_inicio?.slice(0, 5) ?? '09:00',
+                      hora_fin: e.hora_fin?.slice(0, 5) ?? '13:00',
+                      duracion_turno_minutos: e.duracion_turno_minutos ?? 30,
+                      observaciones: e.observaciones ?? '',
+                    });
+                    setShowDiaPuntualModal(true);
+                  }}
+                  disabled={sinAgendaDelProfesional}
+                  className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-700 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
-                  {deleteExcepcionMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <Calendar className="h-5 w-5 mr-2 stroke-[2]" />}
-                  Deshabilitar día
+                  <Calendar className="h-5 w-5 mr-2 stroke-[2]" />
+                  Gestionar día
                 </Button>
               ) : (
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setShowDiaPuntualModal(true)}
+                  onClick={() => {
+                    setDiaPuntualEditId(null);
+                    setDiaPuntualForm({
+                      profesional_id: profesionalFilter || '',
+                      fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
+                      hora_inicio: '09:00',
+                      hora_fin: '13:00',
+                      duracion_turno_minutos: 30,
+                      observaciones: '',
+                    });
+                    setShowDiaPuntualModal(true);
+                  }}
                   disabled={sinAgendaDelProfesional}
                   className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-700 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
@@ -1762,16 +1799,38 @@ export default function AdminTurnos() {
                   {fechaFilter && excepcionDelDiaSeleccionado ? (
                     <button
                       type="button"
-                      onClick={handleEliminarFechaEspecial}
-                      disabled={deleteExcepcionMutation.isPending}
-                      className="text-[13px] font-medium font-['Inter'] text-red-600 hover:text-red-700 hover:underline disabled:opacity-50"
+                      onClick={() => {
+                        const e = excepcionDelDiaSeleccionado;
+                        setDiaPuntualEditId(e.id);
+                        setDiaPuntualForm({
+                          profesional_id: e.profesional_id,
+                          fecha: e.fecha?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
+                          hora_inicio: e.hora_inicio?.slice(0, 5) ?? '09:00',
+                          hora_fin: e.hora_fin?.slice(0, 5) ?? '13:00',
+                          duracion_turno_minutos: e.duracion_turno_minutos ?? 30,
+                          observaciones: e.observaciones ?? '',
+                        });
+                        setShowDiaPuntualModal(true);
+                      }}
+                      className="text-[13px] font-medium font-['Inter'] text-emerald-600 hover:text-emerald-700 hover:underline"
                     >
-                      {deleteExcepcionMutation.isPending ? 'Deshabilitando...' : 'Deshabilitar día'}
+                      Gestionar día
                     </button>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setShowDiaPuntualModal(true)}
+                      onClick={() => {
+                        setDiaPuntualEditId(null);
+                        setDiaPuntualForm({
+                          profesional_id: profesionalFilter || '',
+                          fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
+                          hora_inicio: '09:00',
+                          hora_fin: '13:00',
+                          duracion_turno_minutos: 30,
+                          observaciones: '',
+                        });
+                        setShowDiaPuntualModal(true);
+                      }}
                       className="text-[13px] font-medium font-['Inter'] text-emerald-600 hover:text-emerald-700 hover:underline"
                     >
                       Habilitar
@@ -2355,8 +2414,17 @@ export default function AdminTurnos() {
         isLoading={deleteBloqueMutation.isPending}
       />
 
-      {/* Modal Habilitar día puntual */}
-      <Dialog open={showDiaPuntualModal} onOpenChange={setShowDiaPuntualModal}>
+      {/* Modal Habilitar / Gestionar día puntual */}
+      <Dialog
+        open={showDiaPuntualModal}
+        onOpenChange={(open) => {
+          setShowDiaPuntualModal(open);
+          if (!open) {
+            setDiaPuntualEditId(null);
+            setShowDeshabilitarDiaPuntualConfirm(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
           <DialogHeader className="relative z-[60] px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-white flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
@@ -2365,10 +2433,10 @@ export default function AdminTurnos() {
               </div>
               <div>
                 <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Habilitar día puntual
+                  {diaPuntualEditId ? 'Gestionar día puntual' : 'Habilitar día puntual'}
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Agregá una fecha en que el profesional atiende.
+                  {diaPuntualEditId ? 'Modificá el horario del día puntual. La fecha no se puede cambiar.' : 'Agregá una fecha en que el profesional atiende.'}
                 </DialogDescription>
               </div>
             </div>
@@ -2390,18 +2458,24 @@ export default function AdminTurnos() {
                 <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
                   Fecha
                 </Label>
-                <div className="h-[52px] max-lg:h-10 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
-                  <DatePicker
-                    value={diaPuntualForm.fecha}
-                    onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
-                    placeholder="Seleccionar fecha"
-                    min={format(new Date(), 'yyyy-MM-dd')}
-                    className="h-[52px] max-lg:h-10 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-                    open={diaPuntualDatePickerOpen}
-                    onOpenChange={setDiaPuntualDatePickerOpen}
-                    inline
-                  />
-                </div>
+                {diaPuntualEditId ? (
+                  <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F3F4F6] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#6B7280] cursor-not-allowed">
+                    {diaPuntualForm.fecha ? format(new Date(diaPuntualForm.fecha + 'T12:00:00'), "EEEE d 'de' MMMM yyyy", { locale: es }) : '—'}
+                  </div>
+                ) : (
+                  <div className="h-[52px] max-lg:h-10 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
+                    <DatePicker
+                      value={diaPuntualForm.fecha}
+                      onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
+                      placeholder="Seleccionar fecha"
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      className="h-[52px] max-lg:h-10 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                      open={diaPuntualDatePickerOpen}
+                      onOpenChange={setDiaPuntualDatePickerOpen}
+                      inline
+                    />
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -2445,38 +2519,105 @@ export default function AdminTurnos() {
               />
             </div>
           </div>
-          <DialogFooter className="mt-0 px-8 max-lg:px-4 py-6 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 max-lg:flex-col">
-            <Button variant="outline" onClick={() => setShowDiaPuntualModal(false)} className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full">
-              Cancelar
-            </Button>
-            <Button
-              className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 max-lg:w-full"
-              disabled={
-                createExcepcionMutation.isPending ||
-                !diaPuntualForm.profesional_id ||
-                !diaPuntualForm.fecha ||
-                (diaPuntualForm.fecha ? isBefore(startOfDay(new Date(diaPuntualForm.fecha + 'T12:00:00')), startOfDay(new Date())) : false) ||
-                diaPuntualForm.duracion_turno_minutos == null ||
-                diaPuntualForm.duracion_turno_minutos < 5 ||
-                diaPuntualForm.duracion_turno_minutos > 480
-              }
-              onClick={() => {
-                const { profesional_id, fecha, hora_inicio, hora_fin, duracion_turno_minutos } = diaPuntualForm;
-                createExcepcionMutation.mutate({
-                  profesional_id,
-                  fecha,
-                  hora_inicio: hora_inicio.length >= 5 ? hora_inicio : hora_inicio + ':00',
-                  hora_fin: hora_fin.length >= 5 ? hora_fin : hora_fin + ':00',
-                  duracion_turno_minutos: duracion_turno_minutos ?? 30,
-                });
-              }}
-            >
-              {createExcepcionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Habilitar
-            </Button>
+          <DialogFooter className="mt-0 px-8 max-lg:px-4 py-6 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 max-lg:flex-col flex-row flex-wrap">
+            {diaPuntualEditId ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowDeshabilitarDiaPuntualConfirm(true)}
+                  disabled={deleteExcepcionMutation.isPending || updateExcepcionMutation.isPending}
+                  className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200 mr-auto max-lg:mr-0 max-lg:order-1 max-lg:w-full"
+                >
+                  Deshabilitar día
+                </Button>
+                <Button variant="outline" onClick={() => setShowDiaPuntualModal(false)} className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full max-lg:order-2">
+                  Cancelar
+                </Button>
+                <Button
+                  className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 max-lg:w-full max-lg:order-3"
+                  disabled={
+                    updateExcepcionMutation.isPending ||
+                    !diaPuntualForm.hora_inicio ||
+                    !diaPuntualForm.hora_fin ||
+                    diaPuntualForm.duracion_turno_minutos == null ||
+                    diaPuntualForm.duracion_turno_minutos < 5 ||
+                    diaPuntualForm.duracion_turno_minutos > 480
+                  }
+                  onClick={() => {
+                    if (!diaPuntualEditId) return;
+                    const { hora_inicio, hora_fin, duracion_turno_minutos } = diaPuntualForm;
+                    updateExcepcionMutation.mutate({
+                      id: diaPuntualEditId,
+                      data: {
+                        hora_inicio: hora_inicio.length >= 5 ? hora_inicio : hora_inicio + ':00',
+                        hora_fin: hora_fin.length >= 5 ? hora_fin : hora_fin + ':00',
+                        duracion_turno_minutos: duracion_turno_minutos ?? 30,
+                      },
+                    });
+                  }}
+                >
+                  {updateExcepcionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Guardar
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setShowDiaPuntualModal(false)} className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 max-lg:w-full">
+                  Cancelar
+                </Button>
+                <Button
+                  className="h-[48px] max-lg:h-10 rounded-[12px] font-['Inter'] text-[15px] max-lg:text-[14px] px-5 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 max-lg:w-full"
+                  disabled={
+                    createExcepcionMutation.isPending ||
+                    !diaPuntualForm.profesional_id ||
+                    !diaPuntualForm.fecha ||
+                    (diaPuntualForm.fecha ? isBefore(startOfDay(new Date(diaPuntualForm.fecha + 'T12:00:00')), startOfDay(new Date())) : false) ||
+                    diaPuntualForm.duracion_turno_minutos == null ||
+                    diaPuntualForm.duracion_turno_minutos < 5 ||
+                    diaPuntualForm.duracion_turno_minutos > 480
+                  }
+                  onClick={() => {
+                    const { profesional_id, fecha, hora_inicio, hora_fin, duracion_turno_minutos } = diaPuntualForm;
+                    createExcepcionMutation.mutate({
+                      profesional_id,
+                      fecha,
+                      hora_inicio: hora_inicio.length >= 5 ? hora_inicio : hora_inicio + ':00',
+                      hora_fin: hora_fin.length >= 5 ? hora_fin : hora_fin + ':00',
+                      duracion_turno_minutos: duracion_turno_minutos ?? 30,
+                    });
+                  }}
+                >
+                  {createExcepcionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Habilitar
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteModal
+        open={showDeshabilitarDiaPuntualConfirm}
+        onOpenChange={setShowDeshabilitarDiaPuntualConfirm}
+        title="Deshabilitar día puntual"
+        description={
+          <>
+            ¿Está seguro de que desea deshabilitar este día? Se eliminará la configuración del día puntual y ya no se podrán crear turnos para esta fecha.
+          </>
+        }
+        confirmLabel="Deshabilitar"
+        loadingLabel="Deshabilitando..."
+        confirmDisabled={!diaPuntualEditId}
+        onConfirm={async () => {
+          if (!diaPuntualEditId) return;
+          await deleteExcepcionMutation.mutateAsync(diaPuntualEditId);
+          setShowDeshabilitarDiaPuntualConfirm(false);
+          setShowDiaPuntualModal(false);
+          setDiaPuntualEditId(null);
+        }}
+        isLoading={deleteExcepcionMutation.isPending}
+      />
 
       {/* Modal Crear Turno */}
       <Dialog
@@ -2599,17 +2740,12 @@ export default function AdminTurnos() {
                               const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
                               const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
                               const days = eachDayOfInterval({ start: calStart, end: calEnd });
-                              const today = startOfDay(new Date());
                               const selectedCreateDate = createFecha ? new Date(createFecha + 'T12:00:00') : null;
-                              const horaActualCal = format(new Date(), 'HH:mm');
-                              const hoyYaPasóHorario = horaFinHoyAgenda != null && horaActualCal >= horaFinHoyAgenda;
                               return days.map((day) => {
                                 const isCurrentMonth = isSameMonth(day, createDatePickerMonth);
-                                const isPast = isBefore(day, today);
                                 const dateStrCreate = format(day, 'yyyy-MM-dd');
                                 const isLaborable = getAgendaForDate(dateStrCreate).length > 0;
-                                const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
-                                const isDisabled = isPast || !isLaborable || isHoyYaLegó;
+                                const isDisabled = !isLaborable;
                                 const isSelected = selectedCreateDate ? isSameDay(day, selectedCreateDate) : false;
                                 return (
                                   <button

@@ -37,6 +37,7 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'turnos.crear',
     'turnos.leer',
     'turnos.actualizar',
+    'turnos.eliminar',
     'agenda.leer',
     'agenda.crear',
     'agenda.actualizar',

@@ -59,7 +59,13 @@ api.interceptors.response.use(
       showApiErrorToast('403', 'No tienes permisos para realizar esta acción');
     } else if (error.response?.status === 404) {
       const isPacienteByDni = requestUrl.includes('pacientes') && (requestUrl.includes('by-dni') || requestUrl.includes('by_dni'));
-      showApiErrorToast('404', isPacienteByDni ? 'Paciente no encontrado' : 'Recurso no encontrado');
+      const isArchivo = requestUrl.includes('archivos');
+      const msg404 = isPacienteByDni
+        ? 'Paciente no encontrado'
+        : isArchivo
+          ? (errorMessage || 'El archivo no está disponible. Puede haber sido eliminado del servidor.')
+          : 'Recurso no encontrado';
+      showApiErrorToast('404', msg404);
     } else if (error.response?.status === 409) {
       showApiErrorToast('409', errorMessage);
     } else if (error.response?.status >= 500) {
