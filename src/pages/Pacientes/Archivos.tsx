@@ -335,6 +335,10 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
     return tipo?.startsWith('image/') || false;
   };
 
+  const isViewableInModal = (tipo?: string): boolean => {
+    return isImage(tipo) || Boolean(tipo?.includes('pdf'));
+  };
+
   const canUpload = hasPermission(user, 'archivos.subir');
   const canDelete = hasPermission(user, 'archivos.eliminar');
   const canDownload = hasPermission(user, 'archivos.descargar');
@@ -510,7 +514,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
             {archivosPaginados.map((archivo) => (
             <Card key={archivo.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden w-full max-w-[360px] max-lg:max-w-none">
               <CardContent className="p-4 max-lg:p-5">
-                {/* Imagen o Icono */}
+                {/* Imagen, PDF o Icono */}
                 <div className="mb-3">
                   {isImage(archivo.tipo_archivo) ? (
                     <div 
@@ -518,6 +522,15 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                       onClick={() => handleView(archivo)}
                     >
                       <ImageThumbnail archivo={archivo} />
+                    </div>
+                  ) : isViewableInModal(archivo.tipo_archivo) ? (
+                    <div 
+                      className="w-full h-32 rounded-[10px] bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => handleView(archivo)}
+                    >
+                      <div className={getFileColor(archivo.tipo_archivo)}>
+                        {getFileIcon(archivo.tipo_archivo)}
+                      </div>
                     </div>
                   ) : (
                     <div className="w-full h-32 rounded-[10px] bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] flex items-center justify-center">
@@ -557,7 +570,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
 
                 {/* Acciones: iconos; en mobile centradas */}
                 <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-[#E5E7EB] max-lg:justify-center max-lg:gap-3">
-                  {isImage(archivo.tipo_archivo) && (
+                  {isViewableInModal(archivo.tipo_archivo) && (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -571,7 +584,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                          <p className="text-white">Ver imagen</p>
+                          <p className="text-white">{isImage(archivo.tipo_archivo) ? 'Ver imagen' : 'Ver PDF'}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

@@ -74,6 +74,38 @@ function formatDni(dni: string | number | undefined | null): string {
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+/** Formatea hora escrita a mano a HH:mm (ej: "9:00" → "09:00", "21:00" → "21:00", "930" → "09:30") */
+function formatHoraManual(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const hasColon = s.includes(':');
+  let h: number;
+  let m: number;
+  if (hasColon) {
+    const [partH, partM] = s.split(':');
+    h = parseInt(partH?.replace(/\D/g, '') || '0', 10);
+    m = parseInt(partM?.replace(/\D/g, '') || '0', 10);
+  } else {
+    const digits = s.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      h = parseInt(digits.slice(0, 2), 10);
+      m = parseInt(digits.slice(2, 4), 10);
+    } else if (digits.length === 3) {
+      h = parseInt(digits.slice(0, 1), 10);
+      m = parseInt(digits.slice(1, 3), 10);
+    } else if (digits.length === 2) {
+      h = parseInt(digits, 10);
+      m = 0;
+    } else {
+      h = parseInt(digits || '0', 10);
+      m = 0;
+    }
+  }
+  h = Math.max(0, Math.min(23, h));
+  m = Math.max(0, Math.min(59, m));
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 /** Clases del SelectTrigger de estado: hover y flecha según color del estado (sin violeta) */
 function getEstadoSelectTriggerClass(estado: string): string {
   const base = "h-7 min-h-0 py-0 leading-tight w-auto max-w-[140px] min-w-0 rounded-full border shadow-none font-['Inter'] text-[12px] pl-2 pr-7 text-left focus:outline-none [&>svg]:!right-1.5 [&>svg]:!h-3 [&>svg]:!w-3";
@@ -244,6 +276,8 @@ export default function AdminTurnos() {
   const createDatePickerRef = useRef<HTMLDivElement>(null);
   const [createHoraInicio, setCreateHoraInicio] = useState('09:00');
   const [createHoraFin, setCreateHoraFin] = useState('09:30');
+  const [createHoraInicioManual, setCreateHoraInicioManual] = useState(false);
+  const [createHoraFinManual, setCreateHoraFinManual] = useState(false);
   const [pacienteDniInput, setPacienteDniInput] = useState('');
   const [pacienteFound, setPacienteFound] = useState<Paciente | null>(null);
   const [showQuickCreatePaciente, setShowQuickCreatePaciente] = useState(false);
@@ -258,6 +292,8 @@ export default function AdminTurnos() {
   const [showSinAgendaModal, setShowSinAgendaModal] = useState(false);
   const [showSobreturnoModal, setShowSobreturnoModal] = useState(false);
   const [pendingCreatePayload, setPendingCreatePayload] = useState<CreateTurnoData | null>(null);
+  const [showConfirmHorarioFueraModal, setShowConfirmHorarioFueraModal] = useState(false);
+  const [pendingCreateHorarioFueraPayload, setPendingCreateHorarioFueraPayload] = useState<CreateTurnoData | null>(null);
   const [showCreateAgendaModalFromTurnos, setShowCreateAgendaModalFromTurnos] = useState(false);
   const [showGestionarAgendaModalFromTurnos, setShowGestionarAgendaModalFromTurnos] = useState(false);
   const handleGestionarAgendaClose = useCallback((open: boolean) => {
@@ -711,8 +747,9 @@ export default function AdminTurnos() {
     return opcionesHoraInicioTodas.length === 0;
   }, [opcionesHoraInicioTodas.length]);
 
-  // Ajustar horas al cambiar fecha o rango: valor en la lista, no bloqueado, y fin > inicio
+  // Ajustar horas al cambiar fecha o rango: valor en la lista, no bloqueado, y fin > inicio (solo cuando NO está en modo manual)
   useEffect(() => {
+    if (createHoraInicioManual || createHoraFinManual) return;
     const optInicio = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
     const inicioValido = optInicio && !optInicio.bloqueado;
     const optFin = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
@@ -725,7 +762,7 @@ export default function AdminTurnos() {
       const primerNoBloqueado = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
       if (primerNoBloqueado) setCreateHoraFin(primerNoBloqueado.value);
     }
-  }, [createFecha, createHoraInicio, createHoraFin, opcionesHoraInicioConEstado, opcionesHoraFinConEstado]);
+  }, [createFecha, createHoraInicio, createHoraFin, createHoraInicioManual, createHoraFinManual, opcionesHoraInicioConEstado, opcionesHoraFinConEstado]);
 
 
   // Cerrar date picker al hacer clic fuera
@@ -1182,11 +1219,15 @@ export default function AdminTurnos() {
   };
 
   const handleCreate = async () => {
-    // Construir fecha/hora en hora local del usuario y enviar en ISO UTC para evitar desfase de día en el servidor
-    const inicioLocal = new Date(`${createFecha}T${createHoraInicio}:00`);
-    const finLocal = new Date(`${createFecha}T${createHoraFin}:00`);
-    const fecha_hora_inicio = inicioLocal.toISOString();
-    const fecha_hora_fin = finLocal.toISOString();
+    // Fecha/hora en hora local con offset explícito (evita que el navegador interprete "YYYY-MM-DDTHH:mm" como UTC en algunos casos)
+    const horaInicioNorm = createHoraInicio.length <= 5 ? `${createHoraInicio}:00` : createHoraInicio;
+    const horaFinNorm = createHoraFin.length <= 5 ? `${createHoraFin}:00` : createHoraFin;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(`${createFecha}T${horaInicioNorm}`);
+    const tzMin = -d.getTimezoneOffset();
+    const tzStr = (tzMin >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tzMin) / 60)) + ':' + pad(Math.abs(tzMin) % 60);
+    const fecha_hora_inicio = new Date(`${createFecha}T${horaInicioNorm}${tzStr}`).toISOString();
+    const fecha_hora_fin = new Date(`${createFecha}T${horaFinNorm}${tzStr}`).toISOString();
     if (!createFormData.profesional_id || !createFormData.paciente_id || !createFecha || !createHoraInicio || !createHoraFin) {
       reactToastify.error('Complete todos los campos requeridos', {
         position: 'top-right',
@@ -1201,8 +1242,17 @@ export default function AdminTurnos() {
       });
       return;
     }
+    const payload = { ...createFormData, fecha_hora_inicio, fecha_hora_fin };
     const { min: minHora, max: maxHora } = rangoHorarioCreate;
-    if (minHora !== undefined && maxHora !== undefined) {
+    const horasManuales = createHoraInicioManual || createHoraFinManual;
+    if (horasManuales && minHora !== undefined && maxHora !== undefined) {
+      if (createHoraInicio < minHora || createHoraFin > maxHora) {
+        setPendingCreateHorarioFueraPayload(payload);
+        setShowConfirmHorarioFueraModal(true);
+        return;
+      }
+    }
+    if (!horasManuales && minHora !== undefined && maxHora !== undefined) {
       if (createHoraInicio < minHora || createHoraFin > maxHora) {
         reactToastify.error('El horario debe estar dentro de la agenda del profesional', {
           position: 'top-right',
@@ -1212,8 +1262,8 @@ export default function AdminTurnos() {
       }
     }
 
-    const slotStart = inicioLocal.getTime();
-    const slotEnd = finLocal.getTime();
+    const slotStart = new Date(fecha_hora_inicio).getTime();
+    const slotEnd = new Date(fecha_hora_fin).getTime();
     const turnosActivos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
     const mismoPacienteEnSlot = turnosActivos.some((t) => {
       if (t.paciente_id !== createFormData.paciente_id) return false;
@@ -1235,7 +1285,6 @@ export default function AdminTurnos() {
       return slotStart < tEnd && slotEnd > tStart;
     });
 
-    const payload = { ...createFormData, fecha_hora_inicio, fecha_hora_fin };
     if (otroPacienteEnSlot) {
       setPendingCreatePayload(payload);
       setShowSobreturnoModal(true);
@@ -1257,6 +1306,49 @@ export default function AdminTurnos() {
     try {
       await createMutation.mutateAsync({ ...pendingCreatePayload, sobreturno: true });
       setPendingCreatePayload(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmHorarioFuera = async () => {
+    const pl = pendingCreateHorarioFueraPayload;
+    if (!pl) return;
+    const slotStart = new Date(pl.fecha_hora_inicio).getTime();
+    const slotEnd = new Date(pl.fecha_hora_fin).getTime();
+    const turnosActivos = turnosDelDiaCreate.filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
+    const mismoPacienteEnSlot = turnosActivos.some((t) => {
+      if (t.paciente_id !== pl.paciente_id) return false;
+      const tStart = new Date(t.fecha_hora_inicio).getTime();
+      const tEnd = new Date(t.fecha_hora_fin).getTime();
+      return slotStart < tEnd && slotEnd > tStart;
+    });
+    if (mismoPacienteEnSlot) {
+      reactToastify.error('Esta persona ya tiene un turno en ese horario. No puede tener dos turnos a la misma hora.', {
+        position: 'top-right',
+        autoClose: 4000,
+      });
+      setShowConfirmHorarioFueraModal(false);
+      setPendingCreateHorarioFueraPayload(null);
+      return;
+    }
+    const otroPacienteEnSlot = turnosActivos.some((t) => {
+      if (t.paciente_id === pl.paciente_id) return false;
+      const tStart = new Date(t.fecha_hora_inicio).getTime();
+      const tEnd = new Date(t.fecha_hora_fin).getTime();
+      return slotStart < tEnd && slotEnd > tStart;
+    });
+    setShowConfirmHorarioFueraModal(false);
+    setPendingCreateHorarioFueraPayload(null);
+    const payloadConPermiso = { ...pl, permiso_fuera_agenda: true };
+    if (otroPacienteEnSlot) {
+      setPendingCreatePayload(payloadConPermiso);
+      setShowSobreturnoModal(true);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await createMutation.mutateAsync(payloadConPermiso);
     } finally {
       setIsSubmitting(false);
     }
@@ -1371,6 +1463,52 @@ export default function AdminTurnos() {
               className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 max-lg:order-2 max-lg:w-full"
             >
               Sí, crear agenda
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: horario fuera de la agenda (ingreso manual) */}
+      <Dialog open={showConfirmHorarioFueraModal} onOpenChange={(open) => { if (!open) { setShowConfirmHorarioFueraModal(false); setPendingCreateHorarioFueraPayload(null); } }}>
+        <DialogContent
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="mb-0">
+            <DialogTitle className="pr-14 mb-0">Turno fuera de horario</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5 mb-0">
+            <DialogDescription asChild>
+              <p className="text-[#6B7280] font-['Inter']">
+                {pendingCreateHorarioFueraPayload && rangoHorarioCreate.min != null && rangoHorarioCreate.max != null ? (
+                  <>
+                    Está creando un turno de <span className="font-semibold text-[#374151]">{format(new Date(pendingCreateHorarioFueraPayload.fecha_hora_inicio), 'HH:mm')}</span> a <span className="font-semibold text-[#374151]">{format(new Date(pendingCreateHorarioFueraPayload.fecha_hora_fin), 'HH:mm')}</span>.
+                    La agenda del profesional ese día es de <span className="font-semibold text-[#374151]">{rangoHorarioCreate.min}</span> a <span className="font-semibold text-[#374151]">{rangoHorarioCreate.max}</span>.
+                    ¿Desea crear el turno igual?
+                  </>
+                ) : (
+                  <>La agenda del profesional no tiene horario configurado para este día. ¿Desea crear el turno igual?</>
+                )}
+              </p>
+            </DialogDescription>
+          </div>
+          <DialogFooter className="mt-0 flex flex-col gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { setShowConfirmHorarioFueraModal(false); setPendingCreateHorarioFueraPayload(null); }}
+              className="w-full rounded-[10px] border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB] focus:outline-none focus:ring-0 h-11 font-['Inter']"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmHorarioFuera}
+              disabled={isSubmitting}
+              className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 h-11 font-['Inter'] font-medium"
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2 inline" /> : null}
+              Sí, crear turno
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2627,6 +2765,8 @@ export default function AdminTurnos() {
             setCreateFecha(format(new Date(), 'yyyy-MM-dd'));
             setCreateHoraInicio('09:00');
             setCreateHoraFin('09:30');
+            setCreateHoraInicioManual(false);
+            setCreateHoraFinManual(false);
             setCreateDatePickerOpen(false);
             setPacienteDniInput('');
             setPacienteFound(null);
@@ -2771,43 +2911,68 @@ export default function AdminTurnos() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <Label htmlFor="create-hora-inicio" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                      Hora inicio
-                    </Label>
-                    <Select
-                      value={
-                        (() => {
-                          const opt = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
-                          if (opt && !opt.bloqueado) return createHoraInicio;
-                          const first = opcionesHoraInicioConEstado.find((o) => !o.bloqueado);
-                          return first?.value ?? createHoraInicio;
-                        })()
-                      }
-                      onValueChange={(v) => setCreateHoraInicio(v)}
-                    >
-                      <SelectTrigger id="create-hora-inicio" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
-                        <SelectValue placeholder="Hora inicio" />
-                      </SelectTrigger>
-                      <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
-                        {opcionesHoraInicioConEstado.map((opt) => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value}
-                            disabled={opt.bloqueado}
-                            className={
-                              opt.bloqueado
-                                ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
-                                : opt.ocupado
-                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
-                                  : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
-                            }
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {rangoHorarioCreate.min !== undefined ? (
+                    <div className="flex items-center gap-2 mb-0">
+                      <Label htmlFor="create-hora-inicio" className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                        Hora inicio
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setCreateHoraInicioManual((v) => !v)}
+                        className="text-[13px] font-medium text-[#2563eb] hover:underline font-['Inter'] shrink-0"
+                      >
+                        {createHoraInicioManual ? 'Usar lista' : 'Ingresar manualmente'}
+                      </button>
+                    </div>
+                    {createHoraInicioManual ? (
+                      <Input
+                        id="create-hora-inicio"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Ej: 09:00 o 21:00"
+                        value={createHoraInicio}
+                        onChange={(e) => setCreateHoraInicio(e.target.value)}
+                        onBlur={(e) => {
+                          const formatted = formatHoraManual(e.target.value);
+                          if (formatted) setCreateHoraInicio(formatted);
+                        }}
+                        className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                      />
+                    ) : (
+                      <Select
+                        value={
+                          (() => {
+                            const opt = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
+                            if (opt && !opt.bloqueado) return createHoraInicio;
+                            const first = opcionesHoraInicioConEstado.find((o) => !o.bloqueado);
+                            return first?.value ?? createHoraInicio;
+                          })()
+                        }
+                        onValueChange={(v) => setCreateHoraInicio(v)}
+                      >
+                        <SelectTrigger id="create-hora-inicio" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
+                          <SelectValue placeholder="Hora inicio" />
+                        </SelectTrigger>
+                        <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
+                          {opcionesHoraInicioConEstado.map((opt) => (
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              disabled={opt.bloqueado}
+                              className={
+                                opt.bloqueado
+                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                  : opt.ocupado
+                                    ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                    : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
+                              }
+                            >
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {!createHoraInicioManual && rangoHorarioCreate.min !== undefined ? (
                       <>
                         {!diaCompletamenteBloqueadoCreate && esHoyCreate && opcionesHoraInicioTodas.length === 0 && (
                           <p className="text-[13px] text-[#92400E] font-['Inter']">
@@ -2815,7 +2980,7 @@ export default function AdminTurnos() {
                           </p>
                         )}
                       </>
-                    ) : profesionalFilter && agendasDelProfesional.length > 0 ? (
+                    ) : !createHoraInicioManual && profesionalFilter && agendasDelProfesional.length > 0 ? (
                       <p className="text-[13px] text-[#92400E] font-['Inter']">
                         No hay horario configurado para este día.
                       </p>
@@ -2823,42 +2988,67 @@ export default function AdminTurnos() {
                   </div>
 
                   <div className="space-y-3">
-                    <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                      Hora fin
-                    </Label>
-                    <Select
-                      value={
-                        (() => {
-                          const opt = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
-                          if (opt && !opt.bloqueado && createHoraFin > createHoraInicio) return createHoraFin;
-                          const first = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
-                          return first?.value ?? createHoraFin;
-                        })()
-                      }
-                      onValueChange={(v) => setCreateHoraFin(v)}
-                    >
-                      <SelectTrigger id="create-hora-fin" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
-                        <SelectValue placeholder="Hora fin" />
-                      </SelectTrigger>
-                      <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
-                        {opcionesHoraFinConEstado.map((opt) => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value}
-                            disabled={opt.bloqueado}
-                            className={
-                              opt.bloqueado
-                                ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
-                                : opt.ocupado
-                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
-                                  : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
-                            }
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2 mb-0">
+                      <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                        Hora fin
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setCreateHoraFinManual((v) => !v)}
+                        className="text-[13px] font-medium text-[#2563eb] hover:underline font-['Inter'] shrink-0"
+                      >
+                        {createHoraFinManual ? 'Usar lista' : 'Ingresar manualmente'}
+                      </button>
+                    </div>
+                    {createHoraFinManual ? (
+                      <Input
+                        id="create-hora-fin"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Ej: 09:30 o 21:00"
+                        value={createHoraFin}
+                        onChange={(e) => setCreateHoraFin(e.target.value)}
+                        onBlur={(e) => {
+                          const formatted = formatHoraManual(e.target.value);
+                          if (formatted) setCreateHoraFin(formatted);
+                        }}
+                        className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                      />
+                    ) : (
+                      <Select
+                        value={
+                          (() => {
+                            const opt = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
+                            if (opt && !opt.bloqueado && createHoraFin > createHoraInicio) return createHoraFin;
+                            const first = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
+                            return first?.value ?? createHoraFin;
+                          })()
+                        }
+                        onValueChange={(v) => setCreateHoraFin(v)}
+                      >
+                        <SelectTrigger id="create-hora-fin" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
+                          <SelectValue placeholder="Hora fin" />
+                        </SelectTrigger>
+                        <SelectContent className="text-left [&_button]:text-left max-h-[min(14rem,65vh)] [&_[data-radix-select-viewport]]:max-h-[min(14rem,65vh)]">
+                          {opcionesHoraFinConEstado.map((opt) => (
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              disabled={opt.bloqueado}
+                              className={
+                                opt.bloqueado
+                                  ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                  : opt.ocupado
+                                    ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                    : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
+                              }
+                            >
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
 
@@ -3028,7 +3218,12 @@ export default function AdminTurnos() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={isSubmitting || !profesionalFilter || diaCompletamenteBloqueadoCreate || !createFormData.paciente_id}
+                disabled={
+                  isSubmitting ||
+                  !profesionalFilter ||
+                  (!(createHoraInicioManual || createHoraFinManual) && diaCompletamenteBloqueadoCreate) ||
+                  !createFormData.paciente_id
+                }
                 className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {isSubmitting ? (

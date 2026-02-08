@@ -57,7 +57,9 @@ export interface CreateAgendaData {
   vigencia_desde?: string;
 }
 
-export interface UpdateAgendaData extends Partial<CreateAgendaData> {}
+export interface UpdateAgendaData extends Partial<CreateAgendaData> {
+  vigencia_hasta?: string | null;
+}
 
 export interface CreateBloqueData {
   profesional_id: string;
@@ -224,10 +226,12 @@ export const agendaService = {
   guardarHorariosSemana: async (
     profesionalId: string,
     horarios: { dia_semana: number; hora_inicio: string; hora_fin: string }[],
-    fechaDesde?: string
+    fechaDesde?: string,
+    duracionTurnoMinutos?: number
   ): Promise<ConfiguracionAgenda[]> => {
-    const body: { horarios: typeof horarios; fecha_desde?: string } = { horarios };
+    const body: { horarios: typeof horarios; fecha_desde?: string; duracion_turno_minutos?: number } = { horarios };
     if (fechaDesde) body.fecha_desde = fechaDesde;
+    if (duracionTurnoMinutos != null && duracionTurnoMinutos >= 5 && duracionTurnoMinutos <= 480) body.duracion_turno_minutos = duracionTurnoMinutos;
     const response = await api.put<ApiResponse<ConfiguracionAgenda[]>>(
       `/agenda/profesional/${profesionalId}/horarios-semana`,
       body

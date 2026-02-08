@@ -52,6 +52,8 @@ export interface CreateTurnoData {
   estado?: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
   sobreturno?: boolean;
   motivo?: string;
+  /** Si true, el backend permite crear el turno aunque no esté dentro de la agenda (usuario confirmó "turno fuera de horario"). */
+  permiso_fuera_agenda?: boolean;
 }
 
 export interface UpdateTurnoData extends Partial<CreateTurnoData> {}
