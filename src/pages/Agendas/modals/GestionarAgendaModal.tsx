@@ -247,8 +247,10 @@ export function GestionarAgendaModal({
         return { desdeStr, hastaStr, vigente, futura, historico, etiqueta, texto, configs };
       })
       .sort((a, b) => {
-        const orden = { vigente: 0, futura: 1, historico: 2 };
-        if (orden[a.etiqueta] !== orden[b.etiqueta]) return orden[a.etiqueta] - orden[b.etiqueta];
+        const orden: Record<string, number> = { vigente: 0, futura: 1, historico: 2 };
+        const oa = orden[a.etiqueta] ?? 0;
+        const ob = orden[b.etiqueta] ?? 0;
+        if (oa !== ob) return oa - ob;
         return (b.desdeStr || '').localeCompare(a.desdeStr || '');
       });
   }, [agendasDelProfesionalConHistorico, profesionalId]);
