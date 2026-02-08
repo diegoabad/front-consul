@@ -81,6 +81,7 @@ export const archivosService = {
   upload: async (data: CreateArchivoData): Promise<Archivo> => {
     const formData = new FormData();
     formData.append('archivo', data.archivo);
+    formData.append('nombre_archivo', data.archivo.name);
     formData.append('paciente_id', data.paciente_id);
     formData.append('usuario_id', data.usuario_id);
     if (data.descripcion) {

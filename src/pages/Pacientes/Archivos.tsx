@@ -119,7 +119,6 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedArchivo, setSelectedArchivo] = useState<Archivo | null>(null);
   const [archivoToDelete, setArchivoToDelete] = useState<Archivo | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [filterProfesionalId, setFilterProfesionalId] = useState<string>('todos');
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
@@ -285,11 +284,10 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   });
 
   const handleUpload = async (data: CreateArchivoData) => {
-    setIsSubmitting(true);
     try {
       await uploadMutation.mutateAsync(data);
-    } finally {
-      setIsSubmitting(false);
+    } catch {
+      // Error ya mostrado por onError de la mutación; no cerrar modal para que pueda reintentar
     }
   };
 
@@ -541,22 +539,13 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                   )}
                 </div>
 
-                {/* Comentario: se corta con ... si es muy largo; en el detalle se ve completo */}
-                <p className="text-[13px] text-[#6B7280] font-['Inter'] mb-2 line-clamp-2 break-words overflow-hidden text-ellipsis">
-                  {archivo.descripcion ? archivo.descripcion : 'Sin comentario'}
+                {/* Nombre del archivo */}
+                <p className="text-[14px] font-medium text-[#111827] font-['Inter'] mb-0 line-clamp-2 break-all overflow-hidden text-ellipsis" title={archivo.nombre_archivo}>
+                  {archivo.nombre_archivo}
                 </p>
 
-                {/* Subido por */}
-                <p className="text-[12px] text-[#6B7280] font-['Inter'] mb-2">
-                  {archivo.usuario_id === user?.id ? (
-                    <span className="font-medium text-[#2563eb]">Usuario actual</span>
-                  ) : (
-                    <>Subido por: {formatDisplayText(archivo.profesional_nombre ?? archivo.usuario_subido_nombre)} {formatDisplayText(archivo.profesional_apellido ?? archivo.usuario_subido_apellido)}</>
-                  )}
-                </p>
-
-                {/* Fecha (sin icono; primera letra en mayúscula) */}
-                <p className="text-[12px] text-[#6B7280] font-['Inter'] mb-3">
+                {/* Fecha */}
+                <p className="text-[12px] text-[#6B7280] font-['Inter'] mb-0">
                   {archivo.fecha_subida
                     ? (() => {
                         const d = new Date(archivo.fecha_subida);
@@ -566,6 +555,15 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                         return `${day} de ${month.charAt(0).toUpperCase() + month.slice(1)} de ${year}`;
                       })()
                     : '-'}
+                </p>
+
+                {/* Subido por */}
+                <p className="text-[12px] text-[#6B7280] font-['Inter'] mb-3">
+                  Subido por: {archivo.usuario_id === user?.id ? (
+                    <span className="font-medium text-[#2563eb]">Usuario actual</span>
+                  ) : (
+                    <>{formatDisplayText(archivo.profesional_nombre ?? archivo.usuario_subido_nombre)} {formatDisplayText(archivo.profesional_apellido ?? archivo.usuario_subido_apellido)}</>
+                  )}
                 </p>
 
                 {/* Acciones: iconos; en mobile centradas */}
@@ -684,7 +682,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
         onOpenChange={setShowUploadModal}
         pacienteId={pacienteId}
         onSubmit={handleUpload}
-        isSubmitting={isSubmitting}
+        isSubmitting={uploadMutation.isPending}
       />
 
       {selectedArchivo && (

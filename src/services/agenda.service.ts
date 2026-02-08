@@ -221,16 +221,18 @@ export const agendaService = {
   /**
    * Guardar horarios de la semana: cierra el periodo vigente y crea nuevas configuraciones (con vigencia).
    * Solo envía los días que atiende.
-   * fecha_desde: "hoy" del usuario (YYYY-MM-DD) para que la agenda rija desde hoy aunque el servidor esté en otra zona horaria.
+   * fecha_desde: "hoy" del usuario (YYYY-MM-DD). fecha_hasta: opcional; si coincide con fecha_desde es un período de un solo día.
    */
   guardarHorariosSemana: async (
     profesionalId: string,
     horarios: { dia_semana: number; hora_inicio: string; hora_fin: string }[],
     fechaDesde?: string,
-    duracionTurnoMinutos?: number
+    duracionTurnoMinutos?: number,
+    fechaHasta?: string
   ): Promise<ConfiguracionAgenda[]> => {
-    const body: { horarios: typeof horarios; fecha_desde?: string; duracion_turno_minutos?: number } = { horarios };
+    const body: { horarios: typeof horarios; fecha_desde?: string; fecha_hasta?: string; duracion_turno_minutos?: number } = { horarios };
     if (fechaDesde) body.fecha_desde = fechaDesde;
+    if (fechaHasta) body.fecha_hasta = fechaHasta;
     if (duracionTurnoMinutos != null && duracionTurnoMinutos >= 5 && duracionTurnoMinutos <= 480) body.duracion_turno_minutos = duracionTurnoMinutos;
     const response = await api.put<ApiResponse<ConfiguracionAgenda[]>>(
       `/agenda/profesional/${profesionalId}/horarios-semana`,

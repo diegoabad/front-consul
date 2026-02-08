@@ -27,10 +27,10 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Edit, Loader2, Trash2, Plus, X } from 'lucide-react';
+import { Edit, Loader2, Trash2, X } from 'lucide-react';
 import { agendaService, type CreateExcepcionAgendaData, type CreateBloqueData, type ExcepcionAgenda, type BloqueNoDisponible } from '@/services/agenda.service';
 import type { ConfiguracionAgenda } from '@/types';
-import { formatDisplayText } from '@/lib/utils';
+import { formatDisplayText, cn } from '@/lib/utils';
 import { toast as reactToastify } from 'react-toastify';
 import { startOfMonth, endOfMonth, addMonths, subMonths, addDays, subDays } from 'date-fns';
 import { DIAS_SEMANA, formatTime, formatDiasYHorarios, formatFechaSafe } from '../utils';
@@ -72,6 +72,10 @@ export function GestionarAgendaModal({
   );
   const [vigenciaDesdeGuardar, setVigenciaDesdeGuardar] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [duracionNuevoRango, setDuracionNuevoRango] = useState<number | ''>(30);
+  const [diasFijosNuevoRango, setDiasFijosNuevoRango] = useState(true);
+  const [, setFechaPuntualNuevoRango] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [, setHoraInicioPuntualNuevo] = useState('09:00');
+  const [, setHoraFinPuntualNuevo] = useState('18:00');
   const [horariosEnModoEdicion, setHorariosEnModoEdicion] = useState(false);
   const [showConfirmGuardarHorariosModal, setShowConfirmGuardarHorariosModal] = useState(false);
   const [isSavingHorariosSemana, setIsSavingHorariosSemana] = useState(false);
@@ -221,27 +225,36 @@ export function GestionarAgendaModal({
 
   const vigenciasAgrupadas = useMemo(() => {
     const hoy = format(new Date(), 'yyyy-MM-dd');
+    const toDateOnly = (s: string): string =>
+      s && typeof s === 'string' && s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s.trim()) ? s.trim().slice(0, 10) : s;
+    const isDateOnly = (s: string) => typeof s === 'string' && s.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(s);
     const configsDelProf = (agendasDelProfesionalConHistorico as ConfiguracionAgenda[]).filter(
       (a) => a.profesional_id === profesionalId
     );
     const byVigencia = new Map<string, ConfiguracionAgenda[]>();
     for (const c of configsDelProf) {
-      const desde = c.vigencia_desde ?? '';
-      const hasta = c.vigencia_hasta ?? 'vigente';
-      const key = `${desde}|${hasta}`;
+      const desdeRaw = c.vigencia_desde ?? '';
+      const hastaRaw = c.vigencia_hasta;
+      const desdeKey = toDateOnly(desdeRaw) || desdeRaw;
+      const hastaKey = hastaRaw == null || hastaRaw === '' ? 'vigente' : (toDateOnly(String(hastaRaw)) || hastaRaw);
+      const key = `${desdeKey}|${hastaKey}`;
       if (!byVigencia.has(key)) byVigencia.set(key, []);
       byVigencia.get(key)!.push(c);
     }
     return Array.from(byVigencia.entries())
       .map(([key, configs]) => {
         const [desdeStr, hastaStr] = key.split('|');
+        const desdeNorm = toDateOnly(desdeStr);
+        const hastaNorm = hastaStr === 'vigente' ? hastaStr : toDateOnly(hastaStr);
         const sinHasta = hastaStr === 'vigente';
+        const desdeCmp = isDateOnly(desdeNorm) ? desdeNorm : desdeStr;
+        const hastaCmp = sinHasta ? hastaStr : (isDateOnly(hastaNorm) ? hastaNorm : hastaStr);
         // Vigente = hoy está dentro del período (desde <= hoy y (sin hasta o hasta >= hoy))
-        const vigente = desdeStr <= hoy && (sinHasta || hastaStr >= hoy);
+        const vigente = desdeCmp <= hoy && (sinHasta || hastaCmp >= hoy);
         // Futura = empieza después de hoy
-        const futura = desdeStr > hoy;
+        const futura = desdeCmp > hoy;
         // Histórico = ya terminó (tiene hasta y hasta < hoy)
-        const historico = !sinHasta && hastaStr < hoy;
+        const historico = !sinHasta && hastaCmp !== 'vigente' && hastaCmp < hoy;
         const texto = formatDiasYHorarios(configs);
         const etiqueta = vigente ? 'vigente' : futura ? 'futura' : 'historico';
         return { desdeStr, hastaStr, vigente, futura, historico, etiqueta, texto, configs };
@@ -283,9 +296,16 @@ export function GestionarAgendaModal({
     return min;
   }, [vigenciasAgrupadas]);
 
+  /** Período "sin días fijos": solo placeholder (dia_semana 7). No hay tabla de días ni horarios. */
+  const DIA_SEMANA_PLACEHOLDER_SIN_DIAS = 7;
+  const esPeriodoSinDiasFijos = Boolean(
+    editingFutureVigencia?.configs.length && editingFutureVigencia.configs.every((c) => c.dia_semana === DIA_SEMANA_PLACEHOLDER_SIN_DIAS)
+  );
+
   type VigenciaGrupoItem = { desdeStr: string; hastaStr: string; configs: ConfiguracionAgenda[]; texto: string };
   const abrirEdicionVigenciaFutura = (v: VigenciaGrupoItem) => {
     setEditingFutureVigencia(v);
+    const soloPlaceholder = v.configs.length > 0 && v.configs.every((c) => c.dia_semana === DIA_SEMANA_PLACEHOLDER_SIN_DIAS);
     const form: HorarioSemanaItem[] = DIAS_SEMANA.map((d) => {
       const config = v.configs.find((c) => c.dia_semana === d.value);
       if (config) {
@@ -301,6 +321,7 @@ export function GestionarAgendaModal({
     setHorariosSemanaForm(form);
     setVigenciaDesdeGuardar(v.desdeStr);
     setDuracionNuevoRango(v.configs[0]?.duracion_turno_minutos ?? 30);
+    setDiasFijosNuevoRango(!soloPlaceholder);
     setHorariosEnModoEdicion(true);
   };
 
@@ -312,23 +333,31 @@ export function GestionarAgendaModal({
         typeof duracionNuevoRango === 'number' && duracionNuevoRango >= 5 && duracionNuevoRango <= 480
           ? duracionNuevoRango
           : 30;
-      for (const config of editingFutureVigencia.configs) {
-        const row = horariosSemanaForm.find((r) => r.dia_semana === config.dia_semana);
-        if (!row) continue;
-        const hi = row.hora_inicio.length >= 5 ? row.hora_inicio : row.hora_inicio + ':00';
-        const hf = row.hora_fin.length >= 5 ? row.hora_fin : row.hora_fin + ':00';
-        await agendaService.updateAgenda(config.id, {
-          hora_inicio: hi,
-          hora_fin: hf,
-          activo: row.atiende,
+      const esSoloPlaceholder = editingFutureVigencia.configs.every((c) => c.dia_semana === DIA_SEMANA_PLACEHOLDER_SIN_DIAS);
+      if (esSoloPlaceholder && editingFutureVigencia.configs[0]) {
+        await agendaService.updateAgenda(editingFutureVigencia.configs[0].id, {
+          vigencia_desde: vigenciaDesdeGuardar?.slice(0, 10),
           duracion_turno_minutos: duracion,
         });
+      } else {
+        for (const config of editingFutureVigencia.configs) {
+          const row = horariosSemanaForm.find((r) => r.dia_semana === config.dia_semana);
+          if (!row) continue;
+          const hi = row.hora_inicio.length >= 5 ? row.hora_inicio : row.hora_inicio + ':00';
+          const hf = row.hora_fin.length >= 5 ? row.hora_fin : row.hora_fin + ':00';
+          await agendaService.updateAgenda(config.id, {
+            hora_inicio: hi,
+            hora_fin: hf,
+            activo: row.atiende,
+            duracion_turno_minutos: duracion,
+          });
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
       queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
       setEditingFutureVigencia(null);
       setHorariosEnModoEdicion(false);
-      reactToastify.success('Vigencia futura actualizada correctamente.', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Vigencia actualizada.', { position: 'top-right', autoClose: 3000 });
       onSuccess?.();
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Error al guardar';
@@ -347,33 +376,23 @@ export function GestionarAgendaModal({
       for (const config of vigenciaFuturaABorrar.configs) {
         await agendaService.deleteAgenda(config.id);
       }
-      const anteriorHasta = format(subDays(new Date(desdeBorrada + 'T12:00:00'), 1), 'yyyy-MM-dd');
+      // Solo se puede borrar la última vigencia; al borrarla, la anterior pasa a tener hasta = null (queda vigente).
+      const diaAnterior = format(subDays(new Date(desdeBorrada + 'T12:00:00'), 1), 'yyyy-MM-dd');
       const hastaNorm = (h: string) => (h === 'vigente' ? h : h.slice(0, 10));
-      const grupoAnterior = vigenciasAgrupadas.find((g) => hastaNorm(g.hastaStr) === anteriorHasta);
+      const grupoAnterior = vigenciasAgrupadas.find((g) => hastaNorm(g.hastaStr) === diaAnterior);
       if (grupoAnterior?.configs) {
         try {
-          // Si queda otra vigencia futura que empieza después de la que borramos, la anterior debe cerrar un día antes de esa
-          const otrasFuturas = vigenciasAgrupadas.filter(
-            (v) => v.futura && (v.desdeStr !== vigenciaFuturaABorrar.desdeStr || v.hastaStr !== vigenciaFuturaABorrar.hastaStr)
-          );
-          const siguienteDesde = otrasFuturas
-            .filter((v) => v.desdeStr.slice(0, 10) > desdeBorrada)
-            .map((v) => v.desdeStr.slice(0, 10))
-            .sort()[0];
-          const nuevaHasta = siguienteDesde
-            ? format(subDays(new Date(siguienteDesde + 'T12:00:00'), 1), 'yyyy-MM-dd')
-            : null;
           for (const c of grupoAnterior.configs) {
-            await agendaService.updateAgenda(c.id, { vigencia_hasta: nuevaHasta });
+            await agendaService.updateAgenda(c.id, { vigencia_hasta: null });
           }
         } catch {
-          // La vigencia futura ya se eliminó; si falla actualizar la anterior, no mostramos error al usuario
+          // Si falla actualizar la anterior, no mostramos error al usuario
         }
       }
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
       queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
       setVigenciaFuturaABorrar(null);
-      reactToastify.success('Vigencia futura eliminada.', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Vigencia eliminada.', { position: 'top-right', autoClose: 3000 });
       onSuccess?.();
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Error al eliminar';
@@ -396,7 +415,7 @@ export function GestionarAgendaModal({
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
       setShowExcepcionModal(false);
       setExcepcionForm((f) => ({ ...f, fecha: format(new Date(), 'yyyy-MM-dd'), hora_inicio: '09:00', hora_fin: '13:00', observaciones: '' }));
-      reactToastify.success('Día puntual agregado correctamente', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Día puntual agregado.', { position: 'top-right', autoClose: 3000 });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
@@ -411,7 +430,7 @@ export function GestionarAgendaModal({
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
       setShowDeleteExcepcionModal(false);
       setExcepcionToDelete(null);
-      reactToastify.success('Día puntual eliminado correctamente', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Día puntual eliminado.', { position: 'top-right', autoClose: 3000 });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
@@ -425,7 +444,7 @@ export function GestionarAgendaModal({
       queryClient.invalidateQueries({ queryKey: ['bloques'] });
       setShowBloqueModal(false);
       setBloqueForm((f) => ({ ...f, fecha: format(new Date(), 'yyyy-MM-dd'), hora_inicio: '09:00', hora_fin: '12:00', motivo: '' }));
-      reactToastify.success('Bloqueo agregado correctamente', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Bloqueo agregado.', { position: 'top-right', autoClose: 3000 });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
@@ -439,7 +458,7 @@ export function GestionarAgendaModal({
       queryClient.invalidateQueries({ queryKey: ['bloques'] });
       setShowDeleteBloqueModal(false);
       setBloqueToDelete(null);
-      reactToastify.success('Bloqueo eliminado correctamente', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Bloqueo eliminado.', { position: 'top-right', autoClose: 3000 });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
@@ -451,48 +470,58 @@ export function GestionarAgendaModal({
     const fechaDesde = vigenciaDesdeGuardar || format(new Date(), 'yyyy-MM-dd');
     if (minFechaNuevoPeriodo && fechaDesde < minFechaNuevoPeriodo) {
       reactToastify.error(
-        `La fecha "A partir de" debe ser posterior al período vigente (mínimo ${formatDisplayText(formatFechaSafe(minFechaNuevoPeriodo))}).`,
+        `La fecha debe ser posterior al período vigente (mínimo ${formatDisplayText(formatFechaSafe(minFechaNuevoPeriodo))}).`,
         { position: 'top-right', autoClose: 4000 }
       );
       return;
     }
     setIsSavingHorariosSemana(true);
     try {
-      const horariosPayload = horariosSemanaForm
-        .filter((item) => item.atiende)
-        .map((item) => ({
-          dia_semana: item.dia_semana,
-          hora_inicio: item.hora_inicio.length >= 5 ? item.hora_inicio : item.hora_inicio + ':00',
-          hora_fin: item.hora_fin.length >= 5 ? item.hora_fin : item.hora_fin + ':00',
-        }));
+      const horariosPayload = diasFijosNuevoRango
+        ? horariosSemanaForm
+            .filter((item) => item.atiende)
+            .map((item) => ({
+              dia_semana: item.dia_semana,
+              hora_inicio: item.hora_inicio.length >= 5 ? item.hora_inicio : item.hora_inicio + ':00',
+              hora_fin: item.hora_fin.length >= 5 ? item.hora_fin : item.hora_fin + ':00',
+            }))
+        : [];
       const duracionMinutos =
         typeof duracionNuevoRango === 'number' && duracionNuevoRango >= 5 && duracionNuevoRango <= 480
           ? duracionNuevoRango
           : 30;
       try {
-        await agendaService.guardarHorariosSemana(profesionalId, horariosPayload, fechaDesde, duracionMinutos);
+        await agendaService.guardarHorariosSemana(
+          profesionalId,
+          horariosPayload,
+          fechaDesde,
+          duracionMinutos,
+          diasFijosNuevoRango ? undefined : undefined // sin días fijos = período abierto sin horarios (placeholder)
+        );
       } catch (_) {
         for (const config of currentConfigs) {
           await agendaService.deactivateAgenda(config.id);
         }
-        for (const item of horariosSemanaForm) {
-          if (!item.atiende) continue;
-          await agendaService.createAgenda({
-            profesional_id: profesionalId,
-            dia_semana: item.dia_semana,
-            hora_inicio: item.hora_inicio.length >= 5 ? item.hora_inicio : item.hora_inicio + ':00',
-            hora_fin: item.hora_fin.length >= 5 ? item.hora_fin : item.hora_fin + ':00',
-            duracion_turno_minutos: duracionMinutos,
-            activo: true,
-            vigencia_desde: fechaDesde,
-          });
+        if (diasFijosNuevoRango) {
+          for (const item of horariosSemanaForm.filter((i) => i.atiende)) {
+            await agendaService.createAgenda({
+              profesional_id: profesionalId,
+              dia_semana: item.dia_semana,
+              hora_inicio: item.hora_inicio.length >= 5 ? item.hora_inicio : item.hora_inicio + ':00',
+              hora_fin: item.hora_fin.length >= 5 ? item.hora_fin : item.hora_fin + ':00',
+              duracion_turno_minutos: duracionMinutos,
+              activo: true,
+              vigencia_desde: fechaDesde,
+            });
+          }
         }
+        // sin días fijos: backend ya creó placeholder con horarios []; no crear filas extra
       }
       queryClient.invalidateQueries({ queryKey: ['agendas'] });
       queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
       setShowConfirmGuardarHorariosModal(false);
       setHorariosEnModoEdicion(false);
-      reactToastify.success('Horarios de la semana guardados correctamente.', { position: 'top-right', autoClose: 3000 });
+      reactToastify.success('Horarios guardados.', { position: 'top-right', autoClose: 3000 });
       onSuccess?.();
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Error al guardar';
@@ -583,7 +612,7 @@ export function GestionarAgendaModal({
                 </TabsList>
               </div>
               <div className="flex-1 min-h-0 flex flex-col min-w-0 w-full">
-                <TabsContent value="horarios" className="flex-1 min-h-0 min-w-0 w-full overflow-auto mt-0 data-[state=inactive]:hidden flex flex-col">
+                <TabsContent value="horarios" className="flex-1 min-h-0 min-w-0 w-full overflow-hidden mt-0 data-[state=inactive]:hidden flex flex-col">
                   {!horariosEnModoEdicion ? (
                     <>
                       <div ref={horariosScrollRef} className="flex-1 min-h-0 overflow-auto pb-4">
@@ -592,7 +621,17 @@ export function GestionarAgendaModal({
                           {(() => {
                             const vigenteActual = vigenciasAgrupadas.find((v) => v.vigente);
                             if (vigenteActual) {
-                              return <p className="text-[14px] sm:text-[16px] font-semibold text-[#111827] font-['Inter'] mb-0">{vigenteActual.texto}</p>;
+                              const hastaEsIndeterminado = !vigenteActual.hastaStr || vigenteActual.hastaStr === 'vigente';
+                              return (
+                                <>
+                                  <p className="text-[14px] sm:text-[16px] font-semibold text-[#111827] font-['Inter'] mb-1">{vigenteActual.texto}</p>
+                                  <p className="text-[13px] text-[#6B7280] font-['Inter'] mb-0">
+                                    Desde {formatDisplayText(formatFechaSafe(vigenteActual.desdeStr))}
+                                    {' · '}
+                                    Hasta {hastaEsIndeterminado ? 'indeterminado' : formatDisplayText(formatFechaSafe(vigenteActual.hastaStr))}
+                                  </p>
+                                </>
+                              );
                             }
                             if (vigenciasAgrupadas.length > 0) {
                               return <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">No hay horarios vigentes (solo vigencia futura o historial).</p>;
@@ -600,89 +639,91 @@ export function GestionarAgendaModal({
                             return <p className="text-[14px] text-[#6B7280] font-['Inter'] mb-0">Aún no hay horarios de semana configurados.</p>;
                           })()}
                         </div>
-                        {(vigenciasAgrupadas.some((v) => v.futura) || vigenciasAgrupadas.some((v) => v.historico)) && (
-                          <>
-                            {vigenciasAgrupadas.some((v) => v.futura) && (
-                              <>
-                                <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-2">Vigencia futura</p>
-                                <div className="py-3 w-full min-w-0 overflow-x-auto mb-4">
-                                  <Table className="w-full min-w-[700px]">
-                                    <TableHeader>
-                                      <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
-                                        <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Desde</TableHead>
-                                        <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Hasta</TableHead>
-                                        <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[180px]">Días y horarios</TableHead>
-                                        <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 w-[90px] text-right">Acciones</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {vigenciasAgrupadas
-                                        .filter((v) => v.futura)
-                                        .map((v) => (
-                                          <TableRow key={`${v.desdeStr}|${v.hastaStr}`} className="border-[#E5E7EB]">
-                                            <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.desdeStr))}</TableCell>
-                                            <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.hastaStr))}</TableCell>
-                                            <TableCell className="font-['Inter'] text-[13px] text-[#6B7280] py-2 min-w-[180px] break-words">{v.texto}</TableCell>
-                                            <TableCell className="font-['Inter'] text-[13px] py-2 w-[90px] text-right">
-                                              <div className="flex items-center justify-end gap-1">
-                                                <Button
-                                                  type="button"
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className="h-8 w-8 text-[#2563eb] hover:bg-[#EFF6FF]"
-                                                  onClick={() => abrirEdicionVigenciaFutura(v)}
-                                                  title="Modificar"
-                                                >
-                                                  <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                  type="button"
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className="h-8 w-8 text-[#DC2626] hover:bg-[#FEF2F2]"
-                                                  onClick={() => setVigenciaFuturaABorrar(v)}
-                                                  title="Eliminar"
-                                                >
-                                                  <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                              </div>
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                    </TableBody>
-                                  </Table>
-                                </div>
-                              </>
-                            )}
-                            <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-2">Historial</p>
-                            <div className="py-3 w-full min-w-0 overflow-x-auto">
-                              {vigenciasAgrupadas.filter((v) => v.historico).length > 0 ? (
-                                <Table className="w-full min-w-[600px]">
-                                  <TableHeader>
-                                    <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
-                                      <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Desde</TableHead>
-                                      <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Hasta</TableHead>
-                                      <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[180px]">Días y horarios</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {vigenciasAgrupadas
-                                      .filter((v) => v.historico)
-                                      .map((v) => (
+                        <>
+                          <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-2">Vigencia futura</p>
+                          <div className="py-3 w-full min-w-0 overflow-x-auto mb-4">
+                            {vigenciasAgrupadas.filter((v) => v.futura).length > 0 ? (
+                              <Table className="w-full min-w-[700px]">
+                                <TableHeader>
+                                  <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Desde</TableHead>
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Hasta</TableHead>
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[180px]">Días y horarios</TableHead>
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 w-[90px] text-right">Acciones</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {vigenciasAgrupadas
+                                    .filter((v) => v.futura)
+                                    .map((v, indexFutura) => {
+                                      const esUltimaVigencia = indexFutura === 0;
+                                      return (
                                         <TableRow key={`${v.desdeStr}|${v.hastaStr}`} className="border-[#E5E7EB]">
                                           <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.desdeStr))}</TableCell>
                                           <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.hastaStr))}</TableCell>
                                           <TableCell className="font-['Inter'] text-[13px] text-[#6B7280] py-2 min-w-[180px] break-words">{v.texto}</TableCell>
+<TableCell className="font-['Inter'] text-[13px] py-2 w-[90px] text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-[#2563eb] hover:bg-[#EFF6FF]"
+                                                onClick={() => abrirEdicionVigenciaFutura(v)}
+                                                title="Editar esta vigencia"
+                                              >
+                                                <Edit className="h-4 w-4 stroke-[2]" />
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40 disabled:pointer-events-none"
+                                                onClick={() => setVigenciaFuturaABorrar(v)}
+                                                title={esUltimaVigencia ? 'Eliminar (solo se puede borrar la última vigencia)' : 'Solo se puede eliminar la última vigencia de la lista'}
+                                                disabled={!esUltimaVigencia}
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
+                                            </div>
+                                          </TableCell>
                                         </TableRow>
-                                      ))}
-                                  </TableBody>
-                                </Table>
-                              ) : (
-                                <p className="text-[14px] text-[#6B7280] font-['Inter'] py-1">No hay historial de horarios.</p>
-                              )}
-                            </div>
-                          </>
-                        )}
+                                    );
+                                    })}
+                                </TableBody>
+                              </Table>
+                            ) : (
+                              <p className="text-[14px] text-[#6B7280] font-['Inter'] py-1">No hay vigencias futuras.</p>
+                            )}
+                          </div>
+                          <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-2">Historial</p>
+                          <div className="py-3 w-full min-w-0 overflow-x-auto">
+                            {vigenciasAgrupadas.filter((v) => v.historico).length > 0 ? (
+                              <Table className="w-full min-w-[600px]">
+                                <TableHeader>
+                                  <TableRow className="bg-[#F3F4F6] border-[#E5E7EB] hover:bg-[#F3F4F6]">
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Desde</TableHead>
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[200px] w-[200px]">Hasta</TableHead>
+                                    <TableHead className="font-['Inter'] text-[12px] font-medium text-[#374151] py-2.5 min-w-[180px]">Días y horarios</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {vigenciasAgrupadas
+                                    .filter((v) => v.historico)
+                                    .map((v) => (
+                                      <TableRow key={`${v.desdeStr}|${v.hastaStr}`} className="border-[#E5E7EB]">
+                                        <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.desdeStr))}</TableCell>
+                                        <TableCell className="font-['Inter'] text-[13px] text-[#374151] py-2 min-w-[200px] w-[200px]">{formatDisplayText(formatFechaSafe(v.hastaStr))}</TableCell>
+                                        <TableCell className="font-['Inter'] text-[13px] text-[#6B7280] py-2 min-w-[180px] break-words">{v.texto}</TableCell>
+                                      </TableRow>
+                                    ))}
+                                </TableBody>
+                              </Table>
+                            ) : (
+                              <p className="text-[14px] text-[#6B7280] font-['Inter'] py-1">No hay historial de horarios.</p>
+                            )}
+                          </div>
+                        </>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end flex-shrink-0 pt-4 border-t border-[#E5E7EB]">
                         <Button
@@ -698,7 +739,11 @@ export function GestionarAgendaModal({
                             setEditingFutureVigencia(null);
                             setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
                             setVigenciaDesdeGuardar('');
-                            setDuracionNuevoRango('');
+                            setDuracionNuevoRango(30);
+                            setDiasFijosNuevoRango(true);
+                            setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
+                            setHoraInicioPuntualNuevo('09:00');
+                            setHoraFinPuntualNuevo('18:00');
                             setHorariosEnModoEdicion(true);
                           }}
                           className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
@@ -706,126 +751,177 @@ export function GestionarAgendaModal({
                           <span className="hidden sm:inline-flex mr-2">
                             <Edit className="h-4 w-4 stroke-[2]" />
                           </span>
-                          Modificar horarios
+                          Configurar agenda
                         </Button>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="mb-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-4">
-                        <div className="w-full min-w-0 sm:flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
-                          <Label className="text-[14px] font-medium text-[#374151] font-['Inter'] whitespace-nowrap shrink-0">Vigencia a partir de</Label>
-                          {editingFutureVigencia ? (
+                      <div className="flex-1 min-h-0 overflow-auto pb-4">
+                        <div className="flex flex-col gap-4 w-full">
+                        <div className="flex flex-col sm:flex-row gap-4 w-full sm:gap-4">
+                          <div className="space-y-2 w-full flex-1 min-w-0">
+                            <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Vigencia a partir de</Label>
+                            {editingFutureVigencia ? (
+                              <Input
+                                readOnly
+                                value={formatDisplayText(formatFechaSafe(vigenciaDesdeGuardar))}
+                                className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] bg-[#F9FAFB]"
+                              />
+                            ) : (
+                              <div className="w-full [&_button]:w-full [&_button]:h-[52px]">
+                                <DatePicker
+                                  value={vigenciaDesdeGuardar}
+                                  onChange={(v) => setVigenciaDesdeGuardar(v || format(new Date(), 'yyyy-MM-dd'))}
+                                  placeholder="Elegir fecha"
+                                  className="h-[52px] w-full text-[#374151] justify-start pl-3 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px]"
+                                  min={minFechaNuevoPeriodo}
+                                  inline
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-2 w-full flex-1 min-w-0">
+                            <Label htmlFor="duracion-nuevo-rango" className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración del turno (min)</Label>
                             <Input
-                              readOnly
-                              value={formatDisplayText(formatFechaSafe(vigenciaDesdeGuardar))}
-                              className="h-10 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] bg-[#F9FAFB]"
+                              id="duracion-nuevo-rango"
+                              type="number"
+                              min={5}
+                              max={480}
+                              value={duracionNuevoRango === '' ? '' : duracionNuevoRango}
+                              disabled={!diasFijosNuevoRango}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === '') {
+                                  setDuracionNuevoRango('');
+                                  return;
+                                }
+                                const n = parseInt(raw, 10);
+                                if (Number.isNaN(n)) return;
+                                setDuracionNuevoRango(n);
+                              }}
+                              onBlur={() => {
+                                if (duracionNuevoRango === '') return;
+                                const n = typeof duracionNuevoRango === 'number' ? duracionNuevoRango : parseInt(String(duracionNuevoRango), 10);
+                                if (Number.isNaN(n)) {
+                                  setDuracionNuevoRango('');
+                                  return;
+                                }
+                                const clamped = Math.min(480, Math.max(5, n));
+                                if (clamped !== n) setDuracionNuevoRango(clamped);
+                              }}
+                              className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] disabled:opacity-60 disabled:cursor-not-allowed"
+                              placeholder="30"
                             />
-                          ) : (
-                            <div className="w-full min-w-0 sm:flex-1 [&_button]:w-full">
-                              <DatePicker
-                                value={vigenciaDesdeGuardar}
-                                onChange={(v) => setVigenciaDesdeGuardar(v || format(new Date(), 'yyyy-MM-dd'))}
-                                placeholder="Fecha"
-                                className="h-10 w-full min-w-0 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px]"
-                                min={minFechaNuevoPeriodo}
+                          </div>
+                        </div>
+                        <div className="space-y-2 w-full flex-1 min-w-0">
+                          <Label htmlFor="dias-fijos-switch" className="text-[15px] font-medium text-[#374151] font-['Inter']">Tipo de agenda</Label>
+                          <div className="flex items-center justify-center gap-[30px] h-[52px] px-4 rounded-[10px] border-[1.5px] border-[#D1D5DB] bg-[#F9FAFB]">
+                            <div className="flex items-center justify-start w-full gap-[30px] md:hidden">
+                              <span className="font-[Inter] text-[14px] text-[#374151] font-medium">
+                                {diasFijosNuevoRango ? 'Días fijos por semana' : 'Solo días puntuales'}
+                              </span>
+                              <Switch
+                                id="dias-fijos-switch-mobile"
+                                checked={diasFijosNuevoRango}
+                                onCheckedChange={(checked) => {
+                                  setDiasFijosNuevoRango(checked);
+                                  if (!checked) setHorariosSemanaForm((prev) => prev.map((p) => ({ ...p, atiende: false })));
+                                }}
+                                className="data-[state=checked]:bg-[#2563eb] flex-shrink-0"
                               />
                             </div>
-                          )}
+                            <>
+                              <span className={cn('font-[Inter] text-[14px] hidden md:inline', !diasFijosNuevoRango ? 'text-[#374151] font-medium' : 'text-[#9CA3AF]')}>Solo días puntuales</span>
+                              <Switch
+                                id="dias-fijos-switch"
+                                checked={diasFijosNuevoRango}
+                                onCheckedChange={(checked) => {
+                                  setDiasFijosNuevoRango(checked);
+                                  if (!checked) setHorariosSemanaForm((prev) => prev.map((p) => ({ ...p, atiende: false })));
+                                }}
+                                className="data-[state=checked]:bg-[#2563eb] flex-shrink-0 hidden md:inline-flex"
+                              />
+                              <span className={cn('font-[Inter] text-[14px] hidden md:inline', diasFijosNuevoRango ? 'text-[#374151] font-medium' : 'text-[#9CA3AF]')}>Días fijos por semana</span>
+                            </>
+                          </div>
                         </div>
-                        <div className="w-full min-w-0 sm:w-auto flex flex-col sm:flex-row sm:items-center gap-2 mb-2 sm:mb-0 shrink-0">
-                          <Label htmlFor="duracion-nuevo-rango" className="text-[14px] font-medium text-[#374151] font-['Inter'] whitespace-nowrap mb-1 sm:mb-0">
-                            Duración turno (min):
+                        <div className="space-y-3">
+                          <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex flex-wrap items-baseline gap-1">
+                            Horario por día
+                            <span className="text-[13px] font-normal text-[#6B7280]">
+                              {diasFijosNuevoRango
+                                ? '— Marca los días que trabaja y el horario de cada uno.'
+                                : '— Agregá días desde Habilitar.'}
+                            </span>
                           </Label>
-                          <Input
-                            id="duracion-nuevo-rango"
-                            type="number"
-                            min={5}
-                            max={480}
-                            value={duracionNuevoRango === '' ? '' : duracionNuevoRango}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              if (raw === '') {
-                                setDuracionNuevoRango('');
-                                return;
-                              }
-                              const n = parseInt(raw, 10);
-                              if (Number.isNaN(n)) return;
-                              setDuracionNuevoRango(n);
-                            }}
-                            onBlur={() => {
-                              if (duracionNuevoRango === '') return;
-                              const n = typeof duracionNuevoRango === 'number' ? duracionNuevoRango : parseInt(String(duracionNuevoRango), 10);
-                              if (Number.isNaN(n)) {
-                                setDuracionNuevoRango('');
-                                return;
-                              }
-                              const clamped = Math.min(480, Math.max(5, n));
-                              if (clamped !== n) setDuracionNuevoRango(clamped);
-                            }}
-                            className="h-10 w-full min-w-0 sm:w-[100px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px]"
-                          />
+                          <div className={cn('rounded-[12px] border border-[#E5E7EB] overflow-x-auto', (!diasFijosNuevoRango && !esPeriodoSinDiasFijos) && 'opacity-70 pointer-events-none')}>
+                            <Table className="w-full min-w-[320px]">
+                              <TableHeader>
+                                <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
+                                  <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[80px]">Trabaja</TableHead>
+                                  <TableHead className="font-['Inter'] text-[14px] text-[#374151]">Día</TableHead>
+                                  <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora inicio</TableHead>
+                                  <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora fin</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {horariosSemanaForm.map((item) => {
+                                  const tablaDeshabilitada = !diasFijosNuevoRango || esPeriodoSinDiasFijos;
+                                  return (
+                                    <TableRow key={item.dia_semana} className={`border-[#E5E7EB] ${tablaDeshabilitada ? 'opacity-70' : ''}`}>
+                                      <TableCell className="py-3 w-[80px]">
+                                        <Switch
+                                          checked={item.atiende}
+                                          onCheckedChange={(checked) => {
+                                            setHorariosSemanaForm((prev) =>
+                                              prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, atiende: checked } : p))
+                                            );
+                                          }}
+                                          disabled={tablaDeshabilitada}
+                                          className="data-[state=checked]:bg-[#2563eb]"
+                                        />
+                                      </TableCell>
+                                      <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-3">
+                                        {DIAS_SEMANA.find((d) => d.value === item.dia_semana)?.label ?? ''}
+                                      </TableCell>
+                                      <TableCell className="py-3 min-w-[100px]">
+                                        <Input
+                                          type="time"
+                                          value={item.hora_inicio}
+                                          onChange={(e) =>
+                                            setHorariosSemanaForm((prev) =>
+                                              prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_inicio: e.target.value } : p))
+                                            )
+                                          }
+                                          className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px]"
+                                          disabled={tablaDeshabilitada || !item.atiende}
+                                        />
+                                      </TableCell>
+                                      <TableCell className="py-3 min-w-[100px]">
+                                        <Input
+                                          type="time"
+                                          value={item.hora_fin}
+                                          onChange={(e) =>
+                                            setHorariosSemanaForm((prev) =>
+                                              prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_fin: e.target.value } : p))
+                                            )
+                                          }
+                                          className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px]"
+                                          disabled={tablaDeshabilitada || !item.atiende}
+                                        />
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
                         </div>
                       </div>
-                      <div className="flex-1 min-h-0 overflow-auto border border-[#E5E7EB] rounded-[12px] mb-4">
-                        <Table className="w-full min-w-[480px]">
-                          <TableHeader>
-                            <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[18%] min-w-[70px]">Atiende</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] w-[22%] min-w-[80px]">Día</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[120px]">Hora inicio</TableHead>
-                              <TableHead className="font-['Inter'] text-[13px] text-[#374151] min-w-[120px]">Hora fin</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {horariosSemanaForm.map((item) => (
-                              <TableRow key={item.dia_semana} className="border-[#E5E7EB]">
-                                <TableCell className="py-2 w-[18%] min-w-[70px]">
-                                  <Switch
-                                    checked={item.atiende}
-                                    onCheckedChange={(checked) => {
-                                      setHorariosSemanaForm((prev) =>
-                                        prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, atiende: checked } : p))
-                                      );
-                                    }}
-                                    className="data-[state=checked]:bg-[#2563eb]"
-                                  />
-                                </TableCell>
-                                <TableCell className="font-['Inter'] text-[14px] text-[#374151] py-2 w-[22%] min-w-[80px]">
-                                  {DIAS_SEMANA.find((d) => d.value === item.dia_semana)?.label ?? ''}
-                                </TableCell>
-                                <TableCell className="py-2 min-w-[120px]">
-                                  <Input
-                                    type="time"
-                                    value={item.hora_inicio}
-                                    onChange={(e) =>
-                                      setHorariosSemanaForm((prev) =>
-                                        prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_inicio: e.target.value } : p))
-                                      )
-                                    }
-                                    className="h-9 w-full min-w-[100px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
-                                    disabled={!item.atiende}
-                                  />
-                                </TableCell>
-                                <TableCell className="py-2 min-w-[120px]">
-                                  <Input
-                                    type="time"
-                                    value={item.hora_fin}
-                                    onChange={(e) =>
-                                      setHorariosSemanaForm((prev) =>
-                                        prev.map((p) => (p.dia_semana === item.dia_semana ? { ...p, hora_fin: e.target.value } : p))
-                                      )
-                                    }
-                                    className="h-9 w-full min-w-[100px] border-[#D1D5DB] rounded-[8px] font-['Inter'] text-[14px]"
-                                    disabled={!item.atiende}
-                                  />
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-2 flex-shrink-0">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-2 flex-shrink-0 pt-4 mt-2 border-t border-[#E5E7EB] bg-[#F9FAFB]">
                         <Button
                           type="button"
                           variant="outline"
@@ -841,9 +937,9 @@ export function GestionarAgendaModal({
                           <Button
                             onClick={handleGuardarEdicionVigenciaFutura}
                             disabled={
-                              !horariosSemanaForm.some((i) => i.atiende) ||
                               duracionNuevoRango === '' ||
-                              (typeof duracionNuevoRango === 'number' && (duracionNuevoRango < 5 || duracionNuevoRango > 480))
+                              (typeof duracionNuevoRango === 'number' && (duracionNuevoRango < 5 || duracionNuevoRango > 480)) ||
+                              (!esPeriodoSinDiasFijos && !horariosSemanaForm.some((i) => i.atiende))
                             }
                             className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto"
                           >
@@ -855,7 +951,7 @@ export function GestionarAgendaModal({
                           onClick={() => setShowConfirmGuardarHorariosModal(true)}
                           disabled={
                             !vigenciaDesdeGuardar?.trim() ||
-                            !horariosSemanaForm.some((i) => i.atiende) ||
+                            (diasFijosNuevoRango && !horariosSemanaForm.some((i) => i.atiende)) ||
                             duracionNuevoRango === '' ||
                             (typeof duracionNuevoRango === 'number' && (duracionNuevoRango < 5 || duracionNuevoRango > 480))
                           }
@@ -925,13 +1021,24 @@ export function GestionarAgendaModal({
                       Cerrar
                     </Button>
                     <Button
-                      onClick={() => setShowExcepcionModal(true)}
+                      onClick={() => {
+                        setActiveTab('horarios');
+                        setEditingFutureVigencia(null);
+                        setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
+                        setVigenciaDesdeGuardar('');
+                        setDuracionNuevoRango(30);
+                        setDiasFijosNuevoRango(true);
+                        setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
+                        setHoraInicioPuntualNuevo('09:00');
+                        setHoraFinPuntualNuevo('18:00');
+                        setHorariosEnModoEdicion(true);
+                      }}
                       className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
                     >
                       <span className="hidden sm:inline-flex mr-2">
-                        <Plus className="h-4 w-4 stroke-[2]" />
+                        <Edit className="h-4 w-4 stroke-[2]" />
                       </span>
-                      Agregar fecha puntual
+                      Configurar agenda
                     </Button>
                   </div>
                 </TabsContent>
@@ -997,13 +1104,24 @@ export function GestionarAgendaModal({
                       Cerrar
                     </Button>
                     <Button
-                      onClick={() => setShowBloqueModal(true)}
+                      onClick={() => {
+                        setActiveTab('horarios');
+                        setEditingFutureVigencia(null);
+                        setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
+                        setVigenciaDesdeGuardar('');
+                        setDuracionNuevoRango(30);
+                        setDiasFijosNuevoRango(true);
+                        setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
+                        setHoraInicioPuntualNuevo('09:00');
+                        setHoraFinPuntualNuevo('18:00');
+                        setHorariosEnModoEdicion(true);
+                      }}
                       className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
                     >
                       <span className="hidden sm:inline-flex mr-2">
-                        <Plus className="h-4 w-4 stroke-[2]" />
+                        <Edit className="h-4 w-4 stroke-[2]" />
                       </span>
-                      Agregar bloqueo
+                      Configurar agenda
                     </Button>
                   </div>
                 </TabsContent>

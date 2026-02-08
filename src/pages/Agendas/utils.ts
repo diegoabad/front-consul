@@ -33,10 +33,17 @@ export function formatFechaSafe(fecha: string | null | undefined): string {
   return formatDisplayText(format(d, 'd MMM yyyy', { locale: es }));
 }
 
+/** dia_semana = 7 es el placeholder "sin días fijos" (no genera slots por día) */
+const DIA_SEMANA_PLACEHOLDER_SIN_DIAS = 7;
+
 export function formatDiasYHorarios(agendas: ConfiguracionAgenda[]): string {
   if (agendas.length === 0) return '—';
+  if (agendas.every((a) => a.dia_semana === DIA_SEMANA_PLACEHOLDER_SIN_DIAS || a.dia_semana == null)) {
+    return 'Sin días fijos';
+  }
   const bySlot = new Map<string, number[]>();
   for (const a of agendas) {
+    if (a.dia_semana === DIA_SEMANA_PLACEHOLDER_SIN_DIAS || a.dia_semana == null) continue;
     const key = `${formatTime(a.hora_inicio)}-${formatTime(a.hora_fin)}`;
     if (!bySlot.has(key)) bySlot.set(key, []);
     bySlot.get(key)!.push(a.dia_semana);
@@ -48,7 +55,7 @@ export function formatDiasYHorarios(agendas: ConfiguracionAgenda[]): string {
     const labels = dias.map((d) => DIAS_CORTOS[d] ?? '').filter(Boolean);
     parts.push(`${labels.join('-')} ${slot}`);
   });
-  return parts.join(' · ');
+  return parts.length > 0 ? parts.join(' · ') : 'Sin días fijos';
 }
 
 export function horariosSeSolapan(a1: string, a2: string, b1: string, b2: string): boolean {

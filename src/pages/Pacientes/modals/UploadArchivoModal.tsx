@@ -222,11 +222,11 @@ export function UploadArchivoModal({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Paperclip className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                    <div>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                    <div className="space-y-0">
+                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
                         {formData.archivo.name}
                       </p>
-                      <p className="text-sm text-[#6B7280] font-['Inter']">
+                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">
                         {formatFileSize(formData.archivo.size)}
                       </p>
                     </div>

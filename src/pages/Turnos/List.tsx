@@ -338,19 +338,49 @@ export default function AdminTurnos() {
     enabled: Boolean(profesionalFilter),
   });
 
-  // Profesional sin agenda: mostrar modal "¿Querés crearla?"
+  // Días puntuales del profesional (rango: mes del calendario ± 1 mes) — antes de loadingAgendaYExcepciones
+  const excepcionesDateRange = useMemo(() => {
+    const start = startOfMonth(subMonths(calendarViewMonth, 1));
+    const end = endOfMonth(addMonths(calendarViewMonth, 1));
+    return { fecha_desde: format(start, 'yyyy-MM-dd'), fecha_hasta: format(end, 'yyyy-MM-dd') };
+  }, [calendarViewMonth]);
+  const { data: excepcionesDelRango = [], isLoading: loadingExcepcionesDelRango } = useQuery({
+    queryKey: ['excepciones', profesionalFilter, excepcionesDateRange.fecha_desde, excepcionesDateRange.fecha_hasta],
+    queryFn: () =>
+      agendaService.getExcepcionesByProfesional(
+        profesionalFilter!,
+        excepcionesDateRange.fecha_desde,
+        excepcionesDateRange.fecha_hasta
+      ),
+    enabled: Boolean(profesionalFilter),
+  });
+
+  // Profesional sin agenda (ni config semanal ni fechas puntuales): mostrar modal "¿Querés crearla?"
+  const loadingAgendaYExcepciones = loadingAgendasDelProfesional || loadingExcepcionesDelRango;
+  const sinAgendaDelProfesional = Boolean(
+    profesionalFilter &&
+    !loadingAgendaYExcepciones &&
+    agendasDelProfesional.length === 0 &&
+    excepcionesDelRango.length === 0
+  );
   useEffect(() => {
-    if (
-      isProfesional &&
-      profesionalFilter &&
-      !loadingAgendasDelProfesional &&
-      agendasDelProfesional.length === 0
-    ) {
+    if (isProfesional && profesionalFilter && !loadingAgendaYExcepciones && agendasDelProfesional.length === 0 && excepcionesDelRango.length === 0) {
       setShowSinAgendaModal(true);
     }
-  }, [isProfesional, profesionalFilter, loadingAgendasDelProfesional, agendasDelProfesional.length]);
+  }, [isProfesional, profesionalFilter, loadingAgendaYExcepciones, agendasDelProfesional.length, excepcionesDelRango.length]);
 
-  const sinAgendaDelProfesional = Boolean(profesionalFilter && !loadingAgendasDelProfesional && agendasDelProfesional.length === 0);
+  /** Fecha mínima para Habilitar día puntual: no antes de hoy ni antes del inicio de la primera vigencia del profesional */
+  const minFechaHabilitarPuntual = useMemo(() => {
+    const hoy = format(new Date(), 'yyyy-MM-dd');
+    if (!profesionalFilter || agendasDelProfesional.length === 0) return hoy;
+    const fechas = agendasDelProfesional
+      .map((a) => a.vigencia_desde)
+      .filter((d): d is string => d != null && d !== '')
+      .map((d) => (typeof d === 'string' && d.length >= 10 ? d.slice(0, 10) : d));
+    if (fechas.length === 0) return hoy;
+    const minVigencia = fechas.sort()[0];
+    return minVigencia > hoy ? minVigencia : hoy;
+  }, [profesionalFilter, agendasDelProfesional]);
 
   // Fetch turnos con filtros
   const filters = useMemo(() => {
@@ -413,49 +443,31 @@ export default function AdminTurnos() {
     [todasLasAgendas]
   );
 
-  // Días puntuales del profesional (rango: mes del calendario ± 1 mes)
-  const excepcionesDateRange = useMemo(() => {
-    const start = startOfMonth(subMonths(calendarViewMonth, 1));
-    const end = endOfMonth(addMonths(calendarViewMonth, 1));
-    return { fecha_desde: format(start, 'yyyy-MM-dd'), fecha_hasta: format(end, 'yyyy-MM-dd') };
-  }, [calendarViewMonth]);
-  const { data: excepcionesDelRango = [] } = useQuery({
-    queryKey: ['excepciones', profesionalFilter, excepcionesDateRange.fecha_desde, excepcionesDateRange.fecha_hasta],
-    queryFn: () =>
-      agendaService.getExcepcionesByProfesional(
-        profesionalFilter!,
-        excepcionesDateRange.fecha_desde,
-        excepcionesDateRange.fecha_hasta
-      ),
-    enabled: Boolean(profesionalFilter),
-  });
-
-  // Bloques no disponibles del profesional (para el mes de la fecha seleccionada)
-  const fechaFilterMonthStart = useMemo(() => {
-    if (!fechaFilter) return '';
-    const d = new Date(fechaFilter + 'T12:00:00');
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}-01T00:00:00`;
-  }, [fechaFilter]);
-  const fechaFilterMonthEnd = useMemo(() => {
-    if (!fechaFilter) return '';
-    const d = new Date(fechaFilter + 'T12:00:00');
-    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const y = last.getFullYear();
-    const m = String(last.getMonth() + 1).padStart(2, '0');
-    const day = String(last.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}T23:59:59.999`;
-  }, [fechaFilter]);
+  // Rango de bloques: mes visible del calendario + mes del día seleccionado (si hay y es distinto), para que el calendario muestre bloqueados sin necesidad de tener día seleccionado
+  const bloquesQueryRange = useMemo(() => {
+    const calStart = startOfMonth(calendarViewMonth);
+    const calEnd = endOfMonth(calendarViewMonth);
+    if (!fechaFilter) {
+      return { start: calStart, end: calEnd };
+    }
+    const selDate = new Date(fechaFilter + 'T12:00:00');
+    const selStart = startOfMonth(selDate);
+    const selEnd = endOfMonth(selDate);
+    const start = selStart.getTime() < calStart.getTime() ? selStart : calStart;
+    const end = selEnd.getTime() > calEnd.getTime() ? selEnd : calEnd;
+    return { start, end };
+  }, [calendarViewMonth, fechaFilter]);
+  const bloquesQueryStartStr = format(bloquesQueryRange.start, "yyyy-MM-dd'T'00:00:00");
+  const bloquesQueryEndStr = format(bloquesQueryRange.end, "yyyy-MM-dd'T'23:59:59.999");
   const { data: bloquesDelMes = [] } = useQuery({
-    queryKey: ['bloques', profesionalFilter, fechaFilterMonthStart],
+    queryKey: ['bloques', profesionalFilter, bloquesQueryStartStr],
     queryFn: () =>
       agendaService.getBloquesByProfesional(
         profesionalFilter!,
-        new Date(fechaFilterMonthStart).toISOString(),
-        new Date(fechaFilterMonthEnd).toISOString()
+        new Date(bloquesQueryStartStr).toISOString(),
+        new Date(bloquesQueryEndStr).toISOString()
       ),
-    enabled: Boolean(profesionalFilter) && Boolean(fechaFilterMonthStart),
+    enabled: Boolean(profesionalFilter),
   });
 
   /** Bloques del día listado (fechaFilter) para mostrar en la grilla */
@@ -546,8 +558,9 @@ export default function AdminTurnos() {
         }
         return null;
       };
+      // dia_semana 7 = "sin días fijos" (placeholder): no se incluye en slots; solo excepciones/fechas puntuales
       const vigentEnFecha = agendasDelProfesional.filter((a) => {
-        if (a.dia_semana !== diaSemana || !a.activo) return false;
+        if (a.dia_semana === 7 || a.dia_semana !== diaSemana || !a.activo) return false;
         const tieneVigencia = a.vigencia_desde != null && a.vigencia_desde !== '' || a.vigencia_hasta != null && a.vigencia_hasta !== '';
         if (!tieneVigencia) return true;
         const desdeStr = toDateStr(a.vigencia_desde);
@@ -573,14 +586,14 @@ export default function AdminTurnos() {
     return horasFin[horasFin.length - 1] ?? null;
   }, [getAgendaForDate]);
 
-  // Si el profesional tiene hoy habilitado y no hay día seleccionado, seleccionar hoy (solo cuando la agenda ya cargó)
+  // Si el profesional tiene hoy habilitado y no hay día seleccionado, seleccionar hoy (solo cuando agenda y excepciones ya cargaron)
   useEffect(() => {
-    if (!profesionalFilter || loadingAgendasDelProfesional) return;
+    if (!profesionalFilter || loadingAgendaYExcepciones) return;
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     if (getAgendaForDate(todayStr).length > 0) {
       setFechaFilter((prev) => (prev === '' ? todayStr : prev));
     }
-  }, [profesionalFilter, loadingAgendasDelProfesional, getAgendaForDate]);
+  }, [profesionalFilter, loadingAgendaYExcepciones, getAgendaForDate]);
 
   /** Rango y duración para la fecha seleccionada según agenda o excepción del profesional */
   const rangoHorarioCreate = useMemo(() => {
@@ -630,6 +643,12 @@ export default function AdminTurnos() {
     const b = bloquesDelDiaListado.find((block) => block.motivo?.trim());
     return b?.motivo?.trim() || null;
   }, [diaCompletamenteBloqueadoListado, bloquesDelDiaListado]);
+
+  /** Si el día seleccionado (fechaFilter) tiene agenda en vigencia o día puntual habilitado; si no, no se puede Bloquear */
+  const diaSeleccionadoTieneAgenda = useMemo(
+    () => Boolean(fechaFilter && getAgendaForDate(fechaFilter).length > 0),
+    [fechaFilter, getAgendaForDate]
+  );
 
   /** Días del mes visible (calendario izquierda) que están completamente bloqueados para el profesional */
   const diasCompletamenteBloqueadosCalendario = useMemo(() => {
@@ -790,13 +809,16 @@ export default function AdminTurnos() {
   useEffect(() => {
     if (showDiaPuntualModal && profesionalFilter && !diaPuntualEditId) {
       setDiaPuntualDatePickerOpen(false);
+      const fechaInicial = fechaFilter || format(new Date(), 'yyyy-MM-dd');
+      const fechaValida =
+        fechaInicial.slice(0, 10) < minFechaHabilitarPuntual ? minFechaHabilitarPuntual : fechaInicial;
       setDiaPuntualForm((prev) => ({
         ...prev,
         profesional_id: profesionalFilter,
-        fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
+        fecha: fechaValida,
       }));
     }
-  }, [showDiaPuntualModal, profesionalFilter, fechaFilter, diaPuntualEditId]);
+  }, [showDiaPuntualModal, profesionalFilter, fechaFilter, diaPuntualEditId, minFechaHabilitarPuntual]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -1422,7 +1444,8 @@ export default function AdminTurnos() {
   };
 
   const handleCalendarDayClick = (day: Date) => {
-    setFechaFilter(format(day, 'yyyy-MM-dd'));
+    const dayStr = format(day, 'yyyy-MM-dd');
+    setFechaFilter((prev) => (prev === dayStr ? '' : dayStr));
     setCalendarViewMonth(startOfMonth(day));
   };
 
@@ -1434,18 +1457,18 @@ export default function AdminTurnos() {
       {/* Modal: profesional sin agenda — ¿Querés crearla? */}
       <Dialog open={showSinAgendaModal} onOpenChange={setShowSinAgendaModal}>
         <DialogContent
-          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2 max-lg:max-w-[92vw] max-lg:px-5"
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl max-lg:max-w-[92vw] max-lg:px-5 flex flex-col justify-center min-h-[280px] py-8 gap-0"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <DialogHeader className="mb-0">
             <DialogTitle className="pr-14 mb-0 text-[22px] max-lg:text-[20px]">¿Querés crear tu agenda?</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5 mt-3 mb-0">
-            <DialogDescription className="text-base max-lg:text-[14px] mb-0">
+          <div className="flex flex-1 flex-col justify-center py-4">
+            <DialogDescription className="text-base max-lg:text-[14px] mb-0 text-center">
               Para poder ver y gestionar turnos necesitás definir tus horarios de atención. ¿Querés crearla ahora?
             </DialogDescription>
           </div>
-          <DialogFooter className="mt-0 flex-row justify-end max-lg:flex-col max-lg:gap-3">
+          <DialogFooter className="mt-0 flex-row justify-end max-lg:flex-col max-lg:gap-3 flex-shrink-0">
             <Button
               type="button"
               variant="outline"
@@ -1591,7 +1614,12 @@ export default function AdminTurnos() {
                 type="button"
                 variant="outline"
                 onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
-                disabled={sinAgendaDelProfesional || (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending)}
+                disabled={
+                  sinAgendaDelProfesional ||
+                  (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
+                  (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending) ||
+                  !!excepcionDelDiaSeleccionado
+                }
                 className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
               >
                 {bloquesDelDiaListado.length > 0 ? (
@@ -1785,20 +1813,23 @@ export default function AdminTurnos() {
                 const isDiaPuntual = excepcionesDelRango.some((e) => e.fecha && e.fecha.slice(0, 10) === dateStr);
                 const isDisabled = !isLaborable;
                 const isCompletamenteBloqueado = isLaborable && diasCompletamenteBloqueadosCalendario.has(dateStr);
+                const recuadroBloqueado = !isSelected && !isDisabled && isCompletamenteBloqueado && !isTodayDate;
+                const recuadroVerde = !isSelected && !isDisabled && isDiaPuntual && !isCompletamenteBloqueado && !isTodayDate;
                 const dayButton = (
                   <button
                     type="button"
                     disabled={isDisabled}
                     onClick={() => !isDisabled && handleCalendarDayClick(day)}
                     className={`
-                      h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                      h-9 w-full rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
                       ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
                       ${!isSelected && isDisabled && !isTodayDate ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
                       ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6]' : ''}
-                      ${!isSelected && !isDisabled && isCurrentMonth && !isCompletamenteBloqueado && !isTodayDate ? 'text-[#374151] hover:bg-[#dbeafe]' : ''}
+                      ${!isSelected && !isDisabled && isCurrentMonth && !isCompletamenteBloqueado && !isDiaPuntual && !isTodayDate ? 'text-[#374151] hover:bg-[#dbeafe]' : ''}
                       ${!isSelected && isTodayDate && !isDisabled ? 'bg-[#dbeafe] text-[#2563eb] font-semibold border-2 border-[#2563eb]' : ''}
                       ${!isSelected && isTodayDate && isDisabled ? 'bg-[#EFF6FF] text-[#2563eb]/80 font-semibold border-2 border-[#2563eb] cursor-not-allowed opacity-70' : ''}
-                      ${!isSelected && !isDisabled && isCompletamenteBloqueado && !isTodayDate ? 'bg-gray-100 text-gray-600 font-medium ring-1 ring-gray-300' : ''}
+                      ${recuadroBloqueado ? 'bg-transparent text-gray-600 font-medium' : ''}
+                      ${recuadroVerde ? 'bg-transparent text-emerald-600 font-medium hover:bg-emerald-100/50' : ''}
                     `}
                   >
                     {format(day, 'd')}
@@ -1816,8 +1847,13 @@ export default function AdminTurnos() {
                 const excepcionDelDia = excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === dateStr);
                 const textoDiaPuntual = excepcionDelDia?.observaciones ? `Día puntual — ${excepcionDelDia.observaciones}` : 'Día puntual';
 
+                const wrapperClassName = recuadroBloqueado
+                  ? 'rounded-[10px] bg-gray-100 border border-gray-400 min-h-[36px] flex items-center justify-center'
+                  : recuadroVerde
+                    ? 'rounded-[10px] bg-emerald-50 border border-emerald-600 min-h-[36px] flex items-center justify-center'
+                    : 'min-h-[36px] flex items-center justify-center';
                 return (
-                  <div key={dateStr} className="contents">
+                  <div key={`${dateStr}-${isSelected ? 'sel' : 'no'}-${isCompletamenteBloqueado}`} className={wrapperClassName}>
                     {isCompletamenteBloqueado ? (
                       <Tooltip>
                         <TooltipTrigger asChild>{dayButton}</TooltipTrigger>
@@ -1914,13 +1950,17 @@ export default function AdminTurnos() {
               </div>
                 );
               })()}
-              {/* En mobile: Habilitar y Bloquear siempre cuando hay agenda; Deshabilitar día solo con día seleccionado */}
+              {/* En mobile: Habilitar y Bloquear cuando el día seleccionado tiene agenda; Deshabilitar día solo con día seleccionado */}
               {profesionalFilter && !sinAgendaDelProfesional && (
                 <div className="max-lg:flex max-lg:flex-wrap max-lg:gap-x-4 max-lg:gap-y-1 lg:hidden">
                   <button
                     type="button"
                     onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
-                    disabled={bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending}
+                    disabled={
+                      (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
+                      (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending) ||
+                      !!excepcionDelDiaSeleccionado
+                    }
                     className="text-[13px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] hover:underline disabled:opacity-50 disabled:no-underline"
                   >
                     {bloquesDelDiaListado.length > 0 ? (deleteBloqueMutation.isPending ? 'Desbloqueando...' : 'Desbloquear') : 'Bloquear'}
@@ -2554,101 +2594,102 @@ export default function AdminTurnos() {
           }
         }}
       >
-        <DialogContent className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
-          <DialogHeader className="relative z-[60] px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-white flex-shrink-0 mb-0">
-            <div className="flex items-center gap-4">
+        <DialogContent className="max-w-[900px] w-[95vw] max-h-[90vh] max-lg:max-h-[72vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="relative z-[60] px-8 max-lg:px-4 pt-8 max-lg:pt-3 pb-6 max-lg:pb-3 border-b border-[#E5E7EB] bg-white flex-shrink-0 mb-0">
+            <div className="flex items-center gap-4 max-lg:gap-2">
               <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 max-lg:hidden">
                 <CalendarPlus className="h-6 w-6 text-white stroke-[2]" />
               </div>
-              <div>
-                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+              <div className="min-w-0">
+                <DialogTitle className="text-[28px] max-lg:text-[18px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
                   {diaPuntualEditId ? 'Gestionar día puntual' : 'Habilitar día puntual'}
                 </DialogTitle>
-                <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
+                <DialogDescription className="text-base max-lg:text-[13px] text-[#6B7280] font-['Inter'] mt-1 mb-0">
                   {diaPuntualEditId ? 'Modificá el horario del día puntual. La fecha no se puede cambiar.' : 'Agregá una fecha en que el profesional atiende.'}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <div className="px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5 overflow-y-auto flex-1 min-h-0">
-            <div className="grid grid-cols-1 gap-4 max-lg:gap-3">
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
+          <div className="px-8 max-lg:px-4 py-6 max-lg:py-3 space-y-5 max-lg:space-y-3 overflow-y-auto flex-1 min-h-0">
+            <div className="grid grid-cols-1 gap-4 max-lg:gap-2">
+              <div className="space-y-2 max-lg:space-y-1">
+                <Label className="text-[15px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">
                   Profesional
                 </Label>
-                <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151]">
+                <div className="h-[52px] max-lg:h-9 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[13px] text-[#374151]">
                   {(() => {
                     const p = profesionales.find((pr) => pr.id === profesionalFilter);
                     return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
                   })()}
                 </div>
               </div>
-              <div className="space-y-3 w-full">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">
+            </div>
+            <div className="flex flex-col md:flex-row gap-4 max-lg:gap-2">
+              <div className="space-y-2 max-lg:space-y-1 w-full flex-1 min-w-0">
+                <Label className="text-[15px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">
                   Fecha
                 </Label>
                 {diaPuntualEditId ? (
-                  <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F3F4F6] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#6B7280] cursor-not-allowed">
+                  <div className="h-[52px] max-lg:h-9 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F3F4F6] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[13px] text-[#6B7280] cursor-not-allowed">
                     {diaPuntualForm.fecha ? format(new Date(diaPuntualForm.fecha + 'T12:00:00'), "EEEE d 'de' MMMM yyyy", { locale: es }) : '—'}
                   </div>
                 ) : (
-                  <div className="h-[52px] max-lg:h-10 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
+                  <div className="h-[52px] max-lg:h-9 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
                     <DatePicker
                       value={diaPuntualForm.fecha}
                       onChange={(fecha) => setDiaPuntualForm((f) => ({ ...f, fecha }))}
                       placeholder="Seleccionar fecha"
-                      min={format(new Date(), 'yyyy-MM-dd')}
-                      className="h-[52px] max-lg:h-10 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                      min={minFechaHabilitarPuntual}
+                      className="h-[52px] max-lg:h-9 w-full text-[#374151] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] max-lg:text-[13px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                       open={diaPuntualDatePickerOpen}
                       onOpenChange={setDiaPuntualDatePickerOpen}
-                      inline
                     />
                   </div>
                 )}
               </div>
+              <div className="space-y-2 max-lg:space-y-1 w-full flex-1 min-w-0">
+                <Label className="text-[15px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">Duración (min)</Label>
+                <Input
+                  type="number"
+                  min={5}
+                  max={480}
+                  placeholder="30"
+                  value={diaPuntualForm.duracion_turno_minutos != null ? diaPuntualForm.duracion_turno_minutos : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: undefined }));
+                      return;
+                    }
+                    const n = parseInt(raw, 10);
+                    if (!Number.isNaN(n)) setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: n }));
+                  }}
+                  className="h-[52px] max-lg:h-9 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[13px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
+            <div className="grid grid-cols-2 gap-4 max-lg:gap-2">
+              <div className="space-y-2 max-lg:space-y-1">
+                <Label className="text-[15px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">Hora inicio</Label>
                 <Input
                   type="time"
                   value={diaPuntualForm.hora_inicio}
                   onChange={(e) => setDiaPuntualForm((f) => ({ ...f, hora_inicio: e.target.value }))}
-                  className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  className="h-[52px] max-lg:h-9 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[13px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                 />
               </div>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Hora fin</Label>
+              <div className="space-y-2 max-lg:space-y-1">
+                <Label className="text-[15px] max-lg:text-[13px] font-medium text-[#374151] font-['Inter']">Hora fin</Label>
                 <Input
                   type="time"
                   value={diaPuntualForm.hora_fin}
                   onChange={(e) => setDiaPuntualForm((f) => ({ ...f, hora_fin: e.target.value }))}
-                  className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                  className="h-[52px] max-lg:h-9 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[13px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
                 />
               </div>
             </div>
-            <div className="space-y-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Duración (min)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={480}
-                placeholder="30"
-                value={diaPuntualForm.duracion_turno_minutos != null ? diaPuntualForm.duracion_turno_minutos : ''}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === '') {
-                    setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: undefined }));
-                    return;
-                  }
-                  const n = parseInt(raw, 10);
-                  if (!Number.isNaN(n)) setDiaPuntualForm((f) => ({ ...f, duracion_turno_minutos: n }));
-                }}
-                className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-              />
-            </div>
           </div>
-          <DialogFooter className="mt-0 px-8 max-lg:px-4 py-6 max-lg:py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 max-lg:flex-col flex-row flex-wrap">
+          <DialogFooter className="mt-0 px-8 max-lg:px-4 py-6 max-lg:py-3 border-t border-[#E5E7EB] bg-[#F9FAFB] gap-3 max-lg:gap-2 flex-shrink-0 max-lg:flex-col flex-row flex-wrap">
             {diaPuntualEditId ? (
               <>
                 <Button
@@ -2701,7 +2742,10 @@ export default function AdminTurnos() {
                     createExcepcionMutation.isPending ||
                     !diaPuntualForm.profesional_id ||
                     !diaPuntualForm.fecha ||
-                    (diaPuntualForm.fecha ? isBefore(startOfDay(new Date(diaPuntualForm.fecha + 'T12:00:00')), startOfDay(new Date())) : false) ||
+                    (diaPuntualForm.fecha
+                      ? (diaPuntualForm.fecha.slice(0, 10) < minFechaHabilitarPuntual ||
+                          isBefore(startOfDay(new Date(diaPuntualForm.fecha + 'T12:00:00')), startOfDay(new Date())))
+                      : false) ||
                     diaPuntualForm.duracion_turno_minutos == null ||
                     diaPuntualForm.duracion_turno_minutos < 5 ||
                     diaPuntualForm.duracion_turno_minutos > 480
@@ -2740,10 +2784,14 @@ export default function AdminTurnos() {
         confirmDisabled={!diaPuntualEditId}
         onConfirm={async () => {
           if (!diaPuntualEditId) return;
+          const fechaDeshabilitada = diaPuntualForm.fecha?.slice(0, 10);
           await deleteExcepcionMutation.mutateAsync(diaPuntualEditId);
           setShowDeshabilitarDiaPuntualConfirm(false);
           setShowDiaPuntualModal(false);
           setDiaPuntualEditId(null);
+          if (fechaDeshabilitada && fechaFilter === fechaDeshabilitada) {
+            setFechaFilter('');
+          }
         }}
         isLoading={deleteExcepcionMutation.isPending}
       />

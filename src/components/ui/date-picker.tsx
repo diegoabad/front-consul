@@ -117,7 +117,7 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center">
+            <div className="grid grid-cols-7 gap-1 text-center min-h-[220px]">
               {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
                 <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">
                   {d}

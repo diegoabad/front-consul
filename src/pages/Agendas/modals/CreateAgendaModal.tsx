@@ -23,12 +23,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 import { agendaService, type CreateAgendaData } from '@/services/agenda.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { ConfiguracionAgenda } from '@/types';
-import { formatDisplayText } from '@/lib/utils';
+import { cn, formatDisplayText } from '@/lib/utils';
 import { toast as reactToastify } from 'react-toastify';
 import { DIAS_SEMANA, formatTime, getDiaSemanaLabel, horariosSeSolapan } from '../utils';
 import { startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
@@ -72,7 +71,7 @@ export function CreateAgendaModal({
     () => Object.fromEntries(DIAS_SEMANA.map((d) => [d.value, d.value >= 1 && d.value <= 5]))
   );
   const [diasFijosSemana, setDiasFijosSemana] = useState(true);
-  const [primeraFechaPuntual, setPrimeraFechaPuntual] = useState({
+  const [, setPrimeraFechaPuntual] = useState({
     fecha: format(new Date(), 'yyyy-MM-dd'),
     hora_inicio: '09:00',
     hora_fin: '18:00',
@@ -177,33 +176,23 @@ export function CreateAgendaModal({
         reactToastify.error('Seleccioná al menos un día de la semana', { position: 'top-right', autoClose: 3000 });
         return;
       }
-    } else {
-      if (!primeraFechaPuntual.fecha) {
-        reactToastify.error('Ingresá la primera fecha en que atiende el profesional', { position: 'top-right', autoClose: 3000 });
-        return;
-      }
-      const hi = primeraFechaPuntual.hora_inicio.trim();
-      const hf = primeraFechaPuntual.hora_fin.trim();
-      if (!hi || !hf || hi >= hf) {
-        reactToastify.error('La hora fin debe ser posterior a la hora inicio', { position: 'top-right', autoClose: 3000 });
-        return;
-      }
     }
     setIsSubmitting(true);
     try {
       if (!diasFijosSemana) {
-        await agendaService.createExcepcion({
-          profesional_id: profesionalId,
-          fecha: primeraFechaPuntual.fecha,
-          hora_inicio: primeraFechaPuntual.hora_inicio.length >= 5 ? primeraFechaPuntual.hora_inicio : primeraFechaPuntual.hora_inicio + ':00',
-          hora_fin: primeraFechaPuntual.hora_fin.length >= 5 ? primeraFechaPuntual.hora_fin : primeraFechaPuntual.hora_fin + ':00',
-          duracion_turno_minutos: primeraFechaPuntual.duracion_turno_minutos ?? 30,
-        });
-        queryClient.invalidateQueries({ queryKey: ['excepciones'] });
+        // Sin días fijos: un solo período abierto (vigencia desde, sin hasta). El calendario no muestra ningún día hasta que use "Habilitar" en Turnos.
+        const vigenciaDesde = (agendaForm.vigencia_desde ?? format(new Date(), 'yyyy-MM-dd')).toString().trim().slice(0, 10);
+        await agendaService.guardarHorariosSemana(
+          profesionalId,
+          [],
+          vigenciaDesde,
+          agendaForm.duracion_turno_minutos ?? 30,
+          undefined
+        );
         queryClient.invalidateQueries({ queryKey: ['agendas'] });
-        reactToastify.success('Agenda creada con la primera fecha puntual. Podés agregar más desde Gestionar → Fechas puntuales.', {
+        reactToastify.success('Listo. Podés usar el botón "Habilitar" en Turnos para agregar los días que atienda.', {
           position: 'top-right',
-          autoClose: 4000,
+          autoClose: 5000,
         });
         onOpenChange(false);
         onSuccess?.();
@@ -331,239 +320,178 @@ export function CreateAgendaModal({
             </>
           ) : (
             <>
-              <div className="space-y-3">
-                <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">¿Cómo atiende este profesional?</Label>
-                <div className="flex items-center gap-4 p-4 rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB]">
-                  <span className="lg:hidden flex-shrink-0">
-                    <Checkbox
-                      id="dias-fijos-check"
-                      checked={diasFijosSemana}
-                      onCheckedChange={(c) => setDiasFijosSemana(c === true)}
-                    />
-                  </span>
-                  <Switch
-                    id="dias-fijos-switch"
-                    checked={diasFijosSemana}
-                    onCheckedChange={setDiasFijosSemana}
-                    className="data-[state=checked]:bg-[#2563eb] max-lg:hidden"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <label htmlFor="dias-fijos-switch" className="font-['Inter'] text-[14px] text-[#374151] cursor-pointer mb-0 block">
-                      {diasFijosSemana
-                        ? 'Días fijos por semana (Lu, Ma, Mi…). Configurá horarios por día.'
-                        : 'Solo días puntuales. Irá habilitando fechas cuando las defina (desde Gestionar > Días puntuales).'}
-                    </label>
+              <div className="flex flex-col md:flex-row gap-4 w-full">
+                <div className="space-y-2 w-full flex-1 min-w-0">
+                  <Label htmlFor="profesional_id" className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                    Profesional <span className="text-[#EF4444]">*</span>
+                  </Label>
+                  <Select
+                    value={agendaForm.profesional_id}
+                    onValueChange={(value) => setAgendaForm({ ...agendaForm, profesional_id: value })}
+                    disabled={profesionalSelectorDisabled}
+                  >
+                    <SelectTrigger id="profesional_id" className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
+                      <SelectValue placeholder="Seleccionar profesional" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
+                      {profesionales.map((prof) => {
+                        const yaTieneAgenda = profesionalesConAgendaIds.has(prof.id);
+                        return (
+                          <SelectItem
+                            key={prof.id}
+                            value={prof.id}
+                            disabled={yaTieneAgenda}
+                            className="font-['Inter'] rounded-[8px] text-[15px] py-3"
+                          >
+                            <span className="truncate">
+                              {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
+                              {prof.especialidad ? ` - ${formatDisplayText(prof.especialidad)}` : ''}
+                            </span>
+                            {yaTieneAgenda && <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Ya tiene agenda</span>}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 w-full flex-1 min-w-0">
+                  <Label htmlFor="dias-fijos-switch" className="text-[15px] font-medium text-[#374151] font-['Inter']">Tipo de agenda</Label>
+                  <div className="flex items-center gap-3 h-[52px] px-4 rounded-[10px] border-[1.5px] border-[#D1D5DB] bg-[#F9FAFB]">
+                    {/* Mobile: switch + un solo texto que cambia según el estado */}
+                    <div className="flex items-center justify-between w-full gap-3 md:hidden">
+                      <span className="font-[Inter] text-[14px] text-[#374151] font-medium">
+                        {diasFijosSemana ? 'Días fijos por semana' : 'Solo días puntuales'}
+                      </span>
+                      <Switch
+                        id="dias-fijos-switch-mobile"
+                        checked={diasFijosSemana}
+                        onCheckedChange={(checked) => {
+                          const v = checked === true;
+                          setDiasFijosSemana(v);
+                          if (!v) setDiasActivos(Object.fromEntries(DIAS_SEMANA.map((d) => [d.value, false])));
+                        }}
+                        className="data-[state=checked]:bg-[#2563eb] flex-shrink-0"
+                      />
+                    </div>
+                    {/* Desktop: ambos textos con el switch en el medio */}
+                    <>
+                      <span className={cn('font-[Inter] text-[14px] hidden md:inline', !diasFijosSemana ? 'text-[#374151] font-medium' : 'text-[#9CA3AF]')}>Solo días puntuales</span>
+                      <Switch
+                        id="dias-fijos-switch"
+                        checked={diasFijosSemana}
+                        onCheckedChange={(checked) => {
+                          const v = checked === true;
+                          setDiasFijosSemana(v);
+                          if (!v) setDiasActivos(Object.fromEntries(DIAS_SEMANA.map((d) => [d.value, false])));
+                        }}
+                        className="data-[state=checked]:bg-[#2563eb] flex-shrink-0 hidden md:inline-flex"
+                      />
+                      <span className={cn('font-[Inter] text-[14px] hidden md:inline', diasFijosSemana ? 'text-[#374151] font-medium' : 'text-[#9CA3AF]')}>Días fijos por semana</span>
+                    </>
                   </div>
                 </div>
               </div>
 
-              {diasFijosSemana ? (
-                <>
-                  <div className="flex flex-col gap-4 w-full">
-                    <div className="space-y-2 w-full">
-                      <Label htmlFor="profesional_id" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                        Profesional <span className="text-[#EF4444]">*</span>
-                      </Label>
-                      <Select
-                        value={agendaForm.profesional_id}
-                        onValueChange={(value) => setAgendaForm({ ...agendaForm, profesional_id: value })}
-                        disabled={profesionalSelectorDisabled}
-                      >
-                        <SelectTrigger id="profesional_id" className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
-                          <SelectValue placeholder="Seleccionar profesional" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                          {profesionales.map((prof) => {
-                            const yaTieneAgenda = profesionalesConAgendaIds.has(prof.id);
-                            return (
-                              <SelectItem
-                                key={prof.id}
-                                value={prof.id}
-                                disabled={yaTieneAgenda}
-                                className="font-['Inter'] rounded-[8px] text-[15px] py-3"
-                              >
-                                <span className="truncate">
-                                  {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
-                                  {prof.especialidad ? ` - ${formatDisplayText(prof.especialidad)}` : ''}
-                                </span>
-                                {yaTieneAgenda && <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Ya tiene agenda</span>}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2 w-full">
-                      <Label htmlFor="agenda-vigencia-desde" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                        Vigente desde
-                      </Label>
-                      <DatePicker
-                        id="agenda-vigencia-desde"
-                        value={agendaForm.vigencia_desde ?? format(new Date(), 'yyyy-MM-dd')}
-                        onChange={(v) => setAgendaForm({ ...agendaForm, vigencia_desde: v })}
-                        placeholder="Elegir fecha"
-                        className="h-[52px] w-full text-[#374151]"
-                        inline
-                      />
-                    </div>
-                    <div className="space-y-2 w-full">
-                      <Label htmlFor="duracion_turno_minutos_new" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                        Duración del turno (min)
-                      </Label>
-                      <Input
-                        id="duracion_turno_minutos_new"
-                        type="number"
-                        min={5}
-                        max={480}
-                        value={agendaForm.duracion_turno_minutos}
-                        onChange={(e) => setAgendaForm({ ...agendaForm, duracion_turno_minutos: parseInt(e.target.value) || 30 })}
-                        className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter']"
-                        placeholder="30"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Horario por día (marca los días que trabaja)</Label>
-                    <div className="rounded-[12px] border border-[#E5E7EB] overflow-x-auto">
-                      <Table className="w-full min-w-[320px]">
-                        <TableHeader>
-                          <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[80px]">Trabaja</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151]">Día</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora inicio</TableHead>
-                            <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora fin</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {DIAS_SEMANA.map((dia) => (
-                            <TableRow key={dia.value} className="border-[#E5E7EB]">
-                              <TableCell className="py-3 w-[80px]">
-                                <Switch
-                                  id={`dia-${dia.value}`}
-                                  checked={!!diasActivos[dia.value]}
-                                  onCheckedChange={(checked) => setDiasActivos((prev) => ({ ...prev, [dia.value]: checked }))}
-                                  className="data-[state=checked]:bg-[#2563eb]"
-                                />
-                              </TableCell>
-                              <TableCell className="font-['Inter'] text-[15px] text-[#374151] py-3">{dia.label}</TableCell>
-                              <TableCell className="py-2 min-w-[100px]">
-                                <Input
-                                  type="time"
-                                  value={diasHorarios[dia.value]?.hora_inicio ?? '09:00'}
-                                  onChange={(e) =>
-                                    setDiasHorarios((prev) => ({
-                                      ...prev,
-                                      [dia.value]: { ...prev[dia.value], hora_inicio: e.target.value, hora_fin: prev[dia.value]?.hora_fin ?? '18:00' },
-                                    }))
-                                  }
-                                  disabled={!diasActivos[dia.value]}
-                                  className="h-10 border-[#D1D5DB] rounded-[8px] text-[14px] font-['Inter'] w-full disabled:opacity-50 disabled:bg-[#F9FAFB]"
-                                />
-                              </TableCell>
-                              <TableCell className="py-2 min-w-[100px]">
-                                <Input
-                                  type="time"
-                                  value={diasHorarios[dia.value]?.hora_fin ?? '18:00'}
-                                  onChange={(e) =>
-                                    setDiasHorarios((prev) => ({
-                                      ...prev,
-                                      [dia.value]: { hora_inicio: prev[dia.value]?.hora_inicio ?? '09:00', hora_fin: e.target.value },
-                                    }))
-                                  }
-                                  disabled={!diasActivos[dia.value]}
-                                  className="h-10 border-[#D1D5DB] rounded-[8px] text-[14px] font-['Inter'] w-full disabled:opacity-50 disabled:bg-[#F9FAFB]"
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2 w-full">
-                    <Label htmlFor="profesional_id_puntual" className="text-[15px] font-medium text-[#374151] font-['Inter']">
-                      Profesional <span className="text-[#EF4444]">*</span>
+              <div className="flex flex-col gap-4 w-full">
+                <div className="flex flex-col sm:flex-row gap-4 w-full sm:gap-4">
+                  <div className="space-y-2 w-full flex-1 min-w-0">
+                    <Label htmlFor="agenda-vigencia-desde" className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                      Vigente desde
                     </Label>
-                    <Select
-                      value={agendaForm.profesional_id}
-                      onValueChange={(value) => setAgendaForm({ ...agendaForm, profesional_id: value })}
-                      disabled={profesionalSelectorDisabled}
-                    >
-                      <SelectTrigger id="profesional_id_puntual" className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] text-left justify-start focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 [&>span]:text-left [&>span]:line-clamp-none [&>span]:whitespace-nowrap disabled:opacity-100 disabled:cursor-not-allowed">
-                        <SelectValue placeholder="Seleccionar profesional" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                        {profesionales.map((prof) => {
-                          const yaTieneAgenda = profesionalesConAgendaIds.has(prof.id);
-                          return (
-                            <SelectItem key={prof.id} value={prof.id} disabled={yaTieneAgenda} className="font-['Inter'] rounded-[8px] text-[15px] py-3">
-                              <span className="truncate">
-                                {formatDisplayText(prof.nombre)} {formatDisplayText(prof.apellido)}
-                                {prof.especialidad ? ` - ${formatDisplayText(prof.especialidad)}` : ''}
-                              </span>
-                              {yaTieneAgenda && <span className="ml-2 text-xs text-[#6B7280] whitespace-nowrap">— Ya tiene agenda</span>}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+                    <DatePicker
+                      id="agenda-vigencia-desde"
+                      value={agendaForm.vigencia_desde ?? format(new Date(), 'yyyy-MM-dd')}
+                      onChange={(v) => setAgendaForm({ ...agendaForm, vigencia_desde: v })}
+                      placeholder="Elegir fecha"
+                      className="h-[52px] w-full text-[#374151] justify-start pl-3"
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      inline
+                    />
                   </div>
-                  <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-4 space-y-4">
-                    <p className="text-[14px] font-medium text-[#374151] font-['Inter']">
-                      Primera fecha puntual <span className="text-[#EF4444]">*</span>
-                    </p>
-                    <p className="text-[13px] text-[#6B7280] font-['Inter'] -mt-2">
-                      Ingresá la primera fecha en que el profesional atiende. Después podés agregar más desde Gestionar → Fechas puntuales.
-                    </p>
-                    <div className="flex flex-col gap-4 w-full">
-                      <div className="space-y-2 w-full">
-                        <Label className="text-[14px] font-['Inter']">Fecha</Label>
-                        <DatePicker
-                          value={primeraFechaPuntual.fecha}
-                          onChange={(v) => setPrimeraFechaPuntual((prev) => ({ ...prev, fecha: v ?? '' }))}
-                          placeholder="Elegir fecha"
-                          className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[15px]"
-                          inline
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 w-full">
-                        <div className="space-y-2">
-                          <Label className="text-[14px] font-['Inter']">Hora inicio</Label>
-                          <Input
-                            type="time"
-                            value={primeraFechaPuntual.hora_inicio}
-                            onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, hora_inicio: e.target.value }))}
-                            className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-[14px] font-['Inter']">Hora fin</Label>
-                          <Input
-                            type="time"
-                            value={primeraFechaPuntual.hora_fin}
-                            onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, hora_fin: e.target.value }))}
-                            className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2 w-full">
-                        <Label className="text-[14px] font-['Inter']">Duración (min)</Label>
-                        <Input
-                          type="number"
-                          min={5}
-                          max={480}
-                          value={primeraFechaPuntual.duracion_turno_minutos}
-                          onChange={(e) => setPrimeraFechaPuntual((prev) => ({ ...prev, duracion_turno_minutos: parseInt(e.target.value) || 30 }))}
-                          className="h-[48px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter']"
-                        />
-                      </div>
-                    </div>
+                  <div className="space-y-2 w-full flex-1 min-w-0">
+                    <Label htmlFor="duracion_turno_minutos_new" className="text-[15px] font-medium text-[#374151] font-['Inter']">
+                      Duración del turno (min)
+                    </Label>
+                    <Input
+                      id="duracion_turno_minutos_new"
+                      type="number"
+                      min={5}
+                      max={480}
+                      value={agendaForm.duracion_turno_minutos}
+                      onChange={(e) => setAgendaForm({ ...agendaForm, duracion_turno_minutos: parseInt(e.target.value) || 30 })}
+                      disabled={!diasFijosSemana}
+                      className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] disabled:opacity-60 disabled:cursor-not-allowed"
+                      placeholder="30"
+                    />
                   </div>
-                </>
-              )}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex flex-wrap items-baseline gap-1">
+                  Horario por día
+                  <span className="text-[13px] font-normal text-[#6B7280]">
+                    {diasFijosSemana
+                      ? '— Marca los días que trabaja y el horario de cada uno.'
+                      : '— Agregá días desde Habilitar.'}
+                  </span>
+                </Label>
+                <div className={`rounded-[12px] border border-[#E5E7EB] overflow-x-auto ${!diasFijosSemana ? 'opacity-70 pointer-events-none' : ''}`}>
+                  <Table className="w-full min-w-[320px]">
+                    <TableHeader>
+                      <TableRow className="bg-[#F9FAFB] border-[#E5E7EB]">
+                        <TableHead className="font-['Inter'] text-[14px] text-[#374151] w-[80px]">Trabaja</TableHead>
+                        <TableHead className="font-['Inter'] text-[14px] text-[#374151]">Día</TableHead>
+                        <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora inicio</TableHead>
+                        <TableHead className="font-['Inter'] text-[14px] text-[#374151] min-w-[100px]">Hora fin</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {DIAS_SEMANA.map((dia) => (
+                        <TableRow key={dia.value} className="border-[#E5E7EB]">
+                          <TableCell className="py-3 w-[80px]">
+                            <Switch
+                              id={`dia-${dia.value}`}
+                              checked={!!diasActivos[dia.value]}
+                              onCheckedChange={(checked) => setDiasActivos((prev) => ({ ...prev, [dia.value]: checked }))}
+                              disabled={!diasFijosSemana}
+                              className="data-[state=checked]:bg-[#2563eb]"
+                            />
+                          </TableCell>
+                          <TableCell className="font-['Inter'] text-[15px] text-[#374151] py-3">{dia.label}</TableCell>
+                          <TableCell className="py-2 min-w-[100px]">
+                            <Input
+                              type="time"
+                              value={diasHorarios[dia.value]?.hora_inicio ?? '09:00'}
+                              onChange={(e) =>
+                                setDiasHorarios((prev) => ({
+                                  ...prev,
+                                  [dia.value]: { ...prev[dia.value], hora_inicio: e.target.value, hora_fin: prev[dia.value]?.hora_fin ?? '18:00' },
+                                }))
+                              }
+                              disabled={!diasFijosSemana || !diasActivos[dia.value]}
+                              className="h-10 border-[#D1D5DB] rounded-[8px] text-[14px] font-['Inter'] w-full disabled:opacity-50 disabled:bg-[#F9FAFB]"
+                            />
+                          </TableCell>
+                          <TableCell className="py-2 min-w-[100px]">
+                            <Input
+                              type="time"
+                              value={diasHorarios[dia.value]?.hora_fin ?? '18:00'}
+                              onChange={(e) =>
+                                setDiasHorarios((prev) => ({
+                                  ...prev,
+                                  [dia.value]: { hora_inicio: prev[dia.value]?.hora_inicio ?? '09:00', hora_fin: e.target.value },
+                                }))
+                              }
+                              disabled={!diasFijosSemana || !diasActivos[dia.value]}
+                              className="h-10 border-[#D1D5DB] rounded-[8px] text-[14px] font-['Inter'] w-full disabled:opacity-50 disabled:bg-[#F9FAFB]"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -581,8 +509,8 @@ export function CreateAgendaModal({
             disabled={
               isSubmitting ||
               updateAgendaMutation.isPending ||
-              (!editingAgenda && diasFijosSemana && !DIAS_SEMANA.some((d) => diasActivos[d.value])) ||
-              (!editingAgenda && !diasFijosSemana && ((!agendaForm.profesional_id && !effectivePresetProfesionalId) || !primeraFechaPuntual.fecha || primeraFechaPuntual.hora_inicio >= primeraFechaPuntual.hora_fin))
+              (!editingAgenda && (!agendaForm.profesional_id && !effectivePresetProfesionalId)) ||
+              (!editingAgenda && diasFijosSemana && !DIAS_SEMANA.some((d) => diasActivos[d.value]))
             }
             className="h-[48px] px-8 max-lg:w-full rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg font-semibold font-['Inter'] text-[15px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
