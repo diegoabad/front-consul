@@ -16,7 +16,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes('node_modules')) return 'vendor';
+          if (id.includes('node_modules')) {
+            // React y react-dom en el bundle principal para evitar "createContext of undefined" en deploy
+            if (id.includes('react-dom') || id.includes('/react/')) return undefined;
+            return 'vendor';
+          }
         },
         chunkFileNames: 'assets/[name]-[hash].js',
       },
