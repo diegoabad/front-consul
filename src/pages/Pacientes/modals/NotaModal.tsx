@@ -123,32 +123,33 @@ export function NotaModal({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 flex flex-col px-8 max-lg:px-4 py-6 max-lg:py-4 overflow-hidden">
-          {(isCreate || isView) && (
-            <div className="space-y-2 flex-shrink-0 mb-4 max-lg:mb-3">
-              <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                Creador de la nota
-              </Label>
-              <div className="h-[52px] flex items-center px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
-                {isCreate && user
-                  ? `${formatDisplayText(user.nombre)} ${formatDisplayText(user.apellido)}`
-                  : nota
-                    ? `${formatDisplayText(nota.usuario_nombre)} ${formatDisplayText(nota.usuario_apellido)}${nota.especialidad ? ` — ${formatDisplayText(nota.especialidad)}` : ''}`
-                    : '—'}
+        {/* Zona de contenido con scroll: altura fija y overflow-y-auto para que aparezca la barra */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-8 max-lg:px-4 py-6 max-lg:py-4">
+            {(isCreate || isView) && (
+              <div className="space-y-2 mb-4 max-lg:mb-3">
+                <Label className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                  <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Creador de la nota
+                </Label>
+                <div className="h-[52px] flex items-center px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] font-['Inter'] text-[16px] text-[#374151]">
+                  {isCreate && user
+                    ? `${formatDisplayText(user.nombre)} ${formatDisplayText(user.apellido)}`
+                    : nota
+                      ? `${formatDisplayText(nota.usuario_nombre)} ${formatDisplayText(nota.usuario_apellido)}${nota.especialidad ? ` — ${formatDisplayText(nota.especialidad)}` : ''}`
+                      : '—'}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden basis-0">
-            <Label htmlFor={isView ? undefined : 'contenido'} className="text-[15px] max-lg:text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 mb-3 flex-shrink-0">
-              <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Contenido
-              {!isView && <span className="text-[#EF4444]">*</span>}
-            </Label>
-            <div className="flex-1 min-h-[120px] flex flex-col overflow-hidden basis-0">
+            <div className="space-y-3">
+              <Label htmlFor={isView ? undefined : 'contenido'} className="text-[15px] max-lg:text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                Contenido
+                {!isView && <span className="text-[#EF4444]">*</span>}
+              </Label>
               {isView ? (
-                <div className="flex-1 min-h-[120px] w-full border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 py-3 text-[16px] max-lg:text-[17px] font-['Inter'] text-[#374151] leading-relaxed overflow-y-auto whitespace-pre-wrap">
+                <div className="min-h-[120px] w-full border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 py-3 text-[16px] max-lg:text-[17px] font-['Inter'] text-[#374151] leading-relaxed whitespace-pre-wrap">
                   {formData.contenido || '—'}
                 </div>
               ) : (
@@ -158,9 +159,9 @@ export function NotaModal({
                     value={formData.contenido}
                     onChange={(e) => setFormData({ ...formData, contenido: e.target.value })}
                     placeholder="Ej: Paciente mostró buen nivel de compromiso con el tratamiento..."
-                    className="flex-1 min-h-[120px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-none leading-relaxed overflow-y-auto"
+                    className="min-h-[120px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y leading-relaxed"
                   />
-                  <div className="flex items-center mt-3 flex-shrink-0">
+                  <div className="flex items-center">
                     {formData.contenido.trim().length > 0 && (
                       <p className="text-xs text-[#10B981] font-['Inter'] font-medium">✓ Contenido agregado</p>
                     )}

@@ -145,7 +145,7 @@ export function UploadArchivoModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[900px] h-[90vh] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
+      <DialogContent className="max-w-[900px] w-full h-[90vh] max-h-[90vh] max-lg:max-h-[90dvh] max-lg:h-[90dvh] max-lg:w-full max-lg:rounded-[16px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
         {/* Header fijo */}
         <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-5 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
           <div className="flex items-center gap-4">
@@ -160,105 +160,107 @@ export function UploadArchivoModal({
           </div>
         </DialogHeader>
 
-        {/* Contenido - usando flex */}
-        <div className="flex-1 min-h-0 px-8 pt-6 pb-4 flex flex-col space-y-6">
-          {/* Sección: Usuario (solo admin puede cambiar; el resto tiene siempre el usuario actual) */}
-          <div className="space-y-3 flex-shrink-0">
-            <Label htmlFor="usuario" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-              <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Usuario
-              <span className="text-[#EF4444]">*</span>
-            </Label>
-            <Select
-              value={formData.usuario_id || (usuariosOpciones.length === 1 ? usuariosOpciones[0].id : '')}
-              onValueChange={(value) => setFormData({ ...formData, usuario_id: value })}
-              disabled={!isAdmin}
-            >
-              <SelectTrigger id="usuario" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
-                <SelectValue placeholder="Seleccionar usuario" />
-              </SelectTrigger>
-              <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
-                {usuariosOpciones.map((u) => (
-                  <SelectItem
-                    key={u.id}
-                    value={u.id}
-                    className="rounded-[8px] font-['Inter'] text-[15px] py-3"
-                  >
-                    {formatDisplayText(u.nombre)} {formatDisplayText(u.apellido)} — {(rolLabel as Record<string, string>)[u.rol] ?? u.rol ?? ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Sección: Archivo */}
-          <div className="space-y-3 flex-shrink-0">
-            <Label htmlFor="archivo" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-              <Upload className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Seleccionar Archivo
-              <span className="text-[#EF4444]">*</span>
-            </Label>
-            {!formData.archivo ? (
-              <div className="border-2 border-dashed border-[#D1D5DB] rounded-[10px] p-8 text-center hover:border-[#2563eb] transition-all duration-200 cursor-pointer">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  id="archivo"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <label htmlFor="archivo" className="cursor-pointer">
-                  <Paperclip className="h-10 w-10 text-[#9CA3AF] mx-auto mb-3 stroke-[2]" />
-                  <p className="text-[15px] text-[#6B7280] font-['Inter'] mb-1">
-                    Haz clic para seleccionar un archivo
-                  </p>
-                  <p className="text-sm text-[#9CA3AF] font-['Inter']">
-                    o arrastra y suelta el archivo aquí
-                  </p>
-                </label>
+        {/* Zona de contenido con scroll: altura fija y overflow-y-auto para que no se corte */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-8 pt-6 pb-4">
+            <div className="flex flex-col space-y-6">
+              {/* Sección: Usuario */}
+              <div className="space-y-3">
+                <Label htmlFor="usuario" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                  <User className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Usuario
+                  <span className="text-[#EF4444]">*</span>
+                </Label>
+                <Select
+                  value={formData.usuario_id || (usuariosOpciones.length === 1 ? usuariosOpciones[0].id : '')}
+                  onValueChange={(value) => setFormData({ ...formData, usuario_id: value })}
+                  disabled={!isAdmin}
+                >
+                  <SelectTrigger id="usuario" className="h-[52px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200">
+                    <SelectValue placeholder="Seleccionar usuario" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-[12px] border-[#E5E7EB] shadow-xl max-h-[300px]">
+                    {usuariosOpciones.map((u) => (
+                      <SelectItem
+                        key={u.id}
+                        value={u.id}
+                        className="rounded-[8px] font-['Inter'] text-[15px] py-3"
+                      >
+                        {formatDisplayText(u.nombre)} {formatDisplayText(u.apellido)} — {(rolLabel as Record<string, string>)[u.rol] ?? u.rol ?? ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <div className="border border-[#E5E7EB] rounded-[10px] p-4 bg-[#F9FAFB]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Paperclip className="h-5 w-5 text-[#2563eb] stroke-[2]" />
-                    <div className="space-y-0">
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {formData.archivo.name}
+
+              {/* Sección: Archivo */}
+              <div className="space-y-3">
+                <Label htmlFor="archivo" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Seleccionar Archivo
+                  <span className="text-[#EF4444]">*</span>
+                </Label>
+                {!formData.archivo ? (
+                  <div className="border-2 border-dashed border-[#D1D5DB] rounded-[10px] p-8 text-center hover:border-[#2563eb] transition-all duration-200 cursor-pointer">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      id="archivo"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <label htmlFor="archivo" className="cursor-pointer">
+                      <Paperclip className="h-10 w-10 text-[#9CA3AF] mx-auto mb-3 stroke-[2]" />
+                      <p className="text-[15px] text-[#6B7280] font-['Inter'] mb-1">
+                        Haz clic para seleccionar un archivo
                       </p>
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">
-                        {formatFileSize(formData.archivo.size)}
+                      <p className="text-sm text-[#9CA3AF] font-['Inter']">
+                        o arrastra y suelta el archivo aquí
                       </p>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="border border-[#E5E7EB] rounded-[10px] p-4 bg-[#F9FAFB]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Paperclip className="h-5 w-5 text-[#2563eb] stroke-[2]" />
+                        <div className="space-y-0">
+                          <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                            {formData.archivo.name}
+                          </p>
+                          <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">
+                            {formatFileSize(formData.archivo.size)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleRemoveFile}
+                        className="h-8 w-8 rounded-[8px] hover:bg-[#FEE2E2] text-[#EF4444] hover:text-[#DC2626]"
+                      >
+                        <X className="h-4 w-4 stroke-[2]" />
+                      </Button>
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleRemoveFile}
-                    className="h-8 w-8 rounded-[8px] hover:bg-[#FEE2E2] text-[#EF4444] hover:text-[#DC2626]"
-                  >
-                    <X className="h-4 w-4 stroke-[2]" />
-                  </Button>
-                </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Sección: Descripción - ocupa todo el espacio disponible */}
-          <div className="flex-1 min-h-0 flex flex-col space-y-3">
-            <Label htmlFor="descripcion" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 flex-shrink-0">
-              <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-              Descripción
-            </Label>
-            <div className="flex-1 min-h-0 relative">
-              <Textarea
-                id="descripcion"
-                value={formData.descripcion}
-                onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                placeholder="Agregar una descripción del archivo (opcional)..."
-                className="absolute inset-0 w-full h-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-none transition-all duration-200 leading-relaxed"
-              />
+              {/* Sección: Descripción */}
+              <div className="space-y-3">
+                <Label htmlFor="descripcion" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Descripción
+                </Label>
+                <Textarea
+                  id="descripcion"
+                  value={formData.descripcion}
+                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                  placeholder="Agregar una descripción del archivo (opcional)..."
+                  className="min-h-[120px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y leading-relaxed transition-all duration-200"
+                />
+              </div>
             </div>
           </div>
         </div>

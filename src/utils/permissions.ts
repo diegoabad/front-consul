@@ -3,7 +3,6 @@ import type { User, UserRole } from '@/types';
 // Permisos por rol (debe coincidir con el backend)
 const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
   administrador: [
-    // Todos los permisos
     'usuarios.crear',
     'usuarios.leer',
     'usuarios.actualizar',
@@ -27,7 +26,9 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'notificaciones.crear',
     'notificaciones.leer',
     'notificaciones.enviar',
-    // ... todos los demás
+    'evoluciones.crear',
+    'evoluciones.leer',
+    // Sin evoluciones.actualizar ni evoluciones.eliminar: el administrador no edita ni elimina evoluciones
   ],
   profesional: [
     'pacientes.crear',
@@ -98,8 +99,11 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
 
 export function hasPermission(user: User | null, permission: string): boolean {
   if (!user) return false;
-  if (user.rol === 'administrador') return true; // Admin tiene todos los permisos
-  
+  // Administrador tiene todos los permisos excepto editar/eliminar evoluciones
+  if (user.rol?.toLowerCase() === 'administrador') {
+    if (permission === 'evoluciones.actualizar' || permission === 'evoluciones.eliminar') return false;
+    return true;
+  }
   const permisosRol = PERMISOS_POR_ROL[user.rol] || [];
   return permisosRol.includes(permission);
 }
