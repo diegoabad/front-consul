@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -129,8 +128,6 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
   const [datePickerDesdeMonth, setDatePickerDesdeMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [datePickerHastaMonth, setDatePickerHastaMonth] = useState<Date>(() => startOfMonth(new Date()));
-  const [datePickerDesdeAnchor, setDatePickerDesdeAnchor] = useState<DOMRect | null>(null);
-  const [datePickerHastaAnchor, setDatePickerHastaAnchor] = useState<DOMRect | null>(null);
   const datePickerDesdeButtonRef = useRef<HTMLButtonElement>(null);
   const datePickerHastaButtonRef = useRef<HTMLButtonElement>(null);
   const datePickerDesdeRef = useRef<HTMLDivElement>(null);
@@ -220,7 +217,6 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
       if (datePickerDesdeRef.current?.contains(target)) return;
       if ((e.target as Element).closest?.('[data-calendar-desde-portal]')) return;
       setDatePickerDesdeOpen(false);
-      setDatePickerDesdeAnchor(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -234,7 +230,6 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
       if (datePickerHastaRef.current?.contains(target)) return;
       if ((e.target as Element).closest?.('[data-calendar-hasta-portal]')) return;
       setDatePickerHastaOpen(false);
-      setDatePickerHastaAnchor(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -379,8 +374,8 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
         </div>
       </div>
 
-      {/* Filtros: profesional y fecha */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+      {/* Filtros: profesional y fecha - relative z-10 para que el calendario desplegado quede por encima */}
+      <Card className="relative z-10 border border-[#E5E7EB] rounded-[16px] shadow-sm">
         <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
             <div className="flex-1 min-w-[200px]">
@@ -390,7 +385,7 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                 onValueChange={setFilterProfesionalId}
                 disabled={!!(isProfesional && profesionalLogueado)}
               >
-                <SelectTrigger className="h-11 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
+                <SelectTrigger className="h-12 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
                   <SelectValue placeholder="Todos los profesionales" />
                 </SelectTrigger>
                 <SelectContent className="rounded-[12px]">
@@ -404,8 +399,8 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerDesdeRef}>
-              <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha desde</Label>
+            <div className="flex-1 min-w-[200px] relative" ref={datePickerDesdeRef}>
+              <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Fecha desde</Label>
               <div className="flex items-center gap-2">
                 <button
                   ref={datePickerDesdeButtonRef}
@@ -416,12 +411,9 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                     if (willOpen) {
                       setDatePickerHastaOpen(false);
                       setDatePickerDesdeMonth(filterFechaDesde ? startOfMonth(new Date(filterFechaDesde + 'T12:00:00')) : startOfMonth(new Date()));
-                      setDatePickerDesdeAnchor(datePickerDesdeButtonRef.current?.getBoundingClientRect() ?? null);
-                    } else {
-                      setDatePickerDesdeAnchor(null);
                     }
                   }}
-                  className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                  className="h-12 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
                 >
                   <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                   <span className="text-[#374151] truncate">
@@ -435,16 +427,69 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                     variant="ghost"
                     size="icon"
                     onClick={() => setFilterFechaDesde('')}
-                    className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                    className="h-12 w-12 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
                     aria-label="Quitar fecha desde"
                   >
                     <X className="h-5 w-5 stroke-[2]" />
                   </Button>
                 )}
               </div>
+              {datePickerDesdeOpen && (
+                <div
+                  data-calendar-desde-portal
+                  className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 min-w-[280px] max-w-[450px]"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                      {format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                    </span>
+                    <div className="flex gap-1">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => subMonths(m, 1))}>
+                        <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => addMonths(m, 1))}>
+                        <ChevronRight className="h-4 w-4 stroke-[2]" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                      <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                    ))}
+                    {(() => {
+                      const monthEnd = endOfMonth(datePickerDesdeMonth);
+                      const calStart = startOfWeek(datePickerDesdeMonth, { weekStartsOn: 1 });
+                      const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                      const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                      const selectedDate = filterFechaDesde ? new Date(filterFechaDesde + 'T12:00:00') : null;
+                      return days.map((day) => {
+                        const isCurrentMonth = isSameMonth(day, datePickerDesdeMonth);
+                        const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                        return (
+                          <button
+                            key={day.toISOString()}
+                            type="button"
+                            onClick={() => {
+                              setFilterFechaDesde(format(day, 'yyyy-MM-dd'));
+                              setDatePickerDesdeMonth(startOfMonth(day));
+                              setDatePickerDesdeOpen(false);
+                            }}
+                            className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                              ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                              ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                              ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                          >
+                            {format(day, 'd')}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerHastaRef}>
-              <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha hasta</Label>
+            <div className="flex-1 min-w-[200px] relative" ref={datePickerHastaRef}>
+              <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Fecha hasta</Label>
               <div className="flex items-center gap-2">
                 <button
                   ref={datePickerHastaButtonRef}
@@ -455,12 +500,9 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                     if (willOpen) {
                       setDatePickerDesdeOpen(false);
                       setDatePickerHastaMonth(filterFechaHasta ? startOfMonth(new Date(filterFechaHasta + 'T12:00:00')) : startOfMonth(new Date()));
-                      setDatePickerHastaAnchor(datePickerHastaButtonRef.current?.getBoundingClientRect() ?? null);
-                    } else {
-                      setDatePickerHastaAnchor(null);
                     }
                   }}
-                  className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                  className="h-12 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
                 >
                   <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                   <span className="text-[#374151] truncate">
@@ -474,13 +516,66 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
                     variant="ghost"
                     size="icon"
                     onClick={() => setFilterFechaHasta('')}
-                    className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                    className="h-12 w-12 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
                     aria-label="Quitar fecha hasta"
                   >
                     <X className="h-5 w-5 stroke-[2]" />
                   </Button>
                 )}
               </div>
+              {datePickerHastaOpen && (
+                <div
+                  data-calendar-hasta-portal
+                  className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 min-w-[280px] max-w-[450px]"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                      {format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                    </span>
+                    <div className="flex gap-1">
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => subMonths(m, 1))}>
+                        <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => addMonths(m, 1))}>
+                        <ChevronRight className="h-4 w-4 stroke-[2]" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                      <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                    ))}
+                    {(() => {
+                      const monthEnd = endOfMonth(datePickerHastaMonth);
+                      const calStart = startOfWeek(datePickerHastaMonth, { weekStartsOn: 1 });
+                      const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                      const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                      const selectedDate = filterFechaHasta ? new Date(filterFechaHasta + 'T12:00:00') : null;
+                      return days.map((day) => {
+                        const isCurrentMonth = isSameMonth(day, datePickerHastaMonth);
+                        const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                        return (
+                          <button
+                            key={day.toISOString()}
+                            type="button"
+                            onClick={() => {
+                              setFilterFechaHasta(format(day, 'yyyy-MM-dd'));
+                              setDatePickerHastaMonth(startOfMonth(day));
+                              setDatePickerHastaOpen(false);
+                            }}
+                            className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                              ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                              ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                              ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                          >
+                            {format(day, 'd')}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -692,124 +787,6 @@ export default function PacienteArchivos({ pacienteId }: PacienteArchivosProps) 
           archivo={selectedArchivo}
         />
       )}
-
-      {/* Calendario Fecha desde (portal) */}
-      {datePickerDesdeOpen && datePickerDesdeAnchor &&
-        createPortal(
-          <div
-            data-calendar-desde-portal
-            className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
-            style={{ position: 'fixed', top: datePickerDesdeAnchor.bottom + 8, left: datePickerDesdeAnchor.left, width: Math.min(Math.max(datePickerDesdeAnchor.width, 280), 450) }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-                {format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-              </span>
-              <div className="flex gap-1">
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => subMonths(m, 1))}>
-                  <ChevronLeft className="h-4 w-4 stroke-[2]" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => addMonths(m, 1))}>
-                  <ChevronRight className="h-4 w-4 stroke-[2]" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center">
-              {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-              ))}
-              {(() => {
-                const monthEnd = endOfMonth(datePickerDesdeMonth);
-                const calStart = startOfWeek(datePickerDesdeMonth, { weekStartsOn: 1 });
-                const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-                const days = eachDayOfInterval({ start: calStart, end: calEnd });
-                const selectedDate = filterFechaDesde ? new Date(filterFechaDesde + 'T12:00:00') : null;
-                return days.map((day) => {
-                  const isCurrentMonth = isSameMonth(day, datePickerDesdeMonth);
-                  const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      type="button"
-                      onClick={() => {
-                        setFilterFechaDesde(format(day, 'yyyy-MM-dd'));
-                        setDatePickerDesdeMonth(startOfMonth(day));
-                        setDatePickerDesdeOpen(false);
-                        setDatePickerDesdeAnchor(null);
-                      }}
-                      className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                        ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                        ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                        ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                    >
-                      {format(day, 'd')}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-          </div>,
-          document.body
-        )}
-
-      {/* Calendario Fecha hasta (portal) */}
-      {datePickerHastaOpen && datePickerHastaAnchor &&
-        createPortal(
-          <div
-            data-calendar-hasta-portal
-            className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
-            style={{ position: 'fixed', top: datePickerHastaAnchor.bottom + 8, left: datePickerHastaAnchor.left, width: Math.min(Math.max(datePickerHastaAnchor.width, 280), 450) }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-                {format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-              </span>
-              <div className="flex gap-1">
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => subMonths(m, 1))}>
-                  <ChevronLeft className="h-4 w-4 stroke-[2]" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => addMonths(m, 1))}>
-                  <ChevronRight className="h-4 w-4 stroke-[2]" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center">
-              {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-              ))}
-              {(() => {
-                const monthEnd = endOfMonth(datePickerHastaMonth);
-                const calStart = startOfWeek(datePickerHastaMonth, { weekStartsOn: 1 });
-                const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-                const days = eachDayOfInterval({ start: calStart, end: calEnd });
-                const selectedDate = filterFechaHasta ? new Date(filterFechaHasta + 'T12:00:00') : null;
-                return days.map((day) => {
-                  const isCurrentMonth = isSameMonth(day, datePickerHastaMonth);
-                  const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      type="button"
-                      onClick={() => {
-                        setFilterFechaHasta(format(day, 'yyyy-MM-dd'));
-                        setDatePickerHastaMonth(startOfMonth(day));
-                        setDatePickerHastaOpen(false);
-                        setDatePickerHastaAnchor(null);
-                      }}
-                      className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                        ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                        ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                        ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                    >
-                      {format(day, 'd')}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-          </div>,
-          document.body
-        )}
 
       <ConfirmDeleteModal
         open={!!archivoToDelete}

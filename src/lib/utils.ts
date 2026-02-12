@@ -31,3 +31,9 @@ export function formatEvolucionDateTime(date: Date | string): string {
   }
   return parts.join(" de ");
 }
+
+/** Fecha y hora compacta para listados: "dd/mm/aa HH:mm" (ej. 12/02/25 10:30). */
+export function formatEvolucionDateTimeShort(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return format(d, "dd/MM/yy HH:mm");
+}

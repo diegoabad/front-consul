@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -14,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
-import { Plus, Edit, Trash2, Loader2, Stethoscope, Eye, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Loader2, Stethoscope, Eye, Calendar, ChevronLeft, ChevronRight, X, Link2 } from 'lucide-react';
 import { evolucionesService, type CreateEvolucionData, type UpdateEvolucionData } from '@/services/evoluciones.service';
 import { pacientesService } from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
@@ -22,7 +21,7 @@ import type { Evolucion } from '@/services/evoluciones.service';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
-import { formatDisplayText, formatEvolucionDateTime } from '@/lib/utils';
+import { formatDisplayText, formatEvolucionDateTimeShort } from '@/lib/utils';
 import { AlertCircle } from 'lucide-react';
 import { CreateEvolucionModal, EditEvolucionModal, ViewEvolucionModal } from './modals';
 import { PAGE_SIZE } from '@/lib/constants';
@@ -51,8 +50,6 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
   const [datePickerDesdeMonth, setDatePickerDesdeMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [datePickerHastaMonth, setDatePickerHastaMonth] = useState<Date>(() => startOfMonth(new Date()));
-  const [datePickerDesdeAnchor, setDatePickerDesdeAnchor] = useState<DOMRect | null>(null);
-  const [datePickerHastaAnchor, setDatePickerHastaAnchor] = useState<DOMRect | null>(null);
   const datePickerDesdeButtonRef = useRef<HTMLButtonElement>(null);
   const datePickerHastaButtonRef = useRef<HTMLButtonElement>(null);
   const datePickerDesdeRef = useRef<HTMLDivElement>(null);
@@ -117,6 +114,15 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
     return filteredEvoluciones.slice(start, start + PAGE_SIZE);
   }, [filteredEvoluciones, pageEvoluciones]);
 
+  /** IDs de evoluciones que fueron corregidas por otra (alguna tiene evolucion_anterior_id = este id) */
+  const idsCorregidas = useMemo(() => {
+    const set = new Set<string>();
+    evoluciones.forEach((e) => {
+      if (e.evolucion_anterior_id) set.add(e.evolucion_anterior_id);
+    });
+    return set;
+  }, [evoluciones]);
+
   useEffect(() => {
     setPageEvoluciones(1);
   }, [filterProfesionalId, filterFechaDesde, filterFechaHasta]);
@@ -150,7 +156,6 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
       if (datePickerDesdeRef.current?.contains(target)) return;
       if ((e.target as Element).closest?.('[data-calendar-desde-portal]')) return;
       setDatePickerDesdeOpen(false);
-      setDatePickerDesdeAnchor(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -164,7 +169,6 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
       if (datePickerHastaRef.current?.contains(target)) return;
       if ((e.target as Element).closest?.('[data-calendar-hasta-portal]')) return;
       setDatePickerHastaOpen(false);
-      setDatePickerHastaAnchor(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -368,8 +372,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
         </div>
       </div>
 
-      {/* Filtros: profesional y fecha */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+      {/* Filtros: profesional y fecha - relative z-10 para que el calendario desplegado quede por encima de las cards */}
+      <Card className="relative z-10 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
               <div className="flex-1 min-w-[200px]">
@@ -379,7 +383,7 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                   onValueChange={setFilterProfesionalId}
                   disabled={!!(isProfesional && profesionalLogueado)}
                 >
-                  <SelectTrigger className="h-11 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
+                  <SelectTrigger className="h-12 w-full rounded-[10px] border-[#E5E7EB] font-['Inter'] text-[14px]">
                     <SelectValue placeholder="Todos los profesionales" />
                   </SelectTrigger>
                   <SelectContent className="rounded-[12px]">
@@ -393,8 +397,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerDesdeRef}>
-                <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha desde</Label>
+              <div className="flex-1 min-w-[200px] relative" ref={datePickerDesdeRef}>
+                <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Fecha desde</Label>
                 <div className="flex items-center gap-2">
                   <button
                     ref={datePickerDesdeButtonRef}
@@ -405,12 +409,9 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                       if (willOpen) {
                         setDatePickerHastaOpen(false);
                         setDatePickerDesdeMonth(filterFechaDesde ? startOfMonth(new Date(filterFechaDesde + 'T12:00:00')) : startOfMonth(new Date()));
-                        setDatePickerDesdeAnchor(datePickerDesdeButtonRef.current?.getBoundingClientRect() ?? null);
-                      } else {
-                        setDatePickerDesdeAnchor(null);
                       }
                     }}
-                    className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                    className="h-12 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
                   >
                     <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                     <span className="text-[#374151] truncate">
@@ -424,16 +425,69 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                       variant="ghost"
                       size="icon"
                       onClick={() => setFilterFechaDesde('')}
-                      className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                      className="h-12 w-12 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
                       aria-label="Quitar fecha desde"
                     >
                       <X className="h-5 w-5 stroke-[2]" />
                     </Button>
                   )}
                 </div>
+                {datePickerDesdeOpen && (
+                  <div
+                    data-calendar-desde-portal
+                    className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 min-w-[280px] max-w-[450px]"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                        {format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => subMonths(m, 1))}>
+                          <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => addMonths(m, 1))}>
+                          <ChevronRight className="h-4 w-4 stroke-[2]" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-center">
+                      {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                        <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                      ))}
+                      {(() => {
+                        const monthEnd = endOfMonth(datePickerDesdeMonth);
+                        const calStart = startOfWeek(datePickerDesdeMonth, { weekStartsOn: 1 });
+                        const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                        const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                        const selectedDate = filterFechaDesde ? new Date(filterFechaDesde + 'T12:00:00') : null;
+                        return days.map((day) => {
+                          const isCurrentMonth = isSameMonth(day, datePickerDesdeMonth);
+                          const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                          return (
+                            <button
+                              key={day.toISOString()}
+                              type="button"
+                              onClick={() => {
+                                setFilterFechaDesde(format(day, 'yyyy-MM-dd'));
+                                setDatePickerDesdeMonth(startOfMonth(day));
+                                setDatePickerDesdeOpen(false);
+                              }}
+                              className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                                ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                                ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                            >
+                              {format(day, 'd')}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex-1 min-w-[200px] relative flex flex-col gap-1.5" ref={datePickerHastaRef}>
-                <Label className="text-[13px] font-medium text-[#374151] font-['Inter']">Fecha hasta</Label>
+              <div className="flex-1 min-w-[200px] relative" ref={datePickerHastaRef}>
+                <Label className="text-[13px] font-medium text-[#374151] font-['Inter'] mb-1.5 block">Fecha hasta</Label>
                 <div className="flex items-center gap-2">
                   <button
                     ref={datePickerHastaButtonRef}
@@ -444,12 +498,9 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                       if (willOpen) {
                         setDatePickerDesdeOpen(false);
                         setDatePickerHastaMonth(filterFechaHasta ? startOfMonth(new Date(filterFechaHasta + 'T12:00:00')) : startOfMonth(new Date()));
-                        setDatePickerHastaAnchor(datePickerHastaButtonRef.current?.getBoundingClientRect() ?? null);
-                      } else {
-                        setDatePickerHastaAnchor(null);
                       }
                     }}
-                    className="h-11 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
+                    className="h-12 flex-1 min-w-0 flex items-center gap-2 px-4 border border-[#E5E7EB] rounded-[10px] text-[14px] font-['Inter'] text-left bg-white hover:border-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all"
                   >
                     <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
                     <span className="text-[#374151] truncate">
@@ -463,13 +514,66 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                       variant="ghost"
                       size="icon"
                       onClick={() => setFilterFechaHasta('')}
-                      className="h-11 w-11 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
+                      className="h-12 w-12 shrink-0 rounded-[10px] text-[#6B7280] hover:text-[#374151] hover:bg-[#FEE2E2]"
                       aria-label="Quitar fecha hasta"
                     >
                       <X className="h-5 w-5 stroke-[2]" />
                     </Button>
                   )}
                 </div>
+                {datePickerHastaOpen && (
+                  <div
+                    data-calendar-hasta-portal
+                    className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 min-w-[280px] max-w-[450px]"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                        {format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => subMonths(m, 1))}>
+                          <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => addMonths(m, 1))}>
+                          <ChevronRight className="h-4 w-4 stroke-[2]" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-center">
+                      {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
+                        <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                      ))}
+                      {(() => {
+                        const monthEnd = endOfMonth(datePickerHastaMonth);
+                        const calStart = startOfWeek(datePickerHastaMonth, { weekStartsOn: 1 });
+                        const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                        const days = eachDayOfInterval({ start: calStart, end: calEnd });
+                        const selectedDate = filterFechaHasta ? new Date(filterFechaHasta + 'T12:00:00') : null;
+                        return days.map((day) => {
+                          const isCurrentMonth = isSameMonth(day, datePickerHastaMonth);
+                          const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+                          return (
+                            <button
+                              key={day.toISOString()}
+                              type="button"
+                              onClick={() => {
+                                setFilterFechaHasta(format(day, 'yyyy-MM-dd'));
+                                setDatePickerHastaMonth(startOfMonth(day));
+                                setDatePickerHastaOpen(false);
+                              }}
+                              className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
+                                ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
+                                ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
+                            >
+                              {format(day, 'd')}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -498,11 +602,11 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
       ) : (
         <div className="space-y-2">
           {evolucionesPaginadas.map((evolucion) => (
-            <Card key={evolucion.id} className="border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200">
+            <Card key={evolucion.id} className="relative border border-[#E5E7EB] rounded-[12px] shadow-sm hover:shadow-md transition-all duration-200">
               <CardContent className="p-4 flex items-center min-h-[72px]">
                 <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-3 lg:gap-4 lg:flex-nowrap w-full">
                   {/* Renglón 1 mobile / Col 1 desktop: Profesional - Especialidad */}
-                  <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left lg:min-w-0 lg:max-w-[240px] w-full lg:w-auto">
+                  <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left w-full lg:w-[200px] lg:min-w-[200px] lg:max-w-[200px] lg:flex-shrink-0">
                     <div className="max-lg:hidden h-10 w-10 rounded-full bg-gradient-to-br from-[#DBEAFE] to-[#BFDBFE] flex items-center justify-center shadow-sm flex-shrink-0 mr-3">
                       <Stethoscope className="h-5 w-5 text-[#3B82F6] stroke-[2]" />
                     </div>
@@ -521,13 +625,74 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                     </div>
                   </div>
                   {/* Renglón 2 mobile / Col 2 desktop: Fecha */}
-                  <div className="w-full lg:flex-1 flex justify-center min-w-0">
+                  <div className="w-full lg:w-[120px] lg:min-w-[120px] lg:flex-shrink-0 flex justify-center min-w-0">
                     <p className="text-[14px] text-[#6B7280] font-['Inter'] whitespace-nowrap mb-0 text-center">
-                      {formatEvolucionDateTime(evolucion.fecha_consulta)}
+                      {formatEvolucionDateTimeShort(evolucion.fecha_consulta)}
                     </p>
                   </div>
-                  {/* Renglón 3 mobile / Col 3 desktop: Acciones */}
-                  <div className="flex items-center justify-center lg:justify-end gap-2 flex-shrink-0">
+                  {/* Chip Corrige a / Corregida por */}
+                  <div className="w-full lg:w-[7rem] lg:min-w-[7rem] lg:flex-shrink-0 flex justify-center items-center min-w-[7rem]">
+                    {evolucion.evolucion_anterior_id && evolucion.evolucion_anterior_fecha ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const evAnterior = sortedEvoluciones.find((e) => e.id === evolucion.evolucion_anterior_id);
+                                if (evAnterior) {
+                                  setSelectedEvolucion(evAnterior);
+                                  setShowViewModal(true);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[12px] font-medium font-['Inter'] bg-[#EFF6FF] border border-[#2563eb]/30 text-[#2563eb] hover:bg-[#DBEAFE] transition-colors whitespace-nowrap"
+                            >
+                              <Link2 className="h-3.5 w-3.5 stroke-[2] flex-shrink-0" />
+                              Corrige a
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 max-w-[240px] [&>p]:text-white [&>p]:text-xs">
+                            <p>Corrige evolución del {formatEvolucionDateTimeShort(evolucion.evolucion_anterior_fecha)}.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : idsCorregidas.has(evolucion.id) ? (() => {
+                      const evCorrectora = sortedEvoluciones.find((e) => e.evolucion_anterior_id === evolucion.id);
+                      return (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {evCorrectora ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedEvolucion(evCorrectora);
+                                    setShowViewModal(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[12px] font-medium font-['Inter'] bg-[#F0FDF4] border border-[#22c55e]/40 text-[#16a34a] hover:bg-[#DCFCE7] transition-colors whitespace-nowrap"
+                                >
+                                  <Link2 className="h-3.5 w-3.5 stroke-[2] flex-shrink-0" />
+                                  Corregida por
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[12px] font-medium font-['Inter'] bg-[#F0FDF4] border border-[#22c55e]/40 text-[#16a34a] whitespace-nowrap cursor-default">
+                                  <Link2 className="h-3.5 w-3.5 stroke-[2] flex-shrink-0" />
+                                  Corregida por
+                                </span>
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white [&>p]:text-xs">
+                              <p>{evCorrectora ? `Esta evolución fue corregida por la del ${formatEvolucionDateTimeShort(evCorrectora.fecha_consulta)}.` : 'Esta evolución fue corregida por otra posterior.'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      );
+                    })() : (
+                      <span className="inline-block min-w-[5.5rem] h-8" aria-hidden />
+                    )}
+                  </div>
+                  {/* Renglón 3 mobile / Col 4 desktop: Acciones */}
+                  <div className="flex items-center justify-center lg:justify-end gap-2 lg:w-[132px] lg:min-w-[132px] lg:flex-shrink-0">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -543,8 +708,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                             <Eye className="h-5 w-5 text-[#6B7280] stroke-[2]" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                          <p className="text-white">Ver Evolución</p>
+                        <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white [&>p]:text-xs">
+                          <p className="text-white text-xs">Ver Evolución</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -561,8 +726,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                               <Edit className="h-5 w-5 text-[#6B7280] stroke-[2]" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                            <p className="text-white">Editar</p>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white [&>p]:text-xs">
+                            <p className="text-white text-xs">Editar</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -580,8 +745,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
                               <Trash2 className="h-5 w-5 text-[#EF4444] stroke-[2]" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
-                            <p className="text-white">Eliminar</p>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white [&>p]:text-xs">
+                            <p className="text-white text-xs">Eliminar</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -641,6 +806,7 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
         pacienteId={pacienteId}
+        evolucionesParaCorreccion={sortedEvoluciones}
         onSubmit={handleCreate}
         isSubmitting={isSubmitting}
       />
@@ -651,131 +817,39 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
             open={showViewModal}
             onOpenChange={setShowViewModal}
             evolucion={selectedEvolucion}
+            onVerEvolucionAnterior={(id) => {
+              const ev = sortedEvoluciones.find((e) => e.id === id);
+              if (ev) setSelectedEvolucion(ev);
+            }}
+            fueCorregida={selectedEvolucion ? idsCorregidas.has(selectedEvolucion.id) : false}
+            corregidaPorEvolucion={sortedEvoluciones.find((e) => e.evolucion_anterior_id === selectedEvolucion.id) ?? null}
+            onVerEvolucionCorrectora={(id) => {
+              const ev = sortedEvoluciones.find((e) => e.id === id);
+              if (ev) {
+                setSelectedEvolucion(ev);
+                setShowViewModal(true);
+                setShowEditModal(false);
+              }
+            }}
           />
           <EditEvolucionModal
             open={showEditModal}
             onOpenChange={setShowEditModal}
             evolucion={selectedEvolucion}
             onSubmit={handleUpdate}
+            fueCorregida={selectedEvolucion ? idsCorregidas.has(selectedEvolucion.id) : false}
+            corregidaPorEvolucion={sortedEvoluciones.find((e) => e.evolucion_anterior_id === selectedEvolucion.id) ?? null}
+            onVerEvolucionCorrectora={(id) => {
+              const ev = sortedEvoluciones.find((e) => e.id === id);
+              if (ev) {
+                setSelectedEvolucion(ev);
+                setShowEditModal(false);
+                setShowViewModal(true);
+              }
+            }}
             isSubmitting={isSubmitting}
           />
         </>
-      )}
-
-      {/* Calendario Fecha desde (portal) */}
-      {datePickerDesdeOpen && datePickerDesdeAnchor && createPortal(
-        <div
-          data-calendar-desde-portal
-          className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
-          style={{ position: 'fixed', top: datePickerDesdeAnchor.bottom + 8, left: datePickerDesdeAnchor.left, width: Math.min(Math.max(datePickerDesdeAnchor.width, 280), 450) }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-              {format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-            </span>
-            <div className="flex gap-1">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => subMonths(m, 1))}>
-                <ChevronLeft className="h-4 w-4 stroke-[2]" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerDesdeMonth((m) => addMonths(m, 1))}>
-                <ChevronRight className="h-4 w-4 stroke-[2]" />
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-            ))}
-            {(() => {
-              const monthEnd = endOfMonth(datePickerDesdeMonth);
-              const calStart = startOfWeek(datePickerDesdeMonth, { weekStartsOn: 1 });
-              const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-              const days = eachDayOfInterval({ start: calStart, end: calEnd });
-              const selectedDate = filterFechaDesde ? new Date(filterFechaDesde + 'T12:00:00') : null;
-              return days.map((day) => {
-                const isCurrentMonth = isSameMonth(day, datePickerDesdeMonth);
-                const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                return (
-                  <button
-                    key={day.toISOString()}
-                    type="button"
-                    onClick={() => {
-                      setFilterFechaDesde(format(day, 'yyyy-MM-dd'));
-                      setDatePickerDesdeMonth(startOfMonth(day));
-                      setDatePickerDesdeOpen(false);
-                      setDatePickerDesdeAnchor(null);
-                    }}
-                    className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                      ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                      ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                  >
-                    {format(day, 'd')}
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Calendario Fecha hasta (portal) */}
-      {datePickerHastaOpen && datePickerHastaAnchor && createPortal(
-        <div
-          data-calendar-hasta-portal
-          className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 z-[9999] pointer-events-auto min-w-[280px] max-w-[450px]"
-          style={{ position: 'fixed', top: datePickerHastaAnchor.bottom + 8, left: datePickerHastaAnchor.left, width: Math.min(Math.max(datePickerHastaAnchor.width, 280), 450) }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
-              {format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(datePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
-            </span>
-            <div className="flex gap-1">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => subMonths(m, 1))}>
-                <ChevronLeft className="h-4 w-4 stroke-[2]" />
-              </Button>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setDatePickerHastaMonth((m) => addMonths(m, 1))}>
-                <ChevronRight className="h-4 w-4 stroke-[2]" />
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
-            ))}
-            {(() => {
-              const monthEnd = endOfMonth(datePickerHastaMonth);
-              const calStart = startOfWeek(datePickerHastaMonth, { weekStartsOn: 1 });
-              const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-              const days = eachDayOfInterval({ start: calStart, end: calEnd });
-              const selectedDate = filterFechaHasta ? new Date(filterFechaHasta + 'T12:00:00') : null;
-              return days.map((day) => {
-                const isCurrentMonth = isSameMonth(day, datePickerHastaMonth);
-                const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                return (
-                  <button
-                    key={day.toISOString()}
-                    type="button"
-                    onClick={() => {
-                      setFilterFechaHasta(format(day, 'yyyy-MM-dd'));
-                      setDatePickerHastaMonth(startOfMonth(day));
-                      setDatePickerHastaOpen(false);
-                      setDatePickerHastaAnchor(null);
-                    }}
-                    className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
-                      ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                      ${!isSelected && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
-                  >
-                    {format(day, 'd')}
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        </div>,
-        document.body
       )}
 
       <ConfirmDeleteModal

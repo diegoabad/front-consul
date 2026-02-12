@@ -1857,14 +1857,14 @@ export default function AdminTurnos() {
                     {isCompletamenteBloqueado ? (
                       <Tooltip>
                         <TooltipTrigger asChild>{dayButton}</TooltipTrigger>
-                        <TooltipContent side="top" className="font-['Inter'] text-[13px]">
+                        <TooltipContent side="top" className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                           {textoBloqueado}
                         </TooltipContent>
                       </Tooltip>
                     ) : isDiaPuntual && !isCompletamenteBloqueado ? (
                       <Tooltip>
                         <TooltipTrigger asChild>{dayButton}</TooltipTrigger>
-                        <TooltipContent side="top" className="font-['Inter'] text-[13px]">
+                        <TooltipContent side="top" className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                           {textoDiaPuntual}
                         </TooltipContent>
                       </Tooltip>
@@ -2143,7 +2143,7 @@ export default function AdminTurnos() {
                                   <Eye className="h-5 w-5 stroke-[2]" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
+                              <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                                 Ver detalle
                               </TooltipContent>
                             </Tooltip>
@@ -2160,7 +2160,7 @@ export default function AdminTurnos() {
                                   <User className="h-5 w-5 stroke-[2]" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
+                              <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                                 Ver ficha
                               </TooltipContent>
                             </Tooltip>
@@ -2179,7 +2179,7 @@ export default function AdminTurnos() {
                                     <Trash2 className="h-5 w-5 stroke-[2]" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-[#111827] text-white text-xs rounded-[8px]">
+                                <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                                   Eliminar turno
                                 </TooltipContent>
                               </Tooltip>
@@ -2211,7 +2211,7 @@ export default function AdminTurnos() {
                 <Plus className="h-6 w-6 stroke-[2]" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left" className="font-['Inter']">
+            <TooltipContent side="left" className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
               <p>
                 {!profesionalFilter
                   ? 'Seleccione un profesional para crear turnos'

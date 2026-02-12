@@ -76,7 +76,7 @@ export function DashboardLayout() {
               if (e.target === e.currentTarget) setMobileMenuOpen(false);
             }}
           />
-          <div className="absolute left-0 top-16 bottom-0 w-[280px] max-w-[85vw] bg-white border-r border-[#E5E7EB] overflow-hidden shadow-xl">
+          <div className="absolute left-0 top-16 bottom-0 w-[224px] max-w-[85vw] bg-white border-r border-[#E5E7EB] overflow-hidden shadow-xl">
             <DashboardSidebar role={user.rol} user={user} onNavigate={() => setMobileMenuOpen(false)} mobileDrawer />
           </div>
         </div>
@@ -94,7 +94,7 @@ export function DashboardLayout() {
       <main
         className={cn(
           'flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white transition-all duration-300 pt-16',
-          sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
+          sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[224px]'
         )}
       >
         <div className="p-4 md:p-6 lg:p-8 text-[#374151]">

@@ -7,6 +7,12 @@ interface EditEvolucionModalProps {
   onOpenChange: (open: boolean) => void;
   evolucion: Evolucion | null;
   onSubmit: (id: string, data: UpdateEvolucionData) => Promise<void>;
+  /** Si esta evolución fue corregida por otra posterior */
+  fueCorregida?: boolean;
+  /** Evolución que corrigió a esta (para enlace "Corregida por") */
+  corregidaPorEvolucion?: Evolucion | null;
+  /** Al hacer clic en "Corregida por" para ir a la evolución que la corrigió */
+  onVerEvolucionCorrectora?: (evolucionId: string) => void;
   isSubmitting?: boolean;
 }
 
@@ -15,6 +21,9 @@ export function EditEvolucionModal({
   onOpenChange,
   evolucion,
   onSubmit,
+  fueCorregida = false,
+  corregidaPorEvolucion = null,
+  onVerEvolucionCorrectora,
   isSubmitting = false,
 }: EditEvolucionModalProps) {
   return (
@@ -25,6 +34,9 @@ export function EditEvolucionModal({
       pacienteId={evolucion?.paciente_id ?? ''}
       evolucion={evolucion}
       onSubmitEdit={onSubmit}
+      fueCorregida={fueCorregida}
+      corregidaPorEvolucion={corregidaPorEvolucion}
+      onVerEvolucionCorrectora={onVerEvolucionCorrectora}
       isSubmitting={isSubmitting}
     />
   );

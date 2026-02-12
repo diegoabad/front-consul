@@ -45,7 +45,7 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'agenda.bloques.eliminar',
     'evoluciones.crear',
     'evoluciones.leer',
-    'evoluciones.actualizar',
+    // Sin evoluciones.actualizar ni evoluciones.eliminar: el profesional solo puede crear y leer
     'archivos.subir',
     'archivos.leer',
     'archivos.descargar',

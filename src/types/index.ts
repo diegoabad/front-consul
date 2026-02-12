@@ -152,6 +152,7 @@ export interface Evolucion {
   paciente_id: string;
   profesional_id: string;
   turno_id?: string;
+  evolucion_anterior_id?: string | null;
   fecha_consulta: string;
   motivo_consulta?: string;
   diagnostico?: string;
@@ -165,6 +166,8 @@ export interface Evolucion {
   profesional_nombre?: string;
   profesional_apellido?: string;
   profesional_especialidad?: string;
+  /** Fecha de la evolución a la que esta corrige/aclara (si evolucion_anterior_id está definido) */
+  evolucion_anterior_fecha?: string | null;
 }
 
 // Tipos para turnos

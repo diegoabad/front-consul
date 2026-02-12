@@ -24,7 +24,7 @@ interface MenuItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const SIDEBAR_WIDTH_EXPANDED = 280;
+const SIDEBAR_WIDTH_EXPANDED = 224;
 const SIDEBAR_WIDTH_COLLAPSED = 72;
 
 interface DashboardSidebarProps {
@@ -123,7 +123,7 @@ function renderNavItem(
     return (
       <Tooltip key={item.url}>
         <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={12} className="bg-[#111827] text-white border-[#111827] [&>p]:text-white">
+        <TooltipContent side="right" sideOffset={12} className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 border-[#111827] [&>p]:text-white">
           <p>{item.title}</p>
         </TooltipContent>
       </Tooltip>
@@ -142,7 +142,7 @@ export function DashboardSidebar({ role, user: _user, collapsed = false, onNavig
       className={cn(
         'bg-white transition-all duration-300 flex flex-col overflow-hidden',
         mobileDrawer ? 'w-full h-full' : 'fixed left-0 top-0 z-40 h-screen border-r border-[#E5E7EB] shadow-sm',
-        !mobileDrawer && (collapsed ? 'w-[72px]' : 'w-[280px]')
+        !mobileDrawer && (collapsed ? 'w-[72px]' : 'w-[224px]')
       )}
     >
       {!mobileDrawer && (

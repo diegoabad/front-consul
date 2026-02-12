@@ -50,7 +50,7 @@ export function DashboardHeader({
       <div
         className={cn(
           'hidden lg:flex items-center flex-shrink-0 transition-all duration-300 pl-4',
-          sidebarCollapsed ? 'w-[100px]' : 'w-[280px]'
+          sidebarCollapsed ? 'w-[100px]' : 'w-[224px]'
         )}
       >
         <Button
