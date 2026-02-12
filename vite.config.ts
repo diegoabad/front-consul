@@ -12,6 +12,17 @@ if (isBuild) {
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) return 'vendor';
+        },
+        chunkFileNames: 'assets/[name]-[hash].js',
+      },
+    },
+    chunkSizeWarningLimit: 550,
+  },
   define: isBuild
     ? { 'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl) }
     : {},
