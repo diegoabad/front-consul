@@ -297,91 +297,83 @@ export function EvolucionModal({
 
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'evolucion' ? 'flex' : 'hidden'}`}>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
-                <div className="min-h-[220px]">
-                  {isView && evolucion ? (
-                    <div className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB]">
-                      <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
-                        {evolucion.observaciones || 'No hay información registrada'}
-                      </p>
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="observaciones"
-                      value={formData.observaciones}
-                      onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                      placeholder="Ej: Paciente colaborador durante la consulta..."
-                      className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
-                      readOnly={isView}
-                    />
-                  )}
-                </div>
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
+                {isView && evolucion ? (
+                  <div className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB] overflow-y-auto">
+                    <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
+                      {evolucion.observaciones || 'No hay información registrada'}
+                    </p>
+                  </div>
+                ) : (
+                  <Textarea
+                    id="observaciones"
+                    value={formData.observaciones}
+                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                    placeholder="Ej: Paciente colaborador durante la consulta..."
+                    className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
+                    readOnly={isView}
+                  />
+                )}
               </div>
             </div>
             <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'motivo' ? 'flex' : 'hidden'}`}>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
-                <div className="min-h-[220px]">
-                  {isView && evolucion ? (
-                    <div className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB]">
-                      <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
-                        {evolucion.motivo_consulta || 'No hay información registrada'}
-                      </p>
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="motivo_consulta"
-                      value={formData.motivo_consulta}
-                      onChange={(e) => setFormData({ ...formData, motivo_consulta: e.target.value })}
-                      placeholder="Ej: Paciente refiere dolor de cabeza..."
-                      className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
-                      readOnly={isView}
-                    />
-                  )}
-                </div>
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
+                {isView && evolucion ? (
+                  <div className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB] overflow-y-auto">
+                    <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
+                      {evolucion.motivo_consulta || 'No hay información registrada'}
+                    </p>
+                  </div>
+                ) : (
+                  <Textarea
+                    id="motivo_consulta"
+                    value={formData.motivo_consulta}
+                    onChange={(e) => setFormData({ ...formData, motivo_consulta: e.target.value })}
+                    placeholder="Ej: Paciente refiere dolor de cabeza..."
+                    className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
+                    readOnly={isView}
+                  />
+                )}
               </div>
             </div>
             <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'diagnostico' ? 'flex' : 'hidden'}`}>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
-                <div className="min-h-[220px]">
-                  {isView && evolucion ? (
-                    <div className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB]">
-                      <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
-                        {evolucion.diagnostico || 'No hay información registrada'}
-                      </p>
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="diagnostico"
-                      value={formData.diagnostico}
-                      onChange={(e) => setFormData({ ...formData, diagnostico: e.target.value })}
-                      placeholder="Ej: Migraña común sin aura..."
-                      className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
-                      readOnly={isView}
-                    />
-                  )}
-                </div>
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
+                {isView && evolucion ? (
+                  <div className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB] overflow-y-auto">
+                    <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
+                      {evolucion.diagnostico || 'No hay información registrada'}
+                    </p>
+                  </div>
+                ) : (
+                  <Textarea
+                    id="diagnostico"
+                    value={formData.diagnostico}
+                    onChange={(e) => setFormData({ ...formData, diagnostico: e.target.value })}
+                    placeholder="Ej: Migraña común sin aura..."
+                    className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
+                    readOnly={isView}
+                  />
+                )}
               </div>
             </div>
             <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'tratamiento' ? 'flex' : 'hidden'}`}>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
-                <div className="min-h-[220px]">
-                  {isView && evolucion ? (
-                    <div className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB]">
-                      <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
-                        {evolucion.tratamiento || 'No hay información registrada'}
-                      </p>
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="tratamiento"
-                      value={formData.tratamiento}
-                      onChange={(e) => setFormData({ ...formData, tratamiento: e.target.value })}
-                      placeholder="Ej: 1) Ibuprofeno 400mg..."
-                      className="min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
-                      readOnly={isView}
-                    />
-                  )}
-                </div>
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-8 max-lg:px-4 pt-6 max-lg:pt-4 pb-4">
+                {isView && evolucion ? (
+                  <div className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] p-4 bg-[#F9FAFB] overflow-y-auto">
+                    <p className="text-[#374151] whitespace-pre-wrap leading-relaxed">
+                      {evolucion.tratamiento || 'No hay información registrada'}
+                    </p>
+                  </div>
+                ) : (
+                  <Textarea
+                    id="tratamiento"
+                    value={formData.tratamiento}
+                    onChange={(e) => setFormData({ ...formData, tratamiento: e.target.value })}
+                    placeholder="Ej: 1) Ibuprofeno 400mg..."
+                    className="flex-1 min-h-[220px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[17px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 resize-y transition-all duration-200 leading-relaxed"
+                    readOnly={isView}
+                  />
+                )}
               </div>
             </div>
           </div>

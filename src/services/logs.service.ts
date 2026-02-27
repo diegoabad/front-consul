@@ -1,6 +1,21 @@
 import api, { getData } from './api';
 import type { ApiResponse } from '@/types';
 
+/**
+ * =============================================================================
+ * DATOS QUE GUARDAMOS EN LOGS (tabla logs en backend)
+ * =============================================================================
+ *
+ * Campos comunes: id, created_at, origen ('front'|'back'), mensaje, stack
+ *
+ * FRONT: usuario_id, rol, pantalla, accion | ruta/metodo/params = null
+ * BACK:  ruta, metodo, params | pantalla/accion = null
+ *
+ * usuario_email: viene del JOIN con usuarios, no está en la tabla
+ * =============================================================================
+ */
+
+/** Registro de log tal como viene del API (GET /api/logs) */
 export interface LogEntry {
   id: number;
   created_at: string;
@@ -14,7 +29,7 @@ export interface LogEntry {
   params: string | null;
   mensaje: string;
   stack: string | null;
-  usuario_email?: string | null;
+  usuario_email?: string | null;  // JOIN con usuarios, no está en la tabla logs
 }
 
 export interface LogsListResponse {
@@ -33,7 +48,23 @@ export interface LogsFilters {
   limit?: number;
 }
 
+/**
+ * Datos que enviamos al crear un log desde el frontend (POST /api/logs).
+ * El backend completa usuario_id y rol desde el token si hay sesión.
+ */
+export interface CreateLogPayload {
+  origen: 'front' | 'back';
+  mensaje: string;
+  pantalla?: string | null;  // ej. "ObrasSociales", "Logs"
+  accion?: string | null;    // ej. "ver_listado"
+  stack?: string | null;     // stack trace si hay error
+}
+
 export const logsService = {
+  create: async (payload: CreateLogPayload): Promise<void> => {
+    await api.post('/logs', payload);
+  },
+
   list: async (filters: LogsFilters = {}): Promise<LogsListResponse> => {
     const params = new URLSearchParams();
     if (filters.fecha_desde) params.set('fecha_desde', filters.fecha_desde);

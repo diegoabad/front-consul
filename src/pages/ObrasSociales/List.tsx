@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ import {
   type UpdateObraSocialData,
 } from '@/services/obras-sociales.service';
 import { PAGE_SIZE } from '@/lib/constants';
+import { logsService } from '@/services/logs.service';
 
 export default function AdminObrasSociales() {
   const queryClient = useQueryClient();
@@ -64,6 +65,18 @@ export default function AdminObrasSociales() {
   useEffect(() => {
     setPage(1);
   }, [effectiveSearch]);
+
+  const loggedEmptyRef = useRef(false);
+  useEffect(() => {
+    if (!isLoading && total === 0 && search.trim().length < 3) {
+      if (!loggedEmptyRef.current) {
+        loggedEmptyRef.current = true;
+        logsService.create({ origen: 'front', mensaje: '0 obras sociales registradas', pantalla: 'ObrasSociales', accion: 'ver_listado' }).catch(() => {});
+      }
+    } else if (total > 0) {
+      loggedEmptyRef.current = false;
+    }
+  }, [isLoading, total, search]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateObraSocialData) => obrasSocialesService.create(data),
