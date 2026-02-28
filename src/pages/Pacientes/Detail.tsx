@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { 
-  ChevronLeft, ChevronRight, User, Phone, Mail, Calendar, MapPin, 
+  ChevronLeft, User, Phone, Mail, Calendar, MapPin, 
   FileText, Stethoscope, Paperclip, StickyNote, 
   Loader2, AlertCircle, Clock, Edit, UserPlus, Trash2
 } from 'lucide-react';
@@ -28,7 +28,6 @@ import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
-import { PAGE_SIZE } from '@/lib/constants';
 import { EditPacienteModal } from './modals';
 import PacienteArchivos from './Archivos';
 import PacienteNotas from './Notas';
@@ -82,7 +81,6 @@ export default function PacienteDetail() {
   const initialAsignacionesRef = useRef<AsignacionPacienteProfesional[]>([]);
   const [draftAsignaciones, setDraftAsignaciones] = useState<AsignacionPacienteProfesional[]>([]);
   const [isSavingAsignaciones, setIsSavingAsignaciones] = useState(false);
-  const [pageProfesionales, setPageProfesionales] = useState(1);
 
   const { data: paciente, isLoading, error } = useQuery({
     queryKey: ['paciente', id],
