@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/tooltip';
 import { 
   Calendar, CalendarPlus, User, Eye, X, Plus, 
-  Loader2, Filter, Stethoscope, ChevronLeft, ChevronRight, Search, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
+  Loader2, Filter, Stethoscope, ChevronLeft, ChevronRight, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
 import { turnosService, type CreateTurnoData, type CancelTurnoData, type UpdateTurnoData } from '@/services/turnos.service';
@@ -254,7 +254,7 @@ export default function AdminTurnos() {
       setCreateFecha(fechaFilter);
       setCreateHoraInicio('09:00');
       setCreateHoraFin('09:30');
-      setPacienteDniInput('');
+      setPacienteSearchInput('');
       setPacienteFound(null);
       setShowQuickCreatePaciente(false);
       setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
@@ -278,11 +278,14 @@ export default function AdminTurnos() {
   const [createHoraFin, setCreateHoraFin] = useState('09:30');
   const [createHoraInicioManual, setCreateHoraInicioManual] = useState(false);
   const [createHoraFinManual, setCreateHoraFinManual] = useState(false);
-  const [pacienteDniInput, setPacienteDniInput] = useState('');
+  const [pacienteSearchInput, setPacienteSearchInput] = useState('');
+  const [pacienteSearchResults, setPacienteSearchResults] = useState<Paciente[]>([]);
   const [pacienteFound, setPacienteFound] = useState<Paciente | null>(null);
   const [showQuickCreatePaciente, setShowQuickCreatePaciente] = useState(false);
   const [quickCreatePaciente, setQuickCreatePaciente] = useState({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
   const [isSearchingPaciente, setIsSearchingPaciente] = useState(false);
+  const [showPacienteDropdown, setShowPacienteDropdown] = useState(false);
+  const pacienteSearchRef = useRef<HTMLDivElement>(null);
   const [isCreatingPaciente, setIsCreatingPaciente] = useState(false);
 
   // Form state para cancelar turno
@@ -368,6 +371,37 @@ export default function AdminTurnos() {
       setShowSinAgendaModal(true);
     }
   }, [isProfesional, profesionalFilter, loadingAgendaYExcepciones, agendasDelProfesional.length, excepcionesDelRango.length]);
+
+  // Búsqueda automática de paciente por nombre o DNI (después de 3 caracteres, sin tocar lupa)
+  useEffect(() => {
+    const q = pacienteSearchInput.trim();
+    if (q.length < 3 || pacienteFound) {
+      setPacienteSearchResults([]);
+      setShowPacienteDropdown(false);
+      if (q.length < 3) setShowQuickCreatePaciente(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingPaciente(true);
+      setShowQuickCreatePaciente(false);
+      try {
+        const results = await pacientesService.search(q);
+        setPacienteSearchResults(results);
+        setShowPacienteDropdown(true);
+        // Si no hay resultados y el input es solo DNI (6-8 dígitos), ofrecer crear paciente
+        if (results.length === 0 && /^\d{6,8}$/.test(q)) {
+          setShowQuickCreatePaciente(true);
+          setQuickCreatePaciente((p) => ({ ...p, dni: q, nombre: '', apellido: '', telefono: '', email: '' }));
+        }
+      } catch {
+        setPacienteSearchResults([]);
+        reactToastify.error('Error al buscar paciente', { position: 'top-right', autoClose: 3000 });
+      } finally {
+        setIsSearchingPaciente(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [pacienteSearchInput, pacienteFound]);
 
   /** Fecha mínima para Habilitar día puntual: no antes de hoy ni antes del inicio de la primera vigencia del profesional */
   const minFechaHabilitarPuntual = useMemo(() => {
@@ -766,23 +800,46 @@ export default function AdminTurnos() {
     return opcionesHoraInicioTodas.length === 0;
   }, [opcionesHoraInicioTodas.length]);
 
-  // Ajustar horas al cambiar fecha o rango: valor en la lista, no bloqueado, y fin > inicio (solo cuando NO está en modo manual)
+  /** Valor efectivo de hora fin: lo que se muestra en el Select y lo que debe enviarse al crear turno */
+  const resolvedHoraFin = useMemo(() => {
+    if (createHoraFinManual) return createHoraFin;
+    const opt = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
+    if (opt && !opt.bloqueado && createHoraFin > createHoraInicio) return createHoraFin;
+    const first = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
+    return first?.value ?? createHoraFin;
+  }, [createHoraFinManual, createHoraFin, createHoraInicio, opcionesHoraFinConEstado]);
+
+  // Sincronizar createHoraFin con el valor mostrado (resolvedHoraFin) para que al cambiar a manual se vea lo correcto
+  useEffect(() => {
+    if (!createHoraFinManual && resolvedHoraFin !== createHoraFin) {
+      setCreateHoraFin(resolvedHoraFin);
+    }
+  }, [createHoraFinManual, resolvedHoraFin, createHoraFin]);
+
+  // Ajustar horas al cambiar fecha o rango: valor en la lista, no bloqueado, y fin > inicio
+  // Hora inicio: solo cuando NO está en modo manual
   useEffect(() => {
     if (createHoraInicioManual || createHoraFinManual) return;
     const optInicio = opcionesHoraInicioConEstado.find((o) => o.value === createHoraInicio);
     const inicioValido = optInicio && !optInicio.bloqueado;
-    const optFin = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
-    const finValido = optFin && !optFin.bloqueado && createHoraFin > createHoraInicio;
     if (!inicioValido && opcionesHoraInicioConEstado.length > 0) {
       const primerNoBloqueado = opcionesHoraInicioConEstado.find((o) => !o.bloqueado);
       if (primerNoBloqueado) setCreateHoraInicio(primerNoBloqueado.value);
     }
-    if (!finValido && opcionesHoraFinConEstado.length > 0) {
-      const primerNoBloqueado = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
-      if (primerNoBloqueado) setCreateHoraFin(primerNoBloqueado.value);
-    }
-  }, [createFecha, createHoraInicio, createHoraFin, createHoraInicioManual, createHoraFinManual, opcionesHoraInicioConEstado, opcionesHoraFinConEstado]);
+  }, [createFecha, createHoraInicio, createHoraInicioManual, createHoraFinManual, opcionesHoraInicioConEstado]);
 
+
+  // Cerrar dropdown de búsqueda de paciente al hacer clic fuera
+  useEffect(() => {
+    if (!showPacienteDropdown) return;
+    const handleClick = (e: MouseEvent) => {
+      if (pacienteSearchRef.current && !pacienteSearchRef.current.contains(e.target as Node)) {
+        setShowPacienteDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showPacienteDropdown]);
 
   // Cerrar date picker al hacer clic fuera
   useEffect(() => {
@@ -1170,38 +1227,6 @@ export default function AdminTurnos() {
     },
   });
 
-  const handleBuscarPacientePorDni = async () => {
-    const dni = pacienteDniInput.trim();
-    if (!dni) return;
-    setIsSearchingPaciente(true);
-    setPacienteFound(null);
-    setShowQuickCreatePaciente(false);
-    try {
-      const pac = await pacientesService.getByDni(dni);
-      if (pac) {
-        setPacienteFound(pac);
-        setCreateFormData((prev) => ({ ...prev, paciente_id: pac.id }));
-        // Si es profesional, vincular el paciente a su lista para no duplicar y que lo vea después
-        if (isProfesional && profesionalFilter) {
-          try {
-            await pacientesService.addAsignacion(pac.id, profesionalFilter);
-            queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-            reactToastify.success('Paciente vinculado a tu lista', { position: 'top-right', autoClose: 3000 });
-          } catch {
-            // Ya estaba asignado u otro error; no bloquear el flujo
-          }
-        }
-      } else {
-        setShowQuickCreatePaciente(true);
-        setQuickCreatePaciente({ dni, nombre: '', apellido: '', telefono: '', email: '' });
-      }
-    } catch {
-      reactToastify.error('Error al buscar paciente', { position: 'top-right', autoClose: 3000 });
-    } finally {
-      setIsSearchingPaciente(false);
-    }
-  };
-
   const handleQuickCreatePaciente = async () => {
     const { dni, nombre, apellido, telefono, email } = quickCreatePaciente;
     if (!dni.trim() || !nombre.trim() || !apellido.trim() || !telefono.trim() || !email.trim()) {
@@ -1241,23 +1266,25 @@ export default function AdminTurnos() {
   };
 
   const handleCreate = async () => {
+    // Usar resolvedHoraFin para enviar lo que realmente se muestra (evita desincronización Select/estado)
+    const horaFinParaPayload = createHoraFinManual ? createHoraFin : resolvedHoraFin;
     // Fecha/hora en hora local con offset explícito (evita que el navegador interprete "YYYY-MM-DDTHH:mm" como UTC en algunos casos)
     const horaInicioNorm = createHoraInicio.length <= 5 ? `${createHoraInicio}:00` : createHoraInicio;
-    const horaFinNorm = createHoraFin.length <= 5 ? `${createHoraFin}:00` : createHoraFin;
+    const horaFinNorm = horaFinParaPayload.length <= 5 ? `${horaFinParaPayload}:00` : horaFinParaPayload;
     const pad = (n: number) => String(n).padStart(2, '0');
     const d = new Date(`${createFecha}T${horaInicioNorm}`);
     const tzMin = -d.getTimezoneOffset();
     const tzStr = (tzMin >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tzMin) / 60)) + ':' + pad(Math.abs(tzMin) % 60);
     const fecha_hora_inicio = new Date(`${createFecha}T${horaInicioNorm}${tzStr}`).toISOString();
     const fecha_hora_fin = new Date(`${createFecha}T${horaFinNorm}${tzStr}`).toISOString();
-    if (!createFormData.profesional_id || !createFormData.paciente_id || !createFecha || !createHoraInicio || !createHoraFin) {
+    if (!createFormData.profesional_id || !createFormData.paciente_id || !createFecha || !createHoraInicio || !horaFinParaPayload) {
       reactToastify.error('Complete todos los campos requeridos', {
         position: 'top-right',
         autoClose: 3000,
       });
       return;
     }
-    if (createHoraFin <= createHoraInicio) {
+    if (horaFinParaPayload <= createHoraInicio) {
       reactToastify.error('La hora fin debe ser posterior a la hora inicio', {
         position: 'top-right',
         autoClose: 3000,
@@ -1267,21 +1294,28 @@ export default function AdminTurnos() {
     const payload = { ...createFormData, fecha_hora_inicio, fecha_hora_fin };
     const { min: minHora, max: maxHora } = rangoHorarioCreate;
     const horasManuales = createHoraInicioManual || createHoraFinManual;
-    if (horasManuales && minHora !== undefined && maxHora !== undefined) {
-      if (createHoraInicio < minHora || createHoraFin > maxHora) {
-        setPendingCreateHorarioFueraPayload(payload);
-        setShowConfirmHorarioFueraModal(true);
-        return;
-      }
+    const diaSinAgenda = minHora === undefined || maxHora === undefined;
+    const fueraDeRango = createHoraInicio < minHora! || horaFinParaPayload > maxHora!;
+    // Día sin agenda: siempre rechazar
+    if (diaSinAgenda) {
+      reactToastify.error('El horario debe estar dentro de la agenda del profesional', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      return;
     }
-    if (!horasManuales && minHora !== undefined && maxHora !== undefined) {
-      if (createHoraInicio < minHora || createHoraFin > maxHora) {
-        reactToastify.error('El horario debe estar dentro de la agenda del profesional', {
-          position: 'top-right',
-          autoClose: 3000,
-        });
-        return;
-      }
+    // Con ingreso manual: si el horario está fuera del rango → mostrar modal de advertencia
+    if (horasManuales && fueraDeRango) {
+      setPendingCreateHorarioFueraPayload(payload);
+      setShowConfirmHorarioFueraModal(true);
+      return;
+    }
+    if (!horasManuales && fueraDeRango) {
+      reactToastify.error('El horario debe estar dentro de la agenda del profesional', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      return;
     }
 
     const slotStart = new Date(fecha_hora_inicio).getTime();
@@ -2816,7 +2850,8 @@ export default function AdminTurnos() {
             setCreateHoraInicioManual(false);
             setCreateHoraFinManual(false);
             setCreateDatePickerOpen(false);
-            setPacienteDniInput('');
+            setPacienteSearchInput('');
+            setPacienteSearchResults([]);
             setPacienteFound(null);
             setShowQuickCreatePaciente(false);
             setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
@@ -2881,7 +2916,7 @@ export default function AdminTurnos() {
                         <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${createDatePickerOpen ? 'rotate-90' : ''}`} />
                       </button>
                       {createDatePickerOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full">
+                        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full max-w-[320px] max-h-[min(340px,70vh)] overflow-auto">
                           <div className="flex items-center justify-between mb-4">
                             <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
                               {format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).slice(1)}
@@ -2965,7 +3000,11 @@ export default function AdminTurnos() {
                       </Label>
                       <button
                         type="button"
-                        onClick={() => setCreateHoraInicioManual((v) => !v)}
+                        onClick={() => {
+                          const v = !createHoraInicioManual;
+                          setCreateHoraInicioManual(v);
+                          setCreateHoraFinManual(v);
+                        }}
                         className="text-[13px] font-medium text-[#2563eb] hover:underline font-['Inter'] shrink-0"
                       >
                         {createHoraInicioManual ? 'Usar lista' : 'Ingresar manualmente'}
@@ -3036,18 +3075,9 @@ export default function AdminTurnos() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 mb-0">
-                      <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        Hora fin
-                      </Label>
-                      <button
-                        type="button"
-                        onClick={() => setCreateHoraFinManual((v) => !v)}
-                        className="text-[13px] font-medium text-[#2563eb] hover:underline font-['Inter'] shrink-0"
-                      >
-                        {createHoraFinManual ? 'Usar lista' : 'Ingresar manualmente'}
-                      </button>
-                    </div>
+                    <Label htmlFor="create-hora-fin" className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                      Hora fin
+                    </Label>
                     {createHoraFinManual ? (
                       <Input
                         id="create-hora-fin"
@@ -3064,14 +3094,7 @@ export default function AdminTurnos() {
                       />
                     ) : (
                       <Select
-                        value={
-                          (() => {
-                            const opt = opcionesHoraFinConEstado.find((o) => o.value === createHoraFin);
-                            if (opt && !opt.bloqueado && createHoraFin > createHoraInicio) return createHoraFin;
-                            const first = opcionesHoraFinConEstado.find((o) => !o.bloqueado && o.value > createHoraInicio);
-                            return first?.value ?? createHoraFin;
-                          })()
-                        }
+                        value={resolvedHoraFin}
                         onValueChange={(v) => setCreateHoraFin(v)}
                       >
                         <SelectTrigger id="create-hora-fin" className="h-[52px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 justify-start text-left">
@@ -3114,7 +3137,7 @@ export default function AdminTurnos() {
                         onClick={() => {
                           setCreateFormData((prev) => ({ ...prev, paciente_id: '' }));
                           setPacienteFound(null);
-                          setPacienteDniInput('');
+                          setPacienteSearchInput('');
                         }}
                         className="text-[#6B7280] hover:text-[#374151] p-0.5 rounded"
                         aria-label="Buscar otro paciente"
@@ -3136,11 +3159,13 @@ export default function AdminTurnos() {
                               size="sm"
                               onClick={() => {
                                 setShowQuickCreatePaciente(false);
-                                setQuickCreatePaciente((p) => ({ ...p, nombre: '', apellido: '', telefono: '', email: '' }));
+                                setPacienteSearchInput('');
+                                setPacienteSearchResults([]);
+                                setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
                               }}
                               className="text-[#6B7280] hover:text-[#374151] shrink-0 font-['Inter']"
                             >
-                              Buscar otro DNI
+                              Buscar otro
                             </Button>
                           </div>
                           <div className="p-4 border border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] space-y-3">
@@ -3199,40 +3224,78 @@ export default function AdminTurnos() {
                           </div>
                         </div>
                       ) : (
-                        <div className="relative flex-1">
+                        <div className="relative flex-1" ref={pacienteSearchRef}>
                           <Input
                             id="create-paciente-dni"
                             type="text"
-                            inputMode="numeric"
-                            value={pacienteDniInput}
-                            onChange={(e) => setPacienteDniInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                            onKeyDown={(e) => e.key === 'Enter' && handleBuscarPacientePorDni()}
-                            placeholder="DNI (6 a 8 dígitos)"
-                            className="h-10 pl-4 pr-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
+                            value={pacienteSearchInput}
+                            onChange={(e) => {
+                              setPacienteSearchInput(e.target.value);
                               if (pacienteFound) {
                                 setCreateFormData((prev) => ({ ...prev, paciente_id: '' }));
                                 setPacienteFound(null);
-                                setPacienteDniInput('');
-                              } else {
-                                handleBuscarPacientePorDni();
                               }
                             }}
-                            disabled={pacienteFound ? false : (!pacienteDniInput.trim() || pacienteDniInput.trim().length < 6 || isSearchingPaciente)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-[6px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] disabled:opacity-50 disabled:pointer-events-none"
-                            aria-label={pacienteFound ? 'Limpiar y buscar otro' : 'Buscar paciente por DNI'}
-                          >
-                            {isSearchingPaciente ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : pacienteFound ? (
-                              <X className="h-4 w-4 stroke-[2]" />
-                            ) : (
-                              <Search className="h-4 w-4 stroke-[2]" />
+                            onFocus={() => pacienteSearchResults.length > 0 && setShowPacienteDropdown(true)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setShowPacienteDropdown(false);
+                            }}
+                            placeholder="Buscar por nombre o DNI (mín. 3 caracteres)"
+                            className="h-10 pl-4 pr-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[14px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20"
+                          />
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {isSearchingPaciente && (
+                              <Loader2 className="h-4 w-4 animate-spin text-[#6B7280]" />
                             )}
-                          </button>
+                            {pacienteFound && !isSearchingPaciente && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCreateFormData((prev) => ({ ...prev, paciente_id: '' }));
+                                  setPacienteFound(null);
+                                  setPacienteSearchInput('');
+                                  setPacienteSearchResults([]);
+                                }}
+                                className="h-7 w-7 flex items-center justify-center rounded-[6px] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151]"
+                                aria-label="Limpiar y buscar otro"
+                              >
+                                <X className="h-4 w-4 stroke-[2]" />
+                              </button>
+                            )}
+                          </div>
+                          {showPacienteDropdown && !showQuickCreatePaciente && (
+                            <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg max-h-[220px] overflow-y-auto">
+                              {pacienteSearchResults.length > 0 ? pacienteSearchResults.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setPacienteFound(p);
+                                    setCreateFormData((prev) => ({ ...prev, paciente_id: p.id }));
+                                    setPacienteSearchInput('');
+                                    setPacienteSearchResults([]);
+                                    setShowPacienteDropdown(false);
+                                    if (isProfesional && profesionalFilter) {
+                                      pacientesService.addAsignacion(p.id, profesionalFilter).then(() => {
+                                        queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+                                        reactToastify.success('Paciente vinculado a tu lista', { position: 'top-right', autoClose: 3000 });
+                                      }).catch(() => {});
+                                    }
+                                  }}
+                                  className="w-full px-4 py-3 text-left hover:bg-[#F3F4F6] border-b border-[#F3F4F6] last:border-b-0 font-['Inter'] text-[14px] text-[#374151] flex items-center justify-between gap-2"
+                                >
+                                  <span>
+                                    {formatDisplayText(p.apellido)}, {formatDisplayText(p.nombre)}
+                                    {p.dni ? ` — DNI: ${formatDni(p.dni)}` : ''}
+                                  </span>
+                                </button>
+                              )) : (
+                                <div className="px-4 py-3 text-[#6B7280] font-['Inter'] text-[14px]">
+                                  No se encontraron pacientes
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </>

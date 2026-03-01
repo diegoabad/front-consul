@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { formatDisplayText } from '@/lib/utils';
+import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
 import { PAGE_SIZE } from '@/lib/constants';
 import {
   Search, Plus, Eye, Edit, Trash2,
@@ -432,7 +433,7 @@ export default function AdminPacientes() {
       ) : (
         <Card className="border border-[#E5E7EB] rounded-[16px] max-lg:rounded-[12px] shadow-sm overflow-hidden">
           <div className="max-lg:overflow-x-auto">
-            <Table className="min-w-[720px]">
+            <Table className="min-w-[720px] table-fixed">
               <TableHeader>
                 <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                   <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] py-4 max-lg:py-3 w-[28%] min-w-[200px]">
@@ -476,43 +477,59 @@ export default function AdminPacientes() {
                     key={paciente.id}
                     className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
                   >
-                    <TableCell className="py-4 max-lg:py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10 max-lg:hidden rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm">
+                    <TableCell className="py-4 max-lg:py-3 overflow-hidden">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-10 w-10 max-lg:hidden rounded-full bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] shadow-sm flex-shrink-0">
                           <AvatarFallback className="bg-transparent text-[#2563eb] font-semibold text-sm">
                             {(paciente.nombre?.[0] ?? '').toUpperCase()}{(paciente.apellido?.[0] ?? '').toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-medium text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px] mb-0">
+                        <div className="min-w-0 flex-1">
+                          <TruncateWithTooltip
+                            value={`${formatDisplayText(paciente.apellido)}, ${formatDisplayText(paciente.nombre)}`}
+                            maxWidth="max-w-full"
+                            className="font-medium text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px]"
+                          >
                             {formatDisplayText(paciente.apellido)}, {formatDisplayText(paciente.nombre)}
-                          </p>
+                          </TruncateWithTooltip>
                           {!isProfesional && paciente.email && (
-                            <p className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter'] mb-0 truncate max-w-[180px]">
+                            <TruncateWithTooltip
+                              value={paciente.email}
+                              maxWidth="max-w-full"
+                              className="text-xs text-[#9CA3AF] hidden sm:block font-['Inter']"
+                            >
                               {paciente.email}
-                            </p>
+                            </TruncateWithTooltip>
                           )}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">
-                      {formatDNI(paciente.dni)}
+                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px] overflow-hidden">
+                      <TruncateWithTooltip value={formatDNI(paciente.dni)} maxWidth="max-w-full">
+                        {formatDNI(paciente.dni)}
+                      </TruncateWithTooltip>
                     </TableCell>
-                    <TableCell className="max-lg:text-[13px]">
+                    <TableCell className="max-lg:text-[13px] overflow-hidden">
                     {paciente.telefono ? (
-                      <span className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">{paciente.telefono}</span>
+                      <TruncateWithTooltip value={paciente.telefono} maxWidth="max-w-full" className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">
+                        {paciente.telefono}
+                      </TruncateWithTooltip>
                     ) : (
                       <span className="text-[#9CA3AF]">-</span>
                     )}
                   </TableCell>
                   {isProfesional && (
-                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px]">
-                      {paciente.email || '-'}
+                    <TableCell className="text-[#6B7280] font-['Inter'] text-[14px] overflow-hidden">
+                      <TruncateWithTooltip value={paciente.email ?? undefined} maxWidth="max-w-full">
+                        {paciente.email || '-'}
+                      </TruncateWithTooltip>
                     </TableCell>
                   )}
-                  <TableCell>
-                    <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium">
-                      {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : 'Sin cobertura'}
+                  <TableCell className="overflow-hidden">
+                    <Badge className="bg-[#dbeafe] text-[#2563eb] border-[#bfdbfe] hover:bg-[#bfdbfe] rounded-full px-3 py-1 text-xs max-lg:text-[11px] font-medium max-w-full">
+                      <TruncateWithTooltip value={paciente.obra_social ?? undefined} maxWidth="max-w-[120px]" className="uppercase">
+                        {paciente.obra_social ? paciente.obra_social.toUpperCase() : 'Sin cobertura'}
+                      </TruncateWithTooltip>
                     </Badge>
                   </TableCell>
                   {!isProfesional && (
@@ -528,12 +545,14 @@ export default function AdminPacientes() {
                   )}
                   <TableCell className={isProfesional ? '' : 'text-right'}>
                     {isProfesional ? (
-                      <Button
-                        onClick={() => navigate(`/pacientes/${paciente.id}`)}
-                        className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-4 py-2 font-['Inter'] text-[14px] font-medium"
-                      >
-                        Ver ficha
-                      </Button>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          onClick={() => navigate(`/pacientes/${paciente.id}`)}
+                          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-4 py-2 font-['Inter'] text-[14px] font-medium"
+                        >
+                          Ver ficha
+                        </Button>
+                      </div>
                     ) : (
                     <TooltipProvider>
                       <div className="flex items-center justify-end gap-1">

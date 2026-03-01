@@ -28,6 +28,7 @@ import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
+import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
 import { EditPacienteModal } from './modals';
 import PacienteArchivos from './Archivos';
 import PacienteNotas from './Notas';
@@ -152,7 +153,7 @@ export default function PacienteDetail() {
 
   const canUpdate = hasPermission(user, 'pacientes.actualizar');
   const canReadPaciente = hasPermission(user, 'pacientes.leer');
-  void hasPermission(user, 'pacientes.eliminar');
+  const canDelete = hasPermission(user, 'pacientes.eliminar');
   // Pestaña Profesionales solo para administrador y secretaria (no profesionales)
   const canSeeTabProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
   // Botón/FAB Editar datos: mostrar si puede actualizar, puede leer, o es profesional (backend valida al guardar)
@@ -374,15 +375,28 @@ export default function PacienteDetail() {
                 Información personal y de contacto del paciente
               </p>
             </div>
-            {canShowFabDatos && (
-              <Button
-                onClick={() => setShowEditModal(true)}
-                className="max-lg:hidden bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 h-12 font-medium shrink-0"
-              >
-                <Edit className="h-5 w-5 mr-2 stroke-[2]" />
-                Editar Datos Personales
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {canShowFabDatos && (
+                <Button
+                  onClick={() => setShowEditModal(true)}
+                  className="max-lg:hidden bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 h-12 font-medium shrink-0"
+                >
+                  <Edit className="h-5 w-5 mr-2 stroke-[2]" />
+                  Editar Datos Personales
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowDeleteModal(true)}
+                  className="h-12 w-12 rounded-[12px] border-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2] hover:text-[#DC2626] shrink-0"
+                  aria-label="Eliminar paciente"
+                >
+                  <Trash2 className="h-5 w-5 stroke-[2]" />
+                </Button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-1 min-[1540px]:grid-cols-2 gap-6">
             {/* 1. Información Personal */}
@@ -398,10 +412,12 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
                       <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {formatDisplayText(paciente.nombre) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.nombre ?? undefined}>
+                          {formatDisplayText(paciente.nombre) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -409,10 +425,12 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
                       <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Apellido</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {formatDisplayText(paciente.apellido) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.apellido ?? undefined}>
+                          {formatDisplayText(paciente.apellido) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -420,10 +438,12 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
                       <FileText className="h-4 w-4 text-[#2563eb] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">DNI</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {formatDNI(paciente.dni) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.dni ?? undefined}>
+                          {formatDNI(paciente.dni) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -431,7 +451,7 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
                       <Calendar className="h-4 w-4 text-[#2563eb] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Fecha de Nacimiento</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
                         {paciente.fecha_nacimiento 
@@ -462,7 +482,9 @@ export default function PacienteDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Teléfono</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                          {paciente.telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          <TruncateWithTooltip value={paciente.telefono ?? undefined}>
+                            {paciente.telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
                         </p>
                       </div>
                     </div>
@@ -473,7 +495,9 @@ export default function PacienteDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Email</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                          {paciente.email || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          <TruncateWithTooltip value={paciente.email ?? undefined}>
+                            {paciente.email || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
                         </p>
                       </div>
                     </div>
@@ -485,7 +509,9 @@ export default function PacienteDetail() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Dirección</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.direccion || <span className="text-[#9CA3AF] italic">No especificada</span>}
+                        <TruncateWithTooltip value={paciente.direccion ?? undefined}>
+                          {paciente.direccion || <span className="text-[#9CA3AF] italic">No especificada</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -510,7 +536,9 @@ export default function PacienteDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Obra Social</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                          {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : <span className="text-[#9CA3AF] italic">No especificada</span>}
+                          <TruncateWithTooltip value={paciente.obra_social ?? undefined} className="uppercase">
+                            {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : <span className="text-[#9CA3AF] italic">No especificada</span>}
+                          </TruncateWithTooltip>
                         </p>
                       </div>
                     </div>
@@ -521,7 +549,9 @@ export default function PacienteDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">N° de Afiliado</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                          {paciente.numero_afiliado || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          <TruncateWithTooltip value={paciente.numero_afiliado ?? undefined}>
+                            {paciente.numero_afiliado || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
                         </p>
                       </div>
                     </div>
@@ -533,7 +563,9 @@ export default function PacienteDetail() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Plan</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.plan?.trim() ? paciente.plan : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.plan?.trim() ?? undefined}>
+                          {paciente.plan?.trim() ? paciente.plan : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -554,10 +586,12 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
                       <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.contacto_emergencia_nombre ?? undefined}>
+                          {paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
@@ -565,10 +599,12 @@ export default function PacienteDetail() {
                     <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
                       <Phone className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Teléfono</p>
                       <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.contacto_emergencia_telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        <TruncateWithTooltip value={paciente.contacto_emergencia_telefono ?? undefined}>
+                          {paciente.contacto_emergencia_telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                        </TruncateWithTooltip>
                       </p>
                     </div>
                   </div>
