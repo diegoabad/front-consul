@@ -20,7 +20,7 @@ import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { 
   ChevronLeft, User, Phone, Mail, Calendar, MapPin, 
   FileText, Stethoscope, Paperclip, StickyNote, 
-  Loader2, AlertCircle, Clock, Edit, UserPlus, Trash2
+  Loader2, AlertCircle, Clock, Edit, UserPlus, Trash2, FileDown
 } from 'lucide-react';
 import { pacientesService, type AsignacionPacienteProfesional } from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
 import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
+import { DatePicker } from '@/components/ui/date-picker';
 import { EditPacienteModal } from './modals';
 import PacienteArchivos from './Archivos';
 import PacienteNotas from './Notas';
@@ -82,6 +83,12 @@ export default function PacienteDetail() {
   const initialAsignacionesRef = useRef<AsignacionPacienteProfesional[]>([]);
   const [draftAsignaciones, setDraftAsignaciones] = useState<AsignacionPacienteProfesional[]>([]);
   const [isSavingAsignaciones, setIsSavingAsignaciones] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [showExportPDFModal, setShowExportPDFModal] = useState(false);
+  const [exportRango, setExportRango] = useState<'todas' | 'rango'>('todas');
+  const [exportFechaInicio, setExportFechaInicio] = useState('');
+  const [exportFechaFin, setExportFechaFin] = useState('');
+  const [exportOrden, setExportOrden] = useState<'asc' | 'desc'>('asc');
 
   const { data: paciente, isLoading, error } = useQuery({
     queryKey: ['paciente', id],
@@ -154,6 +161,7 @@ export default function PacienteDetail() {
   const canUpdate = hasPermission(user, 'pacientes.actualizar');
   const canReadPaciente = hasPermission(user, 'pacientes.leer');
   const canDelete = hasPermission(user, 'pacientes.eliminar');
+  const canExportHistoriaClinica = hasPermission(user, 'evoluciones.leer');
   // Pestaña Profesionales solo para administrador y secretaria (no profesionales)
   const canSeeTabProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
   // Botón/FAB Editar datos: mostrar si puede actualizar, puede leer, o es profesional (backend valida al guardar)
@@ -297,6 +305,48 @@ export default function PacienteDetail() {
     }
   };
 
+  const handleExportarPDF = async (opts?: { fecha_inicio?: string; fecha_fin?: string; orden?: 'asc' | 'desc' }) => {
+    if (!id) return;
+    setIsExportingPDF(true);
+    try {
+      const blob = await pacientesService.exportarHistoriaClinicaPDF(id, opts);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `historia_clinica_${paciente?.nombre || ''}_${paciente?.apellido || ''}_${format(new Date(), 'yyyy-MM-dd')}.pdf`.replace(/\s+/g, '_');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      reactToastify.success('Historia clínica exportada correctamente', { position: 'top-right', autoClose: 3000 });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Error al exportar PDF';
+      reactToastify.error(msg, { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  const handleExportPDFConfirm = () => {
+    if (exportRango === 'rango') {
+      if (!exportFechaInicio || !exportFechaFin) {
+        reactToastify.error('Indicá fecha desde y hasta para el rango.', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+      if (new Date(exportFechaFin) < new Date(exportFechaInicio)) {
+        reactToastify.error('La fecha hasta debe ser posterior a la fecha desde.', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+    }
+    const opts: { fecha_inicio?: string; fecha_fin?: string; orden: 'asc' | 'desc' } = { orden: exportOrden };
+    if (exportRango === 'rango') {
+      opts.fecha_inicio = exportFechaInicio;
+      opts.fecha_fin = exportFechaFin;
+    }
+    setShowExportPDFModal(false);
+    handleExportarPDF(opts);
+  };
+
   return (
     <div className="space-y-6 max-lg:pb-12 max-lg:px-3">
       {/* Volver arriba (pequeño) + Tabs abajo */}
@@ -376,6 +426,21 @@ export default function PacienteDetail() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {canExportHistoriaClinica && (
+                <Button
+                  onClick={() => setShowExportPDFModal(true)}
+                  disabled={isExportingPDF}
+                  variant="outline"
+                  className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
+                >
+                  {isExportingPDF ? (
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" />
+                  ) : (
+                    <FileDown className="h-5 w-5 mr-2 stroke-[2]" />
+                  )}
+                  Exportar ficha
+                </Button>
+              )}
               {canShowFabDatos && (
                 <Button
                   onClick={() => setShowEditModal(true)}
@@ -390,7 +455,7 @@ export default function PacienteDetail() {
                   variant="outline"
                   size="icon"
                   onClick={() => setShowDeleteModal(true)}
-                  className="h-12 w-12 rounded-[12px] border-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2] hover:text-[#DC2626] shrink-0"
+                  className="h-12 w-12 rounded-[12px] border-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2] hover:text-[#DC2626] hover:border-[#FECACA] focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-[#FECACA] shrink-0"
                   aria-label="Eliminar paciente"
                 >
                   <Trash2 className="h-5 w-5 stroke-[2]" />
@@ -682,7 +747,24 @@ export default function PacienteDetail() {
 
         {canSeeTabEvoluciones && (
         <TabsContent value="evoluciones" className="space-y-4">
-          <PacienteEvoluciones pacienteId={paciente.id} />
+          <PacienteEvoluciones
+            pacienteId={paciente.id}
+            exportFichaButton={canExportHistoriaClinica ? (
+              <Button
+                onClick={() => setShowExportPDFModal(true)}
+                disabled={isExportingPDF}
+                variant="outline"
+                className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
+              >
+                {isExportingPDF ? (
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" />
+                ) : (
+                  <FileDown className="h-5 w-5 mr-2 stroke-[2]" />
+                )}
+                Exportar ficha
+              </Button>
+            ) : undefined}
+          />
         </TabsContent>
         )}
 
@@ -980,6 +1062,136 @@ export default function PacienteDetail() {
                 ) : (
                   'Guardar cambios'
                 )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Exportar PDF: mismo estilo que Editar (cabecera, secciones, footer, botones) */}
+      <Dialog open={showExportPDFModal} onOpenChange={setShowExportPDFModal}>
+        <DialogContent className="max-w-[640px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh] max-lg:max-h-[85vh]">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+            <div className="flex items-center gap-4">
+              <div className="max-lg:hidden h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+                <FileDown className="h-6 w-6 text-white stroke-[2]" />
+              </div>
+              <div>
+                <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                  Exportar historia clínica (PDF)
+                </DialogTitle>
+                <DialogDescription className="text-base max-lg:text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
+                  Elegí qué evoluciones incluir y el orden
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
+            <div className="space-y-5 max-lg:space-y-4">
+              <div className="space-y-3 max-lg:space-y-2">
+                <div className="flex items-center gap-2 border-b border-[#E5E7EB]">
+                  <div className="h-2 w-2 rounded-full bg-[#2563eb]" />
+                  <h3 className="text-[17px] max-lg:text-[15px] font-semibold text-[#111827] font-['Inter'] mb-0">
+                    Evoluciones a incluir
+                  </h3>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportRango"
+                      checked={exportRango === 'todas'}
+                      onChange={() => setExportRango('todas')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4"
+                    />
+                    <span className="text-[15px] max-lg:text-[14px] font-['Inter'] text-[#374151]">Todas las evoluciones</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportRango"
+                      checked={exportRango === 'rango'}
+                      onChange={() => setExportRango('rango')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4"
+                    />
+                    <span className="text-[15px] max-lg:text-[14px] font-['Inter'] text-[#374151]">Solo entre dos fechas</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-lg:gap-3 pt-2 pl-2">
+                  <div className="space-y-2">
+                    <label className="block text-[14px] font-medium text-[#374151] font-['Inter']">Desde</label>
+                    <DatePicker
+                      value={exportFechaInicio}
+                      onChange={setExportFechaInicio}
+                      placeholder="Seleccionar fecha"
+                      disabled={exportRango === 'todas'}
+                      className="h-[48px] max-lg:h-10 w-full border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter']"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[14px] font-medium text-[#374151] font-['Inter']">Hasta</label>
+                    <DatePicker
+                      value={exportFechaFin}
+                      onChange={setExportFechaFin}
+                      placeholder="Seleccionar fecha"
+                      min={exportFechaInicio || undefined}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                      disabled={exportRango === 'todas'}
+                      className="h-[48px] max-lg:h-10 w-full border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter']"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 max-lg:space-y-2 pt-5 max-lg:pt-4">
+                <div className="flex items-center gap-2 border-b border-[#E5E7EB]">
+                  <div className="h-2 w-2 rounded-full bg-[#3B82F6]" />
+                  <h3 className="text-[17px] max-lg:text-[15px] font-semibold text-[#111827] font-['Inter'] mb-0">
+                    Orden de las evoluciones
+                  </h3>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportOrden"
+                      checked={exportOrden === 'asc'}
+                      onChange={() => setExportOrden('asc')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4"
+                    />
+                    <span className="text-[15px] max-lg:text-[14px] font-['Inter'] text-[#374151]">Ascendente (más antigua primero)</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="exportOrden"
+                      checked={exportOrden === 'desc'}
+                      onChange={() => setExportOrden('desc')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4"
+                    />
+                    <span className="text-[15px] max-lg:text-[14px] font-['Inter'] text-[#374151]">Descendente (más reciente primero)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="px-8 max-lg:px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row max-lg:flex-col justify-end items-center gap-3 max-lg:gap-2 flex-shrink-0 mt-0">
+            <div className="flex gap-3 max-lg:flex-col max-lg:w-full max-lg:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowExportPDFModal(false)}
+                className="h-[48px] max-lg:h-11 px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200 max-lg:w-full"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleExportPDFConfirm}
+                className="h-[48px] max-lg:h-11 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] transition-all duration-200 max-lg:w-full max-lg:hover:scale-100"
+              >
+                Exportar ficha
               </Button>
             </div>
           </DialogFooter>

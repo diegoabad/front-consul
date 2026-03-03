@@ -25,9 +25,10 @@ export interface DatePickerProps {
   inline?: boolean;
   /** Si se pasa, solo se pueden elegir fechas cuyo día de la semana (0=domingo, 1=lunes, ..., 6=sábado) esté en este array. */
   allowedDaysOfWeek?: number[];
+  disabled?: boolean;
 }
 
-export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha', className, id, min, max, open: openProp, onOpenChange, scrollContainerRef, inline = false, allowedDaysOfWeek }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha', className, id, min, max, open: openProp, onOpenChange, scrollContainerRef, inline = false, allowedDaysOfWeek, disabled = false }: DatePickerProps) {
   const [openInternal, setOpenInternal] = useState(false);
   const isControlled = onOpenChange !== undefined;
   const open = isControlled ? (openProp ?? false) : openInternal;
@@ -63,6 +64,7 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
   }, [inline, open, scrollContainerRef]);
 
   const handleOpen = () => {
+    if (disabled) return;
     const next = !open;
     setOpen(next);
     if (next && triggerRef.current) {
@@ -173,10 +175,12 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
         type="button"
         variant="outline"
         id={id}
+        disabled={disabled}
         onClick={handleOpen}
         className={cn(
           'mt-0 h-[48px] w-full justify-start gap-2 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-[\'Inter\'] text-left font-normal text-[#374151] hover:bg-[#F9FAFB] hover:text-[#374151] focus-visible:ring-2 focus-visible:ring-[#2563eb]/20 focus-visible:ring-offset-0',
           !value && 'text-[#9CA3AF]',
+          disabled && 'opacity-60 cursor-not-allowed hover:bg-transparent',
           className
         )}
       >

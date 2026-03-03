@@ -175,6 +175,27 @@ export const pacientesService = {
   },
 
   /**
+   * Exportar historia clínica en PDF.
+   * Retorna el blob del PDF para descargar.
+   * @param pacienteId - ID del paciente
+   * @param options - fecha_inicio, fecha_fin (YYYY-MM-DD) opcionales; orden 'asc' | 'desc'
+   */
+  exportarHistoriaClinicaPDF: async (
+    pacienteId: string,
+    options?: { fecha_inicio?: string; fecha_fin?: string; orden?: 'asc' | 'desc' }
+  ): Promise<Blob> => {
+    const params = new URLSearchParams();
+    if (options?.fecha_inicio) params.append('fecha_inicio', options.fecha_inicio);
+    if (options?.fecha_fin) params.append('fecha_fin', options.fecha_fin);
+    if (options?.orden) params.append('orden', options.orden);
+    const query = params.toString();
+    const response = await api.get<Blob>(`/pacientes/${pacienteId}/historia-clinica/pdf${query ? `?${query}` : ''}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  /**
    * Reemplazar todas las asignaciones del paciente en una sola operación
    */
   setAsignaciones: async (

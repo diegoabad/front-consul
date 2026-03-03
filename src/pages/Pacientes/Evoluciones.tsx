@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -28,9 +28,11 @@ import { PAGE_SIZE } from '@/lib/constants';
 
 interface PacienteEvolucionesProps {
   pacienteId: string;
+  /** Botón opcional para exportar ficha (se muestra al lado de Nueva Evolución) */
+  exportFichaButton?: ReactNode;
 }
 
-export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesProps) {
+export default function PacienteEvoluciones({ pacienteId, exportFichaButton }: PacienteEvolucionesProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -357,7 +359,8 @@ export default function PacienteEvoluciones({ pacienteId }: PacienteEvolucionesP
               : `${filteredEvoluciones.length} de ${sortedEvoluciones.length} evoluciones`}
           </p>
         </div>
-        <div className="flex gap-3 max-lg:hidden">
+        <div className="flex flex-wrap items-center gap-3 max-lg:hidden">
+          {exportFichaButton}
           {canCreate && (
             <Button 
               onClick={() => setShowCreateModal(true)}
