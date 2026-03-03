@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
@@ -227,8 +228,8 @@ export default function AdminTurnos() {
   const [bloqueDatePickerHastaOpen, setBloqueDatePickerHastaOpen] = useState(false);
   const [bloqueDatePickerDesdeMonth, setBloqueDatePickerDesdeMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [bloqueDatePickerHastaMonth, setBloqueDatePickerHastaMonth] = useState<Date>(() => startOfMonth(new Date()));
-  const [_bloqueDesdeAnchor, setBloqueDesdeAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
-  const [_bloqueHastaAnchor, setBloqueHastaAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
+  const [bloqueDesdeAnchor, setBloqueDesdeAnchor] = useState<DOMRect | null>(null);
+  const [bloqueHastaAnchor, setBloqueHastaAnchor] = useState<DOMRect | null>(null);
   const bloqueDesdeButtonRef = useRef<HTMLButtonElement>(null);
   const bloqueHastaButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -274,6 +275,8 @@ export default function AdminTurnos() {
   const [createDatePickerOpen, setCreateDatePickerOpen] = useState(false);
   const [createDatePickerMonth, setCreateDatePickerMonth] = useState<Date>(() => startOfMonth(new Date()));
   const createDatePickerRef = useRef<HTMLDivElement>(null);
+  const createDatePickerButtonRef = useRef<HTMLButtonElement>(null);
+  const [createDatePickerAnchor, setCreateDatePickerAnchor] = useState<DOMRect | null>(null);
   const [createHoraInicio, setCreateHoraInicio] = useState('09:00');
   const [createHoraFin, setCreateHoraFin] = useState('09:30');
   const [createHoraInicioManual, setCreateHoraInicioManual] = useState(false);
@@ -1644,30 +1647,6 @@ export default function AdminTurnos() {
         <div className="flex items-center gap-2 flex-shrink-0 max-lg:hidden">
           {profesionalFilter && (
             <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
-                disabled={
-                  sinAgendaDelProfesional ||
-                  (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
-                  (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending) ||
-                  !!excepcionDelDiaSeleccionado
-                }
-                className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
-              >
-                {bloquesDelDiaListado.length > 0 ? (
-                  <>
-                    {deleteBloqueMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <LockOpen className="h-5 w-5 mr-2 stroke-[2]" />}
-                    Desbloquear
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-5 w-5 mr-2 stroke-[2]" />
-                    Bloquear
-                  </>
-                )}
-              </Button>
               {excepcionDelDiaSeleccionado ? (
                 <Button
                   type="button"
@@ -1695,23 +1674,25 @@ export default function AdminTurnos() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => {
-                    setDiaPuntualEditId(null);
-                    setDiaPuntualForm({
-                      profesional_id: profesionalFilter || '',
-                      fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
-                      hora_inicio: '09:00',
-                      hora_fin: '13:00',
-                      duracion_turno_minutos: 30,
-                      observaciones: '',
-                    });
-                    setShowDiaPuntualModal(true);
-                  }}
-                  disabled={sinAgendaDelProfesional}
-                  className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-700 rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
+                  onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
+                  disabled={
+                    sinAgendaDelProfesional ||
+                    (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
+                    (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending)
+                  }
+                  className="border-[#6B7280] text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#374151] hover:border-[#6B7280] focus-visible:border-[#6B7280] rounded-[12px] px-4 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50"
                 >
-                  <CalendarPlus className="h-5 w-5 mr-2 stroke-[2]" />
-                  Habilitar
+                  {bloquesDelDiaListado.length > 0 ? (
+                    <>
+                      {deleteBloqueMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" /> : <LockOpen className="h-5 w-5 mr-2 stroke-[2]" />}
+                      Desbloquear
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-5 w-5 mr-2 stroke-[2]" />
+                      Bloquear
+                    </>
+                  )}
                 </Button>
               )}
             </>
@@ -1984,21 +1965,9 @@ export default function AdminTurnos() {
               </div>
                 );
               })()}
-              {/* En mobile: Habilitar y Bloquear cuando el día seleccionado tiene agenda; Deshabilitar día solo con día seleccionado */}
+              {/* En mobile: Bloquear/Desbloquear o Gestionar día según el contexto */}
               {profesionalFilter && !sinAgendaDelProfesional && (
                 <div className="max-lg:flex max-lg:flex-wrap max-lg:gap-x-4 max-lg:gap-y-1 lg:hidden">
-                  <button
-                    type="button"
-                    onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
-                    disabled={
-                      (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
-                      (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending) ||
-                      !!excepcionDelDiaSeleccionado
-                    }
-                    className="text-[13px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] hover:underline disabled:opacity-50 disabled:no-underline"
-                  >
-                    {bloquesDelDiaListado.length > 0 ? (deleteBloqueMutation.isPending ? 'Desbloqueando...' : 'Desbloquear') : 'Bloquear'}
-                  </button>
                   {fechaFilter && excepcionDelDiaSeleccionado ? (
                     <button
                       type="button"
@@ -2022,21 +1991,14 @@ export default function AdminTurnos() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => {
-                        setDiaPuntualEditId(null);
-                        setDiaPuntualForm({
-                          profesional_id: profesionalFilter || '',
-                          fecha: fechaFilter || format(new Date(), 'yyyy-MM-dd'),
-                          hora_inicio: '09:00',
-                          hora_fin: '13:00',
-                          duracion_turno_minutos: 30,
-                          observaciones: '',
-                        });
-                        setShowDiaPuntualModal(true);
-                      }}
-                      className="text-[13px] font-medium font-['Inter'] text-emerald-600 hover:text-emerald-700 hover:underline"
+                      onClick={bloquesDelDiaListado.length > 0 ? handleDesbloquearDia : handleOpenBloqueModal}
+                      disabled={
+                        (bloquesDelDiaListado.length === 0 && !diaSeleccionadoTieneAgenda) ||
+                        (bloquesDelDiaListado.length > 0 && deleteBloqueMutation.isPending)
+                      }
+                      className="text-[13px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] hover:underline disabled:opacity-50 disabled:no-underline"
                     >
-                      Habilitar
+                      {bloquesDelDiaListado.length > 0 ? (deleteBloqueMutation.isPending ? 'Desbloqueando...' : 'Desbloquear') : 'Bloquear'}
                     </button>
                   )}
                 </div>
@@ -2259,7 +2221,7 @@ export default function AdminTurnos() {
       )}
 
       {/* Modal Bloquear agenda / horario */}
-      <Dialog open={showBloqueModal} onOpenChange={(open) => { setShowBloqueModal(open); if (!open) setAbrioModalParaDesbloquear(false); }}>
+      <Dialog open={showBloqueModal} onOpenChange={(open) => { setShowBloqueModal(open); if (!open) { setAbrioModalParaDesbloquear(false); setBloqueDatePickerDesdeOpen(false); setBloqueDatePickerHastaOpen(false); setBloqueDesdeAnchor(null); setBloqueHastaAnchor(null); } }}>
         <DialogContent
           className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 flex flex-col overflow-hidden"
         >
@@ -2305,7 +2267,11 @@ export default function AdminTurnos() {
                       const willOpen = !bloqueDatePickerDesdeOpen;
                       if (willOpen) {
                         setBloqueDatePickerHastaOpen(false);
+                        setBloqueHastaAnchor(null);
                         setBloqueDatePickerDesdeMonth(bloqueForm.fecha_inicio ? startOfMonth(new Date(bloqueForm.fecha_inicio + 'T12:00:00')) : startOfMonth(new Date()));
+                        setBloqueDesdeAnchor(bloqueDesdeButtonRef.current?.getBoundingClientRect() ?? null);
+                      } else {
+                        setBloqueDesdeAnchor(null);
                       }
                       setBloqueDatePickerDesdeOpen(willOpen);
                     }}
@@ -2317,22 +2283,26 @@ export default function AdminTurnos() {
                     </span>
                     <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${bloqueDatePickerDesdeOpen ? 'rotate-90' : ''}`} />
                   </button>
-                  {bloqueDatePickerDesdeOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                  {bloqueDatePickerDesdeOpen && bloqueDesdeAnchor && createPortal(
+                    <div
+                      data-bloque-cal
+                      style={{ position: 'fixed', top: bloqueDesdeAnchor.bottom + 8, left: bloqueDesdeAnchor.left, width: Math.min(Math.max(bloqueDesdeAnchor.width, 252), 308), zIndex: 9999 }}
+                      className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[14px] font-semibold text-[#111827] font-['Poppins']">
                           {format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerDesdeMonth, 'MMMM yyyy', { locale: es }).slice(1)}
                         </span>
                         <div className="flex gap-1">
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => subMonths(m, 1))}>
-                            <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => subMonths(m, 1))}>
+                            <ChevronLeft className="h-3.5 w-3.5 stroke-[2]" />
                           </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => addMonths(m, 1))}>
-                            <ChevronRight className="h-4 w-4 stroke-[2]" />
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerDesdeMonth((m) => addMonths(m, 1))}>
+                            <ChevronRight className="h-3.5 w-3.5 stroke-[2]" />
                           </Button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-7 gap-1 text-center">
+                      <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                         {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
                           <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
                         ))}
@@ -2369,8 +2339,9 @@ export default function AdminTurnos() {
                                   });
                                   setBloqueDatePickerDesdeMonth(startOfMonth(day));
                                   setBloqueDatePickerDesdeOpen(false);
+                                  setBloqueDesdeAnchor(null);
                                 }}
-                                className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                className={`h-8 rounded-[8px] text-[12px] font-medium font-['Inter'] transition-all
                                   ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
                                   ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
                                   ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
@@ -2382,7 +2353,8 @@ export default function AdminTurnos() {
                           });
                         })()}
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
               </div>
@@ -2398,7 +2370,11 @@ export default function AdminTurnos() {
                       const willOpen = !bloqueDatePickerHastaOpen;
                       if (willOpen) {
                         setBloqueDatePickerDesdeOpen(false);
+                        setBloqueDesdeAnchor(null);
                         setBloqueDatePickerHastaMonth(bloqueForm.fecha_fin ? startOfMonth(new Date(bloqueForm.fecha_fin + 'T12:00:00')) : startOfMonth(new Date()));
+                        setBloqueHastaAnchor(bloqueHastaButtonRef.current?.getBoundingClientRect() ?? null);
+                      } else {
+                        setBloqueHastaAnchor(null);
                       }
                       setBloqueDatePickerHastaOpen(willOpen);
                     }}
@@ -2410,22 +2386,26 @@ export default function AdminTurnos() {
                     </span>
                     <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${bloqueDatePickerHastaOpen ? 'rotate-90' : ''}`} />
                   </button>
-                  {bloqueDatePickerHastaOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full">
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                  {bloqueDatePickerHastaOpen && bloqueHastaAnchor && createPortal(
+                    <div
+                      data-bloque-cal
+                      style={{ position: 'fixed', top: bloqueHastaAnchor.bottom + 8, left: bloqueHastaAnchor.left, width: Math.min(Math.max(bloqueHastaAnchor.width, 252), 308), zIndex: 9999 }}
+                      className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[14px] font-semibold text-[#111827] font-['Poppins']">
                           {format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(bloqueDatePickerHastaMonth, 'MMMM yyyy', { locale: es }).slice(1)}
                         </span>
                         <div className="flex gap-1">
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => subMonths(m, 1))}>
-                            <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => subMonths(m, 1))}>
+                            <ChevronLeft className="h-3.5 w-3.5 stroke-[2]" />
                           </Button>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => addMonths(m, 1))}>
-                            <ChevronRight className="h-4 w-4 stroke-[2]" />
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setBloqueDatePickerHastaMonth((m) => addMonths(m, 1))}>
+                            <ChevronRight className="h-3.5 w-3.5 stroke-[2]" />
                           </Button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-7 gap-1 text-center">
+                      <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                         {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
                           <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
                         ))}
@@ -2459,8 +2439,9 @@ export default function AdminTurnos() {
                                   setBloqueForm((f) => ({ ...f, fecha_fin: dateStr }));
                                   setBloqueDatePickerHastaMonth(startOfMonth(day));
                                   setBloqueDatePickerHastaOpen(false);
+                                  setBloqueHastaAnchor(null);
                                 }}
-                                className={`h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                className={`h-8 rounded-[8px] text-[12px] font-medium font-['Inter'] transition-all
                                   ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
                                   ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
                                   ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
@@ -2472,7 +2453,8 @@ export default function AdminTurnos() {
                           });
                         })()}
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   )}
                 </div>
               </div>
@@ -2488,14 +2470,14 @@ export default function AdminTurnos() {
                 Todo el día (o todos los días completos)
               </Label>
             </div>
-            {!bloqueForm.todo_el_dia && (
-            <div className="space-y-3">
+            <div className={`space-y-3 transition-opacity ${bloqueForm.todo_el_dia ? 'opacity-40 pointer-events-none' : ''}`}>
               <div className="flex items-center justify-between gap-2">
                 <Label className="text-[15px] max-lg:text-[14px] font-medium text-[#374151] font-['Inter']">Franjas horarias</Label>
                 <button
                   type="button"
+                  disabled={bloqueForm.todo_el_dia}
                   onClick={() => setBloqueForm((f) => ({ ...f, franjas: [...f.franjas, { hora_inicio: '14:00', hora_fin: '17:00' }] }))}
-                  className="rounded-[10px] font-['Inter'] text-[14px] max-lg:text-[13px] border border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] px-3 py-1.5 lg:px-3 lg:py-1.5 max-lg:border-0 max-lg:bg-transparent max-lg:px-0 max-lg:py-0 max-lg:text-[#2563eb] max-lg:hover:underline max-lg:hover:bg-transparent"
+                  className="rounded-[10px] font-['Inter'] text-[14px] max-lg:text-[13px] border border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] px-3 py-1.5 lg:px-3 lg:py-1.5 max-lg:border-0 max-lg:bg-transparent max-lg:px-0 max-lg:py-0 max-lg:text-[#2563eb] max-lg:hover:underline max-lg:hover:bg-transparent disabled:pointer-events-none"
                 >
                   <Plus className="h-4 w-4 mr-1 inline-block max-lg:hidden" />
                   Agregar franja
@@ -2507,6 +2489,7 @@ export default function AdminTurnos() {
                     <Input
                       type="time"
                       value={fr.hora_inicio}
+                      disabled={bloqueForm.todo_el_dia}
                       onChange={(e) => setBloqueForm((f) => ({
                         ...f,
                         franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_inicio: e.target.value } : x),
@@ -2517,6 +2500,7 @@ export default function AdminTurnos() {
                     <Input
                       type="time"
                       value={fr.hora_fin}
+                      disabled={bloqueForm.todo_el_dia}
                       onChange={(e) => setBloqueForm((f) => ({
                         ...f,
                         franjas: f.franjas.map((x, i) => i === idx ? { ...x, hora_fin: e.target.value } : x),
@@ -2527,6 +2511,7 @@ export default function AdminTurnos() {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      disabled={bloqueForm.todo_el_dia}
                       onClick={() => setBloqueForm((f) => ({ ...f, franjas: f.franjas.filter((_, i) => i !== idx) }))}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-[8px] h-9 shrink-0"
                     >
@@ -2536,7 +2521,6 @@ export default function AdminTurnos() {
                 ))}
               </div>
             </div>
-            )}
             <div className="space-y-3">
               <Label className="text-[15px] font-medium text-[#374151] font-['Inter']">Motivo (opcional)</Label>
               <Input
@@ -2850,6 +2834,7 @@ export default function AdminTurnos() {
             setCreateHoraInicioManual(false);
             setCreateHoraFinManual(false);
             setCreateDatePickerOpen(false);
+            setCreateDatePickerAnchor(null);
             setPacienteSearchInput('');
             setPacienteSearchResults([]);
             setPacienteFound(null);
@@ -2901,11 +2886,18 @@ export default function AdminTurnos() {
                     </Label>
                     <div className="relative">
                       <button
+                        ref={createDatePickerButtonRef}
                         id="create-fecha"
                         type="button"
                         onClick={() => {
-                          setCreateDatePickerOpen((o) => !o);
-                          if (!createDatePickerOpen) setCreateDatePickerMonth(createFecha ? startOfMonth(new Date(createFecha + 'T12:00:00')) : startOfMonth(new Date()));
+                          const willOpen = !createDatePickerOpen;
+                          setCreateDatePickerOpen(willOpen);
+                          if (willOpen) {
+                            setCreateDatePickerMonth(createFecha ? startOfMonth(new Date(createFecha + 'T12:00:00')) : startOfMonth(new Date()));
+                            setCreateDatePickerAnchor(createDatePickerButtonRef.current?.getBoundingClientRect() ?? null);
+                          } else {
+                            setCreateDatePickerAnchor(null);
+                          }
                         }}
                         className="h-[52px] max-lg:h-10 w-full flex items-center gap-2 px-4 border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[16px] max-lg:text-[14px] font-['Inter'] text-left bg-white focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 hover:border-[#9CA3AF]"
                       >
@@ -2915,42 +2907,32 @@ export default function AdminTurnos() {
                         </span>
                         <ChevronRight className={`h-4 w-4 text-[#6B7280] ml-auto transition-transform ${createDatePickerOpen ? 'rotate-90' : ''}`} />
                       </button>
-                      {createDatePickerOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-[#E5E7EB] rounded-[16px] shadow-lg p-4 w-full max-w-[320px] max-h-[min(340px,70vh)] overflow-auto">
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+                      {createDatePickerOpen && createDatePickerAnchor && createPortal(
+                        <div
+                          data-create-cal
+                          style={{ position: 'fixed', top: createDatePickerAnchor.bottom + 8, left: createDatePickerAnchor.left, width: Math.min(Math.max(createDatePickerAnchor.width, 252), 308), zIndex: 9999 }}
+                          className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[14px] font-semibold text-[#111827] font-['Poppins']">
                               {format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).slice(1)}
                             </span>
                             <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
-                                onClick={() => setCreateDatePickerMonth((m) => subMonths(m, 1))}
-                              >
-                                <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setCreateDatePickerMonth((m) => subMonths(m, 1))}>
+                                <ChevronLeft className="h-3.5 w-3.5 stroke-[2]" />
                               </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
-                                onClick={() => setCreateDatePickerMonth((m) => addMonths(m, 1))}
-                              >
-                                <ChevronRight className="h-4 w-4 stroke-[2]" />
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setCreateDatePickerMonth((m) => addMonths(m, 1))}>
+                                <ChevronRight className="h-3.5 w-3.5 stroke-[2]" />
                               </Button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-7 gap-1 text-center">
+                          <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                             {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">
-                                {d}
-                              </span>
+                              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
                             ))}
                             {(() => {
                               const monthStart = createDatePickerMonth;
-                              const monthEnd = endOfMonth(createDatePickerMonth);
+                              const monthEnd = endOfMonth(monthStart);
                               const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
                               const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
                               const days = eachDayOfInterval({ start: calStart, end: calEnd });
@@ -2971,14 +2953,13 @@ export default function AdminTurnos() {
                                       setCreateFecha(format(day, 'yyyy-MM-dd'));
                                       setCreateDatePickerMonth(startOfMonth(day));
                                       setCreateDatePickerOpen(false);
+                                      setCreateDatePickerAnchor(null);
                                     }}
-                                    className={`
-                                      h-9 rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
+                                    className={`h-8 rounded-[8px] text-[12px] font-medium font-['Inter'] transition-all
                                       ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
                                       ${!isSelected && isDisabled ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
                                       ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer' : ''}
-                                      ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}
-                                    `}
+                                      ${!isSelected && !isDisabled && isCurrentMonth ? 'text-[#374151] hover:bg-[#dbeafe] cursor-pointer' : ''}`}
                                   >
                                     {format(day, 'd')}
                                   </button>
@@ -2986,7 +2967,8 @@ export default function AdminTurnos() {
                               });
                             })()}
                           </div>
-                        </div>
+                        </div>,
+                        document.body
                       )}
                     </div>
                   </div>

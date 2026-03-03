@@ -83,18 +83,18 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
     <div
       data-date-picker-portal
       className={cn(
-        'bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-4 pointer-events-auto min-w-[280px] max-w-[450px]',
+        'bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto min-w-[252px] max-w-[308px]',
         inline ? 'absolute top-full left-0 right-0 mt-2 z-50 w-full' : 'z-[9999]'
       )}
       style={inline || !anchor ? undefined : {
         position: 'fixed',
         top: anchor.bottom + 8,
         left: anchor.left,
-        width: Math.min(Math.max(anchor.width, 280), 450),
+        width: Math.min(Math.max(anchor.width, 252), 308),
       }}
     >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[16px] font-semibold text-[#111827] font-['Poppins']">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[14px] font-semibold text-[#111827] font-['Poppins']">
                 {format(currentMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() +
                   format(currentMonth, 'MMMM yyyy', { locale: es }).slice(1)}
               </span>
@@ -103,23 +103,23 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
+                  className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
                   onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
                 >
-                  <ChevronLeft className="h-4 w-4 stroke-[2]" />
+                  <ChevronLeft className="h-3.5 w-3.5 stroke-[2]" />
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
+                  className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]"
                   onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
                 >
-                  <ChevronRight className="h-4 w-4 stroke-[2]" />
+                  <ChevronRight className="h-3.5 w-3.5 stroke-[2]" />
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center min-h-[220px]">
+            <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
               {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
                 <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">
                   {d}
@@ -152,7 +152,7 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
                         setAnchor(null);
                       }}
                       className={cn(
-                        'h-9 rounded-[10px] text-[13px] font-medium font-[\'Inter\'] transition-all',
+                        'h-8 rounded-[8px] text-[12px] font-medium font-[\'Inter\'] transition-all',
                         isSelected && 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]',
                         isDisabled && 'opacity-40 cursor-not-allowed pointer-events-none',
                         !isSelected && !isDisabled && !isCurrentMonth && 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer',

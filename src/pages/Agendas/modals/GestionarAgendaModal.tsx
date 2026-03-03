@@ -29,6 +29,7 @@ import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Edit, Loader2, Trash2, X } from 'lucide-react';
 import { agendaService, type CreateExcepcionAgendaData, type CreateBloqueData, type ExcepcionAgenda, type BloqueNoDisponible } from '@/services/agenda.service';
+import { profesionalesService } from '@/services/profesionales.service';
 import type { ConfiguracionAgenda } from '@/types';
 import { formatDisplayText, cn } from '@/lib/utils';
 import { toast as reactToastify } from 'react-toastify';
@@ -79,6 +80,45 @@ export function GestionarAgendaModal({
   const [horariosEnModoEdicion, setHorariosEnModoEdicion] = useState(false);
   const [showConfirmGuardarHorariosModal, setShowConfirmGuardarHorariosModal] = useState(false);
   const [isSavingHorariosSemana, setIsSavingHorariosSemana] = useState(false);
+
+  // --- Recordatorios WhatsApp ---
+  const [recordatorioActivo, setRecordatorioActivo] = useState(false);
+  const [recordatorioHoras, setRecordatorioHoras] = useState<number>(24);
+  const [isSavingRecordatorio, setIsSavingRecordatorio] = useState(false);
+
+  const { data: recordatorioConfig, isLoading: isLoadingRecordatorio } = useQuery({
+    queryKey: ['recordatorio-config', profesionalId],
+    queryFn: () => profesionalesService.getRecordatorioConfig(profesionalId),
+    enabled: open && !!profesionalId,
+  });
+
+  useEffect(() => {
+    if (recordatorioConfig) {
+      setRecordatorioActivo(recordatorioConfig.recordatorio_activo);
+      setRecordatorioHoras(recordatorioConfig.recordatorio_horas_antes ?? 24);
+    }
+  }, [recordatorioConfig]);
+
+  const handleGuardarRecordatorio = async () => {
+    const horas = Number(recordatorioHoras);
+    if (isNaN(horas) || horas < 2 || horas > 48) {
+      reactToastify.error('Las horas deben ser entre 2 y 48', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    setIsSavingRecordatorio(true);
+    try {
+      await profesionalesService.updateRecordatorioConfig(profesionalId, {
+        recordatorio_activo: recordatorioActivo,
+        recordatorio_horas_antes: horas,
+      });
+      queryClient.invalidateQueries({ queryKey: ['recordatorio-config', profesionalId] });
+      reactToastify.success('Configuración de recordatorios guardada', { position: 'top-right', autoClose: 3000 });
+    } catch {
+      reactToastify.error('Error al guardar la configuración', { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setIsSavingRecordatorio(false);
+    }
+  };
   type VigenciaGrupo = { desdeStr: string; hastaStr: string; configs: ConfiguracionAgenda[]; texto: string };
   const [vigenciaFuturaABorrar, setVigenciaFuturaABorrar] = useState<VigenciaGrupo | null>(null);
   const [editingFutureVigencia, setEditingFutureVigencia] = useState<VigenciaGrupo | null>(null);
@@ -599,15 +639,18 @@ export function GestionarAgendaModal({
               className="flex-1 min-h-0 flex flex-col px-6 pb-6 overflow-hidden"
             >
               <div ref={tabsListScrollRef} className="w-full min-w-0 overflow-x-auto overflow-y-hidden flex-shrink-0 mt-4 mb-4 sm:overflow-visible">
-                <TabsList className="w-full min-w-[480px] grid grid-cols-3 h-11 rounded-[10px] bg-[#F9FAFB] border border-[#E5E7EB] p-1 flex-shrink-0">
-                  <TabsTrigger value="horarios" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[155px] whitespace-nowrap text-center">
+                <TabsList className="w-full min-w-[640px] grid grid-cols-4 h-11 rounded-[10px] bg-[#F9FAFB] border border-[#E5E7EB] p-1 flex-shrink-0">
+                  <TabsTrigger value="horarios" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[150px] whitespace-nowrap text-center">
                     Horarios de la semana
                   </TabsTrigger>
-                  <TabsTrigger value="fechas" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[155px] whitespace-nowrap text-center">
+                  <TabsTrigger value="fechas" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[150px] whitespace-nowrap text-center">
                     Fechas puntuales
                   </TabsTrigger>
-                  <TabsTrigger value="bloqueos" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[155px] whitespace-nowrap text-center">
+                  <TabsTrigger value="bloqueos" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[120px] whitespace-nowrap text-center">
                     Bloqueos
+                  </TabsTrigger>
+                  <TabsTrigger value="recordatorios" className="rounded-[8px] text-[14px] font-medium data-[state=active]:bg-[#2563eb] data-[state=active]:text-white min-w-[150px] whitespace-nowrap text-center">
+                    Recordatorios
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -1021,24 +1064,13 @@ export function GestionarAgendaModal({
                       Cerrar
                     </Button>
                     <Button
-                      onClick={() => {
-                        setActiveTab('horarios');
-                        setEditingFutureVigencia(null);
-                        setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
-                        setVigenciaDesdeGuardar('');
-                        setDuracionNuevoRango(30);
-                        setDiasFijosNuevoRango(true);
-                        setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
-                        setHoraInicioPuntualNuevo('09:00');
-                        setHoraFinPuntualNuevo('18:00');
-                        setHorariosEnModoEdicion(true);
-                      }}
+                      onClick={() => setShowExcepcionModal(true)}
                       className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
                     >
                       <span className="hidden sm:inline-flex mr-2">
                         <Edit className="h-4 w-4 stroke-[2]" />
                       </span>
-                      Configurar agenda
+                      Habilitar día
                     </Button>
                   </div>
                 </TabsContent>
@@ -1104,24 +1136,76 @@ export function GestionarAgendaModal({
                       Cerrar
                     </Button>
                     <Button
-                      onClick={() => {
-                        setActiveTab('horarios');
-                        setEditingFutureVigencia(null);
-                        setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
-                        setVigenciaDesdeGuardar('');
-                        setDuracionNuevoRango(30);
-                        setDiasFijosNuevoRango(true);
-                        setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
-                        setHoraInicioPuntualNuevo('09:00');
-                        setHoraFinPuntualNuevo('18:00');
-                        setHorariosEnModoEdicion(true);
-                      }}
+                      onClick={() => setShowBloqueModal(true)}
                       className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
                     >
                       <span className="hidden sm:inline-flex mr-2">
                         <Edit className="h-4 w-4 stroke-[2]" />
                       </span>
-                      Configurar agenda
+                      Agregar bloqueo
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="recordatorios" className="flex-1 min-h-0 min-w-0 w-full overflow-auto mt-0 data-[state=inactive]:hidden flex flex-col">
+                  <div className="flex-1 overflow-auto pb-4 pt-2">
+                    {isLoadingRecordatorio ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#2563eb]" />
+                      </div>
+                    ) : (
+                      <div className="w-full space-y-4">
+                        {/* Switch activar/desactivar */}
+                        <div className="flex items-center justify-between p-4 rounded-[12px] border border-[#E5E7EB] bg-white">
+                          <div>
+                            <p className="text-[14px] font-semibold text-[#111827]">Activar recordatorios por WhatsApp</p>
+                            <p className="text-[12px] text-[#6B7280] mt-0.5">Enviará mensajes automáticos a los pacientes antes de cada turno</p>
+                          </div>
+                          <Switch
+                            checked={recordatorioActivo}
+                            onCheckedChange={setRecordatorioActivo}
+                          />
+                        </div>
+
+                        {/* Horas antes */}
+                        <div className={cn('p-4 rounded-[12px] border border-[#E5E7EB] bg-white space-y-3 transition-opacity', !recordatorioActivo && 'opacity-50 pointer-events-none')}>
+                          <div>
+                            <p className="text-[14px] font-semibold text-[#111827]">Horas de anticipación</p>
+                            <p className="text-[12px] text-[#6B7280] mt-0.5">Cuántas horas antes del turno se enviará el recordatorio</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Input
+                              type="number"
+                              min={2}
+                              max={48}
+                              value={recordatorioHoras}
+                              onChange={(e) => setRecordatorioHoras(Number(e.target.value))}
+                              className="w-24 text-center rounded-[10px] border-[#D1D5DB] focus:border-[#2563eb] focus:ring-[#2563eb]"
+                            />
+                            <span className="text-[13px] text-[#6B7280]">horas antes del turno</span>
+                          </div>
+                          <p className="text-[11px] text-[#9CA3AF]">Mínimo 2 horas — Máximo 48 horas</p>
+                        </div>
+
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end flex-shrink-0 pt-4 border-t border-[#E5E7EB]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onOpenChangeRef.current(false)}
+                      className="rounded-[10px] font-['Inter'] w-full sm:w-auto order-1"
+                    >
+                      Cerrar
+                    </Button>
+                    <Button
+                      onClick={handleGuardarRecordatorio}
+                      disabled={isSavingRecordatorio || isLoadingRecordatorio}
+                      className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
+                    >
+                      {isSavingRecordatorio ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Guardar configuración
                     </Button>
                   </div>
                 </TabsContent>

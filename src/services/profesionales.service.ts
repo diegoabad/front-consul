@@ -44,6 +44,11 @@ export interface BlockProfesionalData {
   razon_bloqueo: string;
 }
 
+export interface RecordatorioConfig {
+  recordatorio_activo: boolean;
+  recordatorio_horas_antes: number;
+}
+
 export const profesionalesService = {
   /**
    * Obtener todos los profesionales con filtros opcionales
@@ -168,6 +173,24 @@ export const profesionalesService = {
     if (!result) {
       throw new Error('Error al desbloquear profesional');
     }
+    return result;
+  },
+
+  /**
+   * Obtener configuración de recordatorio WhatsApp
+   */
+  getRecordatorioConfig: async (id: string): Promise<RecordatorioConfig> => {
+    const response = await api.get<ApiResponse<RecordatorioConfig>>(`/profesionales/${id}/recordatorio-config`);
+    return getData(response) ?? { recordatorio_activo: false, recordatorio_horas_antes: 24 };
+  },
+
+  /**
+   * Actualizar configuración de recordatorio WhatsApp
+   */
+  updateRecordatorioConfig: async (id: string, data: RecordatorioConfig): Promise<RecordatorioConfig> => {
+    const response = await api.patch<ApiResponse<RecordatorioConfig>>(`/profesionales/${id}/recordatorio-config`, data);
+    const result = getData(response);
+    if (!result) throw new Error('Error al actualizar configuración de recordatorio');
     return result;
   },
 };

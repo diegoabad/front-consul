@@ -64,6 +64,8 @@ export interface Profesional {
   monto_mensual?: number;
   tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
   observaciones?: string;
+  recordatorio_activo?: boolean;
+  recordatorio_horas_antes?: number;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
   // Datos del usuario asociado (vienen del JOIN en el backend)

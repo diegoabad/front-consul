@@ -34,8 +34,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Search, Plus, Eye, Edit, Lock, Unlock, Calendar, 
-  CreditCard, Loader2, Stethoscope, Trash2, Mail, Phone, User
+  CreditCard, Loader2, Stethoscope, Trash2, Mail, Phone, User, MessageCircle
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { toast as reactToastify } from 'react-toastify';
 import { profesionalesService, type CreateProfesionalData, type BlockProfesionalData } from '@/services/profesionales.service';
 import { usuariosService } from '@/services/usuarios.service';
@@ -134,6 +135,11 @@ export default function AdminProfesionales() {
 
   const [blockData, setBlockData] = useState<BlockProfesionalData>({
     razon_bloqueo: '',
+  });
+
+  const [recordatorioConfig, setRecordatorioConfig] = useState({
+    recordatorio_activo: false,
+    recordatorio_horas_antes: 24,
   });
 
   // Fetch profesionales
@@ -387,16 +393,26 @@ export default function AdminProfesionales() {
       monto_mensual: profesional.monto_mensual,
       observaciones: profesional.observaciones || '',
     });
+    setRecordatorioConfig({
+      recordatorio_activo: profesional.recordatorio_activo ?? false,
+      recordatorio_horas_antes: profesional.recordatorio_horas_antes ?? 24,
+    });
     setShowEditModal(true);
   };
 
   const handleUpdate = async () => {
     if (!selectedProfesional) return;
+    const horas = Number(recordatorioConfig.recordatorio_horas_antes);
+    if (isNaN(horas) || horas < 1 || horas > 168) {
+      reactToastify.error('Las horas de anticipación deben ser entre 1 y 168', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await updateMutation.mutateAsync({
-        id: selectedProfesional.id,
-        data: formData,
+      await updateMutation.mutateAsync({ id: selectedProfesional.id, data: formData });
+      await profesionalesService.updateRecordatorioConfig(selectedProfesional.id, {
+        recordatorio_activo: recordatorioConfig.recordatorio_activo,
+        recordatorio_horas_antes: horas,
       });
     } finally {
       setIsSubmitting(false);
@@ -1043,6 +1059,50 @@ export default function AdminProfesionales() {
                   className="min-h-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200 resize-none"
                 />
               </div>
+
+              {/* Recordatorios WhatsApp */}
+              <div className="rounded-[14px] border border-[#D1FAE5] bg-[#F0FDF4] p-5 space-y-4">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="h-8 w-8 rounded-full bg-[#22c55e]/10 flex items-center justify-center">
+                    <MessageCircle className="h-4 w-4 text-[#16a34a]" />
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[#15803d] font-['Inter']">Recordatorios por WhatsApp</p>
+                    <p className="text-[12px] text-[#4ade80] font-['Inter']">Mensaje automático al paciente antes del turno</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-medium text-[#374151] font-['Inter']">Activar recordatorios</p>
+                    <p className="text-[12px] text-[#6B7280] font-['Inter']">Se enviará un WhatsApp al paciente con anticipación</p>
+                  </div>
+                  <Switch
+                    checked={recordatorioConfig.recordatorio_activo}
+                    onCheckedChange={(checked) => setRecordatorioConfig({ ...recordatorioConfig, recordatorio_activo: checked })}
+                  />
+                </div>
+                {recordatorioConfig.recordatorio_activo && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-horas-antes" className="text-[14px] font-medium text-[#374151] font-['Inter']">
+                      Horas de anticipación
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        id="edit-horas-antes"
+                        type="number"
+                        min={1}
+                        max={168}
+                        value={recordatorioConfig.recordatorio_horas_antes}
+                        onChange={(e) => setRecordatorioConfig({ ...recordatorioConfig, recordatorio_horas_antes: Number(e.target.value) })}
+                        className="h-[44px] w-[120px] border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] focus:border-[#22c55e] focus:ring-2 focus:ring-[#22c55e]/20 transition-all duration-200"
+                      />
+                      <span className="text-[14px] text-[#6B7280] font-['Inter']">horas antes del turno</span>
+                    </div>
+                    <p className="text-[11px] text-[#6B7280] font-['Inter']">Mínimo 1 hs, máximo 168 hs (7 días). El cron corre cada 30 minutos.</p>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
           <DialogFooter className="px-8 py-5 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end items-center gap-3 flex-shrink-0 mt-0">
