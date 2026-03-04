@@ -41,13 +41,13 @@ export function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md min-h-[280px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-0 p-6 overflow-x-hidden min-w-0">
-        <DialogHeader className="pb-4 mb-0 border-b border-[#E5E7EB]">
-          <DialogTitle className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
+      <DialogContent className="max-w-md rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-0 p-6 overflow-x-hidden min-w-0">
+        <DialogHeader className="pb-3 pt-0 mb-0 border-b border-[#E5E7EB]">
+          <DialogTitle className="text-[22px] font-bold text-[#111827] font-['Poppins'] mb-0">
             {title}
           </DialogTitle>
         </DialogHeader>
-        <div className="mt-5 mb-1 min-w-0">
+        <div className="mt-4 mb-1 min-w-0">
           <DialogDescription asChild>
             <div className="text-base text-[#6B7280] font-['Inter'] leading-relaxed break-words">
               {description}

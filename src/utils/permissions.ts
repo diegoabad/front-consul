@@ -56,6 +56,8 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'notas.actualizar',
     'notas.eliminar',
     'pagos.leer',
+    'foro.leer',
+    'foro.responder',
   ],
   secretaria: [
     'usuarios.crear',
@@ -94,11 +96,17 @@ const PERMISOS_POR_ROL: Record<UserRole, string[]> = {
     'pagos.leer',
     'pagos.actualizar',
     'pagos.marcar_pagado',
+    'foro.leer',
+    'foro.responder',
   ],
 };
 
 export function hasPermission(user: User | null, permission: string): boolean {
   if (!user) return false;
+  // Permisos del backend tienen prioridad (permisos personalizados)
+  if (user.permisos && permission in user.permisos) {
+    return user.permisos[permission] === true;
+  }
   // Administrador tiene todos los permisos excepto editar/eliminar evoluciones
   if (user.rol?.toLowerCase() === 'administrador') {
     if (permission === 'evoluciones.actualizar' || permission === 'evoluciones.eliminar') return false;

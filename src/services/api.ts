@@ -56,7 +56,10 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     } else if (error.response?.status === 403) {
-      showApiErrorToast('403', 'No tienes permisos para realizar esta acción');
+      const isForo = (requestUrl || '').includes('/foro/');
+      if (!isForo) {
+        showApiErrorToast('403', 'No tienes permisos para realizar esta acción');
+      }
     } else if (error.response?.status === 404) {
       const isPacienteByDni = requestUrl.includes('pacientes') && (requestUrl.includes('by-dni') || requestUrl.includes('by_dni'));
       const isArchivo = requestUrl.includes('archivos');

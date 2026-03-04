@@ -24,6 +24,8 @@ const EspecialidadesList = lazy(() => import('./pages/Especialidades/List'));
 const ObrasSocialesList = lazy(() => import('./pages/ObrasSociales/List'));
 const LogsList = lazy(() => import('./pages/Logs/List'));
 const RecordatoriosList = lazy(() => import('./pages/Recordatorios/List'));
+const ForoList = lazy(() => import('./pages/Foro/List'));
+const ForoTemaDetail = lazy(() => import('./pages/Foro/TemaDetail'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +68,8 @@ function App() {
                   <Route path="/especialidades" element={<EspecialidadesList />} />
                   <Route path="/obras-sociales" element={<ObrasSocialesList />} />
                   <Route path="/recordatorios" element={<RecordatoriosList />} />
+                  <Route path="/foro" element={<ForoList />} />
+                  <Route path="/foro/:id" element={<ForoTemaDetail />} />
                   <Route path="/logs" element={<LogsList />} />
                   <Route path="/perfil" element={<PerfilList />} />
                 </Route>

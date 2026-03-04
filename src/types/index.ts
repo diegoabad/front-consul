@@ -12,6 +12,8 @@ export interface User {
   activo: boolean;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
+  /** Permisos del usuario (del backend). Si existe, tiene prioridad sobre PERMISOS_POR_ROL */
+  permisos?: Record<string, boolean>;
 }
 
 export interface LoginResponse {

@@ -10,6 +10,7 @@ import {
   Building2,
   FileText,
   Bell,
+  MessageSquare,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -18,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { UserRole, User } from '@/types';
+import { hasPermission } from '@/utils/permissions';
 
 interface MenuItem {
   title: string;
@@ -52,6 +54,7 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
       { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
+      { title: 'Foro', url: '/foro', icon: MessageSquare },
     ],
     afterSeparator: [
       { title: 'Agendas', url: '/agendas', icon: Calendar },
@@ -68,6 +71,7 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
     beforeSeparator: [
       { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
+      { title: 'Foro', url: '/foro', icon: MessageSquare },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
     ],
     afterSeparator: [],
@@ -77,6 +81,7 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Turnos', url: '/turnos', icon: Calendar },
       { title: 'Contratos', url: '/contrato', icon: CreditCard },
       { title: 'Pacientes', url: '/pacientes', icon: Users },
+      { title: 'Foro', url: '/foro', icon: MessageSquare },
     ],
     afterSeparator: [
       { title: 'Agendas', url: '/agendas', icon: Calendar },
@@ -136,11 +141,21 @@ function renderNavItem(
   return linkContent;
 }
 
-export function DashboardSidebar({ role, user: _user, collapsed = false, onNavigate, mobileDrawer = false }: DashboardSidebarProps) {
+function filterMenuForPermissions(items: MenuItem[], user: User | null): MenuItem[] {
+  if (!user) return items;
+  return items.filter((item) => {
+    if (item.url === '/foro') return hasPermission(user, 'foro.leer');
+    return true;
+  });
+}
+
+export function DashboardSidebar({ role, user, collapsed = false, onNavigate, mobileDrawer = false }: DashboardSidebarProps) {
   const location = useLocation();
 
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
-  const { beforeSeparator, afterSeparator, afterSecondSeparator = [] } = config;
+  const beforeSeparator = filterMenuForPermissions(config.beforeSeparator, user);
+  const afterSeparator = filterMenuForPermissions(config.afterSeparator, user);
+  const afterSecondSeparator = filterMenuForPermissions(config.afterSecondSeparator ?? [], user);
   return (
     <aside
       className={cn(
