@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Building2,
   FileText,
+  Bell,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -58,7 +59,10 @@ const menuConfig: Record<UserRole, SidebarMenuConfig> = {
       { title: 'Especialidades', url: '/especialidades', icon: GraduationCap },
       { title: 'Obras Sociales', url: '/obras-sociales', icon: Building2 },
     ],
-    afterSecondSeparator: [{ title: 'Logs', url: '/logs', icon: FileText }],
+    afterSecondSeparator: [
+      { title: 'Recordatorios', url: '/recordatorios', icon: Bell },
+      { title: 'Logs', url: '/logs', icon: FileText },
+    ],
   },
   profesional: {
     beforeSeparator: [

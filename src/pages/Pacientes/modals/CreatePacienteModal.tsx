@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { User, Loader2, Phone, Mail, ExternalLink, Link2 } from 'lucide-react';
+import { User, Loader2, Phone, Mail, ExternalLink, Link2, Copy, Info, MapPin } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { toast as reactToastify } from 'react-toastify';
 import type { CreatePacienteData } from '@/services/pacientes.service';
 import { pacientesService } from '@/services/pacientes.service';
@@ -45,6 +47,7 @@ const initialFormData: CreatePacienteData = {
   apellido: '',
   fecha_nacimiento: '',
   telefono: '',
+  whatsapp: '',
   email: '',
   direccion: '',
   obra_social: '',
@@ -52,6 +55,8 @@ const initialFormData: CreatePacienteData = {
   plan: '',
   contacto_emergencia_nombre: '',
   contacto_emergencia_telefono: '',
+  contacto_emergencia_nombre_2: '',
+  contacto_emergencia_telefono_2: '',
   activo: true,
 };
 
@@ -73,6 +78,7 @@ export function CreatePacienteModal({
   const [formData, setFormData] = useState<CreatePacienteData>(initialFormData);
   const [tieneCobertura, setTieneCobertura] = useState(false);
   const [tieneContactoEmergencia, setTieneContactoEmergencia] = useState(false);
+  const [tieneSegundoContacto, setTieneSegundoContacto] = useState(false);
   const [showCreateObraSocialInput, setShowCreateObraSocialInput] = useState(false);
   const [newObraSocialNombre, setNewObraSocialNombre] = useState('');
   const [isCreatingObraSocial, setIsCreatingObraSocial] = useState(false);
@@ -132,6 +138,14 @@ export function CreatePacienteModal({
         reactToastify.error('El teléfono debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
         return;
       }
+      const whatsappTrim = formData.whatsapp?.trim();
+      if (whatsappTrim) {
+        const digitosWsp = whatsappTrim.replace(/\D/g, '');
+        if (digitosWsp.length < 6) {
+          reactToastify.error('El número de WhatsApp debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
+          return;
+        }
+      }
       if (tieneCobertura) {
         if (!formData.obra_social?.trim()) {
           reactToastify.error('Seleccione una obra social', { position: 'top-right', autoClose: 3000 });
@@ -156,6 +170,13 @@ export function CreatePacienteModal({
           reactToastify.error('El teléfono de emergencia debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
           return;
         }
+        if (formData.contacto_emergencia_telefono_2?.trim()) {
+          const digitos2 = formData.contacto_emergencia_telefono_2.trim().replace(/\D/g, '');
+          if (digitos2.length < 6) {
+            reactToastify.error('El teléfono del segundo contacto debe tener al menos 6 números', { position: 'top-right', autoClose: 3000 });
+            return;
+          }
+        }
       }
       const dataToSubmit: CreatePacienteData = {
         dni: formData.dni.trim(),
@@ -163,6 +184,7 @@ export function CreatePacienteModal({
         apellido: formData.apellido.trim(),
         fecha_nacimiento: formData.fecha_nacimiento && formData.fecha_nacimiento.trim() ? formData.fecha_nacimiento.trim() : undefined,
         telefono: telefonoTrim,
+        whatsapp: whatsappTrim || undefined,
         email: formData.email?.trim() || undefined,
         direccion: formData.direccion?.trim() || undefined,
         obra_social: tieneCobertura ? (formData.obra_social?.trim() || undefined) : undefined,
@@ -170,6 +192,8 @@ export function CreatePacienteModal({
         plan: formData.plan?.trim() || undefined,
         contacto_emergencia_nombre: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre?.trim() || undefined) : undefined,
         contacto_emergencia_telefono: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono?.trim() || undefined) : undefined,
+        contacto_emergencia_nombre_2: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre_2?.trim() || undefined) : undefined,
+        contacto_emergencia_telefono_2: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono_2?.trim() || undefined) : undefined,
         activo: formData.activo,
       };
 
@@ -401,11 +425,13 @@ export function CreatePacienteModal({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="telefono" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-[#6B7280] stroke-[2]" />
-                    Teléfono
-                    <span className="text-[#EF4444]">*</span>
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="telefono" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 mb-0">
+                      <Phone className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                      Teléfono
+                      <span className="text-[#EF4444]">*</span>
+                    </Label>
+                  </div>
                   <Input
                     id="telefono"
                     placeholder="Ej: +54 11 1234-5678"
@@ -416,6 +442,51 @@ export function CreatePacienteModal({
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="whatsapp" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2 mb-0">
+                      <WhatsAppIcon size={16} className="text-[#25D366]" />
+                      WhatsApp
+                      <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-[#9CA3AF] hover:text-[#6B7280] cursor-help transition-colors" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[260px] text-left">
+                            <p className="font-semibold text-[#111827] mb-1">Formato para Argentina</p>
+                            <p className="text-[#6B7280] mb-1">
+                              <span className="font-medium text-[#374151]">+54 9</span> · código de área <span className="font-medium text-[#374151]">sin el 0</span> · número
+                            </p>
+                            <p className="text-[#6B7280] mb-0.5">📍 CABA: <span className="font-medium text-[#374151]">+54 9 11 12345678</span></p>
+                            <p className="text-[#6B7280] mb-1">📍 Interior: <span className="font-medium text-[#374151]">+54 9 351 1234567</span></p>
+                            <p className="text-[#6B7280]">Este número recibirá los recordatorios automáticos de turnos.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
+                    {formData.telefono?.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, whatsapp: formData.telefono })}
+                        className="flex items-center gap-1 text-[12px] text-[#2563eb] hover:text-[#1d4ed8] font-['Inter'] transition-colors"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Igual que teléfono
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="whatsapp"
+                    placeholder="+54 9 11 12345678"
+                    value={formData.whatsapp ?? ''}
+                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value.replace(/\s/g, '') })}
+                    autoComplete="off"
+                    className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
                     <Mail className="h-4 w-4 text-[#6B7280] stroke-[2]" />
@@ -431,20 +502,20 @@ export function CreatePacienteModal({
                     className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="direccion" className="text-[14px] font-medium text-[#374151] font-['Inter']">
-                  Dirección
-                </Label>
-                <Input
-                  id="direccion"
-                  placeholder="Ej: Av. Corrientes 1234, CABA"
-                  value={formData.direccion}
-                  onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                  autoComplete="off"
-                  className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="direccion" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                    Dirección
+                  </Label>
+                  <Input
+                    id="direccion"
+                    placeholder="Ej: Av. Corrientes 1234, CABA"
+                    value={formData.direccion}
+                    onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                    autoComplete="off"
+                    className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                  />
+                </div>
               </div>
             </div>
 
@@ -554,7 +625,10 @@ export function CreatePacienteModal({
                 <Switch
                   id="tiene-contacto-emergencia"
                   checked={tieneContactoEmergencia}
-                  onCheckedChange={(checked) => setTieneContactoEmergencia(checked)}
+                  onCheckedChange={(checked) => {
+                    setTieneContactoEmergencia(checked);
+                    if (!checked) setTieneSegundoContacto(false);
+                  }}
                 />
                 <Label
                   htmlFor="tiene-contacto-emergencia"
@@ -564,35 +638,97 @@ export function CreatePacienteModal({
                 </Label>
               </div>
               {tieneContactoEmergencia && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="contacto_emergencia_nombre" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-1.5">
-                      Nombre del Contacto
-                      <span className="text-[#EF4444]">*</span>
-                    </Label>
-                    <Input
-                      id="contacto_emergencia_nombre"
-                      placeholder="Ej: María Pérez"
-                      value={formData.contacto_emergencia_nombre}
-                      onChange={(e) => setFormData({ ...formData, contacto_emergencia_nombre: e.target.value })}
-                      autoComplete="off"
-                      className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
-                    />
+                <div className="space-y-4">
+                  {/* Contacto 1 */}
+                  <div className="rounded-[10px] border border-[#E5E7EB] p-4 space-y-3 bg-[#F9FAFB]">
+                    <p className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-wide mb-0">Contacto 1</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="contacto_emergencia_nombre" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-1.5">
+                          Nombre
+                          <span className="text-[#EF4444]">*</span>
+                        </Label>
+                        <Input
+                          id="contacto_emergencia_nombre"
+                          placeholder="Ej: María Pérez"
+                          value={formData.contacto_emergencia_nombre}
+                          onChange={(e) => setFormData({ ...formData, contacto_emergencia_nombre: e.target.value })}
+                          autoComplete="off"
+                          className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="contacto_emergencia_telefono" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-1.5">
+                          Teléfono
+                          <span className="text-[#EF4444]">*</span>
+                        </Label>
+                        <Input
+                          id="contacto_emergencia_telefono"
+                          placeholder="Ej: +54 11 1234-5678"
+                          value={formData.contacto_emergencia_telefono}
+                          onChange={(e) => setFormData({ ...formData, contacto_emergencia_telefono: e.target.value })}
+                          autoComplete="off"
+                          className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contacto_emergencia_telefono" className="text-[14px] font-medium text-[#374151] font-['Inter'] flex items-center gap-1.5">
-                      Teléfono de Emergencia
-                      <span className="text-[#EF4444]">*</span>
-                    </Label>
-                    <Input
-                      id="contacto_emergencia_telefono"
-                      placeholder="Ej: +54 11 1234-5678"
-                      value={formData.contacto_emergencia_telefono}
-                      onChange={(e) => setFormData({ ...formData, contacto_emergencia_telefono: e.target.value })}
-                      autoComplete="off"
-                      className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
-                    />
-                  </div>
+
+                  {/* Botón agregar segundo contacto / Contacto 2 */}
+                  {!tieneSegundoContacto ? (
+                    <button
+                      type="button"
+                      onClick={() => setTieneSegundoContacto(true)}
+                      className="flex items-center gap-2 text-[13px] text-[#2563eb] hover:text-[#1d4ed8] font-['Inter'] font-medium transition-colors"
+                    >
+                      <span className="h-5 w-5 rounded-full border-2 border-[#2563eb] flex items-center justify-center text-[#2563eb] text-[14px] leading-none">+</span>
+                      Agregar segundo contacto
+                    </button>
+                  ) : (
+                    <div className="rounded-[10px] border border-[#E5E7EB] p-4 space-y-3 bg-[#F9FAFB]">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[13px] font-semibold text-[#6B7280] uppercase tracking-wide mb-0">Contacto 2</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTieneSegundoContacto(false);
+                            setFormData({ ...formData, contacto_emergencia_nombre_2: '', contacto_emergencia_telefono_2: '' });
+                          }}
+                          className="text-[12px] text-[#9CA3AF] hover:text-[#EF4444] font-['Inter'] transition-colors"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="contacto_emergencia_nombre_2" className="text-[14px] font-medium text-[#374151] font-['Inter']">
+                            Nombre
+                          </Label>
+                          <Input
+                            id="contacto_emergencia_nombre_2"
+                            placeholder="Ej: Carlos García"
+                            value={formData.contacto_emergencia_nombre_2 ?? ''}
+                            onChange={(e) => setFormData({ ...formData, contacto_emergencia_nombre_2: e.target.value })}
+                            autoComplete="off"
+                            className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contacto_emergencia_telefono_2" className="text-[14px] font-medium text-[#374151] font-['Inter']">
+                            Teléfono
+                          </Label>
+                          <Input
+                            id="contacto_emergencia_telefono_2"
+                            placeholder="Ej: +54 11 8765-4321"
+                            value={formData.contacto_emergencia_telefono_2 ?? ''}
+                            onChange={(e) => setFormData({ ...formData, contacto_emergencia_telefono_2: e.target.value })}
+                            autoComplete="off"
+                            className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] placeholder:text-[#9CA3AF] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

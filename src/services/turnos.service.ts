@@ -29,7 +29,7 @@ export interface Turno {
 export interface TurnoFilters {
   profesional_id?: string;
   paciente_id?: string;
-  estado?: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
+  estado?: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente' | 'activos';
   fecha_inicio?: string; // ISO date
   fecha_fin?: string; // ISO date
   page?: number;

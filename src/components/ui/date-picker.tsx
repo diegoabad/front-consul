@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface DatePickerProps {
@@ -169,7 +169,7 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
   );
 
   return (
-    <div className={inline ? 'relative' : undefined}>
+    <div className={cn('relative', inline ? undefined : undefined)}>
       <Button
         ref={triggerRef}
         type="button"
@@ -181,13 +181,31 @@ export function DatePicker({ value, onChange, placeholder = 'Seleccionar fecha',
           'mt-0 h-[48px] w-full justify-start gap-2 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-[\'Inter\'] text-left font-normal text-[#374151] hover:bg-[#F9FAFB] hover:text-[#374151] focus-visible:ring-2 focus-visible:ring-[#2563eb]/20 focus-visible:ring-offset-0',
           !value && 'text-[#9CA3AF]',
           disabled && 'opacity-60 cursor-not-allowed hover:bg-transparent',
+          value && !disabled && 'pr-8',
           className
         )}
       >
         <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2] flex-shrink-0" />
         <span className={cn('flex-1 truncate', value ? 'text-[#374151]' : '')}>{displayText}</span>
-        <ChevronRight className={cn('h-4 w-4 text-[#6B7280] flex-shrink-0 transition-transform', open && 'rotate-90')} />
+        {!value && <ChevronRight className={cn('h-4 w-4 text-[#6B7280] flex-shrink-0 transition-transform', open && 'rotate-90')} />}
       </Button>
+
+      {/* Botón limpiar (X) — aparece solo cuando hay un valor seleccionado */}
+      {value && !disabled && (
+        <button
+          type="button"
+          aria-label="Limpiar fecha"
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange('');
+            setOpen(false);
+            setAnchor(null);
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded-full text-[#9CA3AF] hover:text-[#374151] hover:bg-[#E5E7EB] transition-colors"
+        >
+          <X className="h-3.5 w-3.5 stroke-[2.5]" />
+        </button>
+      )}
 
       {open && (inline ? true : anchor) && (inline ? calendarContent : createPortal(calendarContent, document.body))}
     </div>

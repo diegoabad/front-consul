@@ -42,6 +42,7 @@ import type { Turno, Paciente } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
+import { getTurnosListState, setTurnosListState } from '@/utils/storage';
 import { CreateAgendaModal, GestionarAgendaModal } from '@/pages/Agendas/modals';
 
 const estadoOptions = [
@@ -191,10 +192,19 @@ function generarOpcionesHora(inicio: string, finExcl: string, pasoMinutos: numbe
 export default function AdminTurnos() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [estadoFilter, setEstadoFilter] = useState('activos');
-  const [profesionalFilter, setProfesionalFilter] = useState('');
-  const [fechaFilter, setFechaFilter] = useState<string>('');
-  const [calendarViewMonth, setCalendarViewMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const storedState = useRef(getTurnosListState());
+  const [estadoFilter, setEstadoFilter] = useState(() => storedState.current.estado);
+  const [profesionalFilter, setProfesionalFilter] = useState(() => storedState.current.profesional_id);
+  const [fechaFilter, setFechaFilter] = useState<string>(() => storedState.current.fecha);
+  const [page, setPage] = useState(() => storedState.current.page);
+  const [limit, setLimit] = useState(() => storedState.current.limit);
+  const [calendarViewMonth, setCalendarViewMonth] = useState<Date>(() => {
+    const f = storedState.current.fecha;
+    if (f && /^\d{4}-\d{2}-\d{2}$/.test(f)) {
+      return startOfMonth(new Date(f + 'T12:00:00'));
+    }
+    return startOfMonth(new Date());
+  });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -321,10 +331,13 @@ export default function AdminTurnos() {
 
   const [searchParams] = useSearchParams();
 
-  // Al entrar con ?profesional=id (ej. desde Agendas "Ir a la agenda"), preseleccionar ese profesional en Turnos
+  // Al entrar con ?profesional=id (ej. desde Agendas "Ir a la agenda"), preseleccionar ese profesional y limpiar día
   useEffect(() => {
     const id = searchParams.get('profesional');
-    if (id) setProfesionalFilter(id);
+    if (id) {
+      setProfesionalFilter(id);
+      setFechaFilter('');
+    }
   }, [searchParams]);
 
   // Profesional: fijar filtro a su propio id y no permitir cambiar
@@ -332,10 +345,30 @@ export default function AdminTurnos() {
     if (isProfesional && profesionalLogueado?.id) setProfesionalFilter(profesionalLogueado.id);
   }, [isProfesional, profesionalLogueado?.id]);
 
-  // Al cambiar de profesional, quitar el día seleccionado para no mostrar turnos del día anterior
+  // Al cambiar de profesional (por acción del usuario), quitar el día seleccionado
+  const prevProfesionalRef = useRef<string | null>(null);
   useEffect(() => {
-    setFechaFilter('');
+    if (prevProfesionalRef.current !== null && prevProfesionalRef.current !== profesionalFilter) {
+      setFechaFilter('');
+    }
+    prevProfesionalRef.current = profesionalFilter;
   }, [profesionalFilter]);
+
+  // Resetear página al cambiar filtros
+  useEffect(() => {
+    setPage(1);
+  }, [profesionalFilter, fechaFilter, estadoFilter]);
+
+  // Persistir estado en localStorage
+  useEffect(() => {
+    setTurnosListState({
+      profesional_id: profesionalFilter,
+      fecha: fechaFilter,
+      estado: estadoFilter,
+      limit,
+      page,
+    });
+  }, [profesionalFilter, fechaFilter, estadoFilter, limit, page]);
 
   // Agenda del profesional (antes que cualquier hook que la use, para evitar "before initialization")
   const { data: agendasDelProfesional = [], isLoading: loadingAgendasDelProfesional } = useQuery({
@@ -419,10 +452,13 @@ export default function AdminTurnos() {
     return minVigencia > hoy ? minVigencia : hoy;
   }, [profesionalFilter, agendasDelProfesional]);
 
-  // Fetch turnos con filtros
+  // Fetch turnos con filtros (paginado)
   const filters = useMemo(() => {
-    const f: Record<string, string | undefined> = {};
-    if (estadoFilter && estadoFilter !== 'todos' && estadoFilter !== 'activos') {
+    const f: Record<string, string | number | undefined> = {
+      page,
+      limit,
+    };
+    if (estadoFilter && estadoFilter !== 'todos') {
       f.estado = estadoFilter;
     }
     if (profesionalFilter) {
@@ -436,22 +472,24 @@ export default function AdminTurnos() {
       f.fecha_fin = fechaFin.toISOString();
     }
     return f;
-  }, [estadoFilter, profesionalFilter, fechaFilter]);
+  }, [estadoFilter, profesionalFilter, fechaFilter, page, limit]);
 
-  const { data: turnos = [], isLoading } = useQuery({
+  const { data: paginatedTurnos, isLoading } = useQuery({
     queryKey: ['turnos', filters],
-    queryFn: () => turnosService.getAll(filters),
+    queryFn: () => turnosService.getAllPaginated(filters as Parameters<typeof turnosService.getAllPaginated>[0]),
     enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
   });
 
-  // Sin profesional seleccionado no se muestran turnos (aunque el backend pudiera devolverlos). Si estado = activos, excluir cancelados.
-  const filteredTurnos = useMemo(() => {
-    if (!profesionalFilter) return [];
-    if (estadoFilter === 'activos') {
-      return turnos.filter((t) => t.estado !== 'cancelado');
+  const filteredTurnos = paginatedTurnos?.data ?? [];
+  const total = paginatedTurnos?.total ?? 0;
+  const totalPages = paginatedTurnos?.totalPages ?? 0;
+
+  // Si la página restaurada excede totalPages (ej. datos cambiaron), volver a 1
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(1);
     }
-    return turnos;
-  }, [profesionalFilter, turnos, estadoFilter]);
+  }, [totalPages, page]);
 
   // Turnos del día seleccionado en el modal de crear (para mostrar Bloqueado/Ocupado y validar sobreturno)
   const filtersCreateDay = useMemo(() => {
@@ -1197,10 +1235,6 @@ export default function AdminTurnos() {
       turnosService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['turnos'] });
-      reactToastify.success('Estado actualizado', {
-        position: 'top-right',
-        autoClose: 3000,
-      });
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
@@ -1437,9 +1471,22 @@ export default function AdminTurnos() {
   const canUpdate = hasPermission(user, 'turnos.actualizar');
   const canDelete = hasPermission(user, 'turnos.eliminar');
 
-  const handleUpdateEstado = (turnoId: string, nuevoEstado: string) => {
-    updateMutation.mutate({ id: turnoId, data: { estado: nuevoEstado as Turno['estado'] } });
-  };
+  const [pendingEstado, setPendingEstado] = useState<Record<string, string>>({});
+  const handleUpdateEstado = useCallback((turnoId: string, nuevoEstado: string) => {
+    setPendingEstado((prev) => ({ ...prev, [turnoId]: nuevoEstado }));
+    updateMutation.mutate(
+      { id: turnoId, data: { estado: nuevoEstado as Turno['estado'] } },
+      {
+        onSettled: () => {
+          setPendingEstado((prev) => {
+            const next = { ...prev };
+            delete next[turnoId];
+            return next;
+          });
+        },
+      }
+    );
+  }, [updateMutation]);
 
   const handleDelete = (turno: Turno) => {
     setTurnoToDelete(turno);
@@ -1490,7 +1537,7 @@ export default function AdminTurnos() {
   const monthTitleCapitalized = monthTitle.charAt(0).toUpperCase() + monthTitle.slice(1);
 
   return (
-    <div className="flex flex-col gap-6 min-h-[calc(100vh-12rem)] justify-start">
+    <div className="flex flex-col gap-6 max-lg:gap-3 flex-1 min-h-0">
       {/* Modal: profesional sin agenda — ¿Querés crearla? */}
       <Dialog open={showSinAgendaModal} onOpenChange={setShowSinAgendaModal}>
         <DialogContent
@@ -1611,7 +1658,7 @@ export default function AdminTurnos() {
       </Dialog>
 
       {/* Header + Filtros: agrupados arriba con poco espacio entre sí */}
-      <div className="flex flex-col gap-3 max-lg:gap-2">
+      <div className="flex flex-col gap-3 max-lg:gap-1.5 flex-shrink-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1725,10 +1772,10 @@ export default function AdminTurnos() {
         </div>
       </div>
 
-      {/* Filtros: profesional y estado */}
+      {/* Filtros: profesional, estado y día (en mobile el día va aquí para ahorrar espacio) */}
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
         <CardContent className="p-6 max-lg:p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-lg:gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 max-lg:gap-3">
             <div className="space-y-2 max-lg:space-y-1">
               <label className="text-[14px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
                 <Stethoscope className="h-4 w-4 text-[#6B7280] stroke-[2] max-lg:hidden" />
@@ -1779,15 +1826,35 @@ export default function AdminTurnos() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Mobile: selector de día con nuestro DatePicker (reemplaza el calendario grande) */}
+            {profesionalFilter && (
+              <div className="lg:hidden space-y-2 max-lg:space-y-1 md:col-span-2">
+                <label className="text-[14px] max-lg:text-[12px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-[#6B7280] stroke-[2]" />
+                  Día
+                </label>
+                <DatePicker
+                  value={fechaFilter || ''}
+                  onChange={(v) => {
+                    if (v) {
+                      setFechaFilter(v);
+                      setCalendarViewMonth(startOfMonth(new Date(v + 'T12:00:00')));
+                    }
+                  }}
+                  placeholder="Seleccionar día"
+                  className="h-12 max-lg:h-10 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px]"
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
       </div>
 
-      {/* Layout: Calendario izquierda | Turnos derecha */}
-      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
-        {/* Calendario - lado izquierdo: solo alto del contenido (números) */}
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm w-full lg:w-[320px] flex-shrink-0 self-start mb-0">
+      {/* Layout: Calendario (solo desktop) | Turnos - en mobile el día está en filtros */}
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 overflow-hidden max-lg:min-h-[360px]">
+        {/* Calendario: solo desktop; en mobile se usa el DatePicker en filtros */}
+        <Card className="hidden lg:block border border-[#E5E7EB] rounded-[16px] shadow-sm w-[320px] flex-shrink-0 self-start mb-0">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[18px] font-semibold text-[#111827] font-['Poppins'] mb-0">
@@ -1894,9 +1961,9 @@ export default function AdminTurnos() {
           </CardContent>
         </Card>
 
-        {/* Turnos del día - lado derecho: ocupa todo el alto disponible */}
-        <Card className="border-0 rounded-[16px] shadow-none hover:!shadow-none hover:!translate-y-0 flex-1 min-w-0 flex flex-col min-h-0">
-          <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-auto max-lg:pb-12">
+        {/* Turnos del día - ocupa todo el espacio en mobile, lado derecho en desktop */}
+        <Card className="border-0 rounded-[16px] shadow-none hover:!shadow-none hover:!translate-y-0 flex-1 min-w-0 flex flex-col min-h-0 max-lg:min-h-[280px]">
+          <CardContent className="p-0 flex-1 flex flex-col min-h-0 overflow-auto max-lg:pb-12 max-lg:min-h-[240px]">
             <div className="px-6 py-4 border-b border-[#E5E7EB] mb-4 max-lg:px-4 max-lg:py-3">
               {(() => {
                 const excepcionDiaListado = profesionalFilter && fechaFilter ? excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === fechaFilter) : null;
@@ -2005,18 +2072,18 @@ export default function AdminTurnos() {
               )}
             </div>
             {isLoading ? (
-              <div className="p-16 text-center">
+              <div className="p-16 text-center min-h-[200px] flex flex-col justify-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando turnos...</p>
               </div>
             ) : !profesionalFilter ? (
-              <div className="p-16 text-center max-lg:p-8">
+              <div className="p-16 text-center max-lg:p-8 min-h-[200px] flex flex-col justify-center">
                 <h3 className="text-lg max-lg:text-[15px] font-semibold mb-0 text-[#374151] font-['Inter']">
                   Seleccione un profesional
                 </h3>
               </div>
             ) : sinAgendaDelProfesional ? (
-              <div className="p-16 text-center max-lg:p-8">
+              <div className="p-16 text-center max-lg:p-8 min-h-[200px] flex flex-col justify-center">
                 <h3 className="text-lg max-lg:text-[15px] font-semibold mb-4 text-[#374151] font-['Inter']">
                   Tiene que crear su agenda
                 </h3>
@@ -2029,7 +2096,7 @@ export default function AdminTurnos() {
                 </Button>
               </div>
             ) : !fechaFilter ? (
-              <div className="p-16 text-center">
+              <div className="p-16 text-center min-h-[200px] flex flex-col justify-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
                   <Calendar className="h-10 w-10 text-[#2563eb] stroke-[2]" />
                 </div>
@@ -2041,15 +2108,16 @@ export default function AdminTurnos() {
                 </p>
               </div>
             ) : filteredTurnos.length === 0 ? (
-              <div className="p-16 text-center">
+              <div className="p-16 text-center min-h-[200px] flex flex-col justify-center">
                 <h3 className="text-lg max-lg:text-[15px] font-semibold mb-0 text-[#374151] font-['Inter']">
                   No hay turnos este día
                 </h3>
               </div>
             ) : (
-              <div className="max-lg:overflow-x-auto">
+              <>
+              <div className="overflow-auto min-h-0 flex-1 max-lg:min-h-[200px]">
               <Table className="table-fixed w-full min-w-[640px]">
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
                   <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                     <TableHead className="font-['Inter'] font-medium text-[13px] max-lg:text-[12px] text-[#374151] py-3 max-lg:py-2 w-[20%] min-w-[130px] whitespace-nowrap">
                       Horario
@@ -2101,13 +2169,13 @@ export default function AdminTurnos() {
                       <TableCell className="py-3 w-[22%] min-w-[135px]">
                         {canUpdate ? (
                           <Select
-                            value={turno.estado}
+                            value={pendingEstado[turno.id] ?? turno.estado}
                             onValueChange={(value) => handleUpdateEstado(turno.id, value)}
                             disabled={updateMutation.isPending && (updateMutation.variables as { id: string } | undefined)?.id === turno.id}
                           >
-                            <SelectTrigger className={getEstadoSelectTriggerClass(turno.estado)}>
+                            <SelectTrigger className={getEstadoSelectTriggerClass(pendingEstado[turno.id] ?? turno.estado)}>
                               <SelectValue>
-                                <span className="font-medium truncate block">{getEstadoLabel(turno.estado)}</span>
+                                <span className="font-medium truncate block">{getEstadoLabel(pendingEstado[turno.id] ?? turno.estado)}</span>
                               </SelectValue>
                             </SelectTrigger>
                             <SelectContent className="rounded-[12px] border-[#E5E7EB]" align="start">
@@ -2188,6 +2256,52 @@ export default function AdminTurnos() {
                 </TableBody>
               </Table>
               </div>
+              {(totalPages >= 1) && !isLoading && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+                  <div className="flex items-center gap-6">
+                    <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                      Página {page} de {totalPages || 1}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                      <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}>
+                        <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="max-lg:hidden">Anterior</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                    >
+                      <span className="max-lg:hidden">Siguiente</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -85,6 +85,10 @@ export function GestionarAgendaModal({
   const [recordatorioActivo, setRecordatorioActivo] = useState(false);
   const [recordatorioHoras, setRecordatorioHoras] = useState<number>(24);
   const [isSavingRecordatorio, setIsSavingRecordatorio] = useState(false);
+  const [savedRecordatorioActivo, setSavedRecordatorioActivo] = useState(false);
+  const [savedRecordatorioHoras, setSavedRecordatorioHoras] = useState<number>(24);
+  const [showUnsavedRecordatorioModal, setShowUnsavedRecordatorioModal] = useState(false);
+  const [showConfirmDesactivarRecordatorioModal, setShowConfirmDesactivarRecordatorioModal] = useState(false);
 
   const { data: recordatorioConfig, isLoading: isLoadingRecordatorio } = useQuery({
     queryKey: ['recordatorio-config', profesionalId],
@@ -94,17 +98,31 @@ export function GestionarAgendaModal({
 
   useEffect(() => {
     if (recordatorioConfig) {
-      setRecordatorioActivo(recordatorioConfig.recordatorio_activo);
-      setRecordatorioHoras(recordatorioConfig.recordatorio_horas_antes ?? 24);
+      const activo = recordatorioConfig.recordatorio_activo;
+      const horas = recordatorioConfig.recordatorio_horas_antes ?? 24;
+      setRecordatorioActivo(activo);
+      setRecordatorioHoras(horas);
+      setSavedRecordatorioActivo(activo);
+      setSavedRecordatorioHoras(horas);
     }
   }, [recordatorioConfig]);
 
-  const handleGuardarRecordatorio = async () => {
+  const handleGuardarRecordatorio = () => {
     const horas = Number(recordatorioHoras);
     if (isNaN(horas) || horas < 2 || horas > 48) {
       reactToastify.error('Las horas deben ser entre 2 y 48', { position: 'top-right', autoClose: 3000 });
       return;
     }
+    // Si está desactivando (antes activo, ahora inactivo), pedir confirmación primero
+    if (savedRecordatorioActivo && !recordatorioActivo) {
+      setShowConfirmDesactivarRecordatorioModal(true);
+      return;
+    }
+    void handleGuardarRecordatorioConfirmado();
+  };
+
+  const handleGuardarRecordatorioConfirmado = async () => {
+    const horas = Number(recordatorioHoras);
     setIsSavingRecordatorio(true);
     try {
       await profesionalesService.updateRecordatorioConfig(profesionalId, {
@@ -112,6 +130,8 @@ export function GestionarAgendaModal({
         recordatorio_horas_antes: horas,
       });
       queryClient.invalidateQueries({ queryKey: ['recordatorio-config', profesionalId] });
+      setSavedRecordatorioActivo(recordatorioActivo);
+      setSavedRecordatorioHoras(horas);
       reactToastify.success('Configuración de recordatorios guardada', { position: 'top-right', autoClose: 3000 });
     } catch {
       reactToastify.error('Error al guardar la configuración', { position: 'top-right', autoClose: 3000 });
@@ -571,13 +591,29 @@ export function GestionarAgendaModal({
     }
   };
 
+  const recordatorioDirty =
+    recordatorioActivo !== savedRecordatorioActivo ||
+    Number(recordatorioHoras) !== Number(savedRecordatorioHoras);
+
   // Cerrar con Escape (ref evita que onOpenChange en deps dispare el efecto en cada render del padre)
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
+
+  const handleTryCloseRef = useRef(() => {});
+  handleTryCloseRef.current = () => {
+    if (activeTab === 'recordatorios' && recordatorioDirty) {
+      setShowUnsavedRecordatorioModal(true);
+    } else {
+      onOpenChangeRef.current(false);
+    }
+  };
+
+  const handleTryClose = () => handleTryCloseRef.current();
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOpenChangeRef.current(false);
+      if (e.key === 'Escape') handleTryCloseRef.current();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -589,7 +625,7 @@ export function GestionarAgendaModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="gestionar-agenda-title">
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={() => onOpenChange(false)}
+        onClick={handleTryClose}
         aria-hidden
       />
       <div className="relative z-50 max-w-[960px] w-[95vw] h-[85vh] min-h-[560px] max-h-[92vh] sm:h-[72vh] sm:min-h-[420px] sm:max-h-[88vh] rounded-[20px] p-0 border border-[#E5E7EB] bg-white shadow-2xl flex flex-col overflow-hidden my-4">
@@ -606,7 +642,7 @@ export function GestionarAgendaModal({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => onOpenChange(false)}
+            onClick={handleTryClose}
             className="hidden sm:flex h-10 w-10 rounded-full hover:bg-[#F3F4F6] flex-shrink-0"
             aria-label="Cerrar"
           >
@@ -1194,15 +1230,15 @@ export function GestionarAgendaModal({
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => onOpenChangeRef.current(false)}
+                      onClick={handleTryClose}
                       className="rounded-[10px] font-['Inter'] w-full sm:w-auto order-1"
                     >
                       Cerrar
                     </Button>
                     <Button
                       onClick={handleGuardarRecordatorio}
-                      disabled={isSavingRecordatorio || isLoadingRecordatorio}
-                      className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2"
+                      disabled={isSavingRecordatorio || isLoadingRecordatorio || !recordatorioDirty}
+                      className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2 disabled:opacity-50"
                     >
                       {isSavingRecordatorio ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                       Guardar configuración
@@ -1456,6 +1492,78 @@ export function GestionarAgendaModal({
             >
               {createBloqueMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Agregar bloqueo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showUnsavedRecordatorioModal} onOpenChange={setShowUnsavedRecordatorioModal}>
+        <DialogContent className="max-w-[420px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#E5E7EB]">
+            <DialogTitle className="text-[20px] font-bold text-[#111827] font-['Poppins'] mb-0">
+              Cambios sin guardar
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4">
+            <p className="text-sm text-[#6B7280] font-['Inter'] leading-relaxed">
+              Tenés cambios en la configuración de recordatorios que no fueron guardados. Si cerrás ahora, los cambios se perderán.
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-5 pt-0 flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setShowUnsavedRecordatorioModal(false)}
+              className="rounded-[10px] font-['Inter']"
+            >
+              Volver a editar
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUnsavedRecordatorioModal(false);
+                onOpenChangeRef.current(false);
+              }}
+              className="rounded-[10px] font-['Inter'] bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+            >
+              Salir sin guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación al desactivar recordatorios del profesional */}
+      <Dialog open={showConfirmDesactivarRecordatorioModal} onOpenChange={setShowConfirmDesactivarRecordatorioModal}>
+        <DialogContent className="max-w-[460px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#E5E7EB]">
+            <DialogTitle className="text-[20px] font-bold text-[#111827] font-['Poppins'] mb-0">
+              Desactivar recordatorios WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4 space-y-3">
+            <p className="text-sm text-[#374151] font-['Inter'] leading-relaxed">
+              Al desactivar los recordatorios <span className="font-semibold">todos los recordatorios pendientes de tus pacientes que aún no se hayan enviado dejarán de enviarse</span> hasta que los vuelvas a activar.
+            </p>
+            <p className="text-sm text-[#6B7280] font-['Inter'] leading-relaxed">
+              Los recordatorios ya enviados no se verán afectados.
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-5 pt-0 flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmDesactivarRecordatorioModal(false)}
+              className="rounded-[10px] font-['Inter']"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isSavingRecordatorio}
+              onClick={() => {
+                setShowConfirmDesactivarRecordatorioModal(false);
+                void handleGuardarRecordatorioConfirmado();
+              }}
+              className="rounded-[10px] font-['Inter'] bg-[#F59E0B] hover:bg-[#D97706] text-white"
+            >
+              {isSavingRecordatorio ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Confirmar y guardar
             </Button>
           </DialogFooter>
         </DialogContent>

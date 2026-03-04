@@ -308,7 +308,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
   const pacienteInactivo = !!(paciente && !paciente.activo);
 
   return (
-    <div className="space-y-6 max-lg:pb-20 max-lg:overflow-x-hidden relative">
+    <div className="space-y-6 max-lg:space-y-3 max-lg:pb-20 max-lg:overflow-x-hidden relative">
       {/* Alerta paciente inactivo */}
       {pacienteInactivo && (
         <Card className="bg-[#FEF3C7] border-[1.5px] border-[#F59E0B] rounded-[16px]">
@@ -687,7 +687,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="max-lg:hidden">Anterior</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -696,7 +696,7 @@ export default function PacienteNotas({ pacienteId }: PacienteNotasProps) {
                   disabled={pageNotas >= totalPagesNotas}
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
-                  Siguiente
+                  <span className="max-lg:hidden">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

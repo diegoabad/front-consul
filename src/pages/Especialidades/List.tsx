@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog,
@@ -35,6 +36,7 @@ export default function AdminEspecialidades() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -47,11 +49,11 @@ export default function AdminEspecialidades() {
   const effectiveSearch = search.trim().length >= 3 ? search.trim() : '';
 
   const { data: paginatedResponse, isLoading } = useQuery({
-    queryKey: ['especialidades', 'paginated', page, effectiveSearch],
+    queryKey: ['especialidades', 'paginated', page, limit, effectiveSearch],
     queryFn: () =>
       especialidadesService.getAllPaginated({
         page,
-        limit: PAGE_SIZE,
+        limit,
         includeInactive: true,
         q: effectiveSearch || undefined,
       }),
@@ -183,7 +185,7 @@ data: {
   };
 
   return (
-    <div className="space-y-8 max-lg:pb-[46px] relative">
+    <div className="flex-1 flex flex-col space-y-8 max-lg:space-y-4 max-lg:pb-[46px] relative min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -220,14 +222,14 @@ data: {
 
       {/* Tabla o Empty State */}
       {isLoading ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+        <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
             <p className="text-[#6B7280] font-['Inter'] text-base">Cargando especialidades...</p>
           </CardContent>
         </Card>
       ) : items.length === 0 ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+        <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
               <GraduationCap className="h-10 w-10 text-[#2563eb] stroke-[2]" />
@@ -252,9 +254,10 @@ data: {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
+        <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:min-h-[280px]">
+          <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
               <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[200px]">
                   Nombre
@@ -353,11 +356,28 @@ data: {
               ))}
             </TableBody>
           </Table>
+          </div>
           {(totalPages >= 1) && !isLoading && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-                Página {page} de {totalPages || 1}
-              </p>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <div className="flex items-center gap-6">
+                <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                  Página {page} de {totalPages || 1}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                  <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}>
+                    <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -367,7 +387,7 @@ data: {
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="max-lg:hidden">Anterior</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -376,7 +396,7 @@ data: {
                   disabled={page >= totalPages}
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
-                  Siguiente
+                  <span className="max-lg:hidden">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

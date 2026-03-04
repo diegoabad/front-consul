@@ -130,7 +130,7 @@ export default function AdminPerfil() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-lg:space-y-4">
       <div>
         <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
           Mi Perfil

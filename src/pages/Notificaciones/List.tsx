@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export default function AdminNotificaciones() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-lg:space-y-3">
       <div>
         <h1 className="text-3xl font-bold">Notificaciones</h1>
         <p className="text-muted-foreground">Gestión de notificaciones</p>

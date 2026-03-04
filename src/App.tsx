@@ -23,6 +23,7 @@ const TurnosList = lazy(() => import('./pages/Turnos/List'));
 const EspecialidadesList = lazy(() => import('./pages/Especialidades/List'));
 const ObrasSocialesList = lazy(() => import('./pages/ObrasSociales/List'));
 const LogsList = lazy(() => import('./pages/Logs/List'));
+const RecordatoriosList = lazy(() => import('./pages/Recordatorios/List'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +65,7 @@ function App() {
                   <Route path="/usuarios" element={<UsuariosList />} />
                   <Route path="/especialidades" element={<EspecialidadesList />} />
                   <Route path="/obras-sociales" element={<ObrasSocialesList />} />
+                  <Route path="/recordatorios" element={<RecordatoriosList />} />
                   <Route path="/logs" element={<LogsList />} />
                   <Route path="/perfil" element={<PerfilList />} />
                 </Route>

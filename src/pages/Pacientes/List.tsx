@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,19 +25,23 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDeleteModal } from '@/components/shared/ConfirmDeleteModal';
+import { DatePicker } from '@/components/ui/date-picker';
 import { formatDisplayText } from '@/lib/utils';
 import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
 import { PAGE_SIZE } from '@/lib/constants';
 import {
   Search, Plus, Eye, Edit, Trash2,
-  User, Loader2, UserCheck, UserX, UserPlus, ChevronLeft, ChevronRight
+  User, Loader2, UserCheck, UserX, UserPlus, ChevronLeft, ChevronRight,
+  Download, FileDown
 } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { pacientesService, type CreatePacienteData, type AsignacionPacienteProfesional } from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { Paciente } from '@/types';
@@ -59,7 +64,7 @@ export default function AdminPacientes() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
-  const limit = PAGE_SIZE;
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -80,6 +85,16 @@ export default function AdminPacientes() {
   const initialAsignacionesListaRef = useRef<AsignacionPacienteProfesional[]>([]);
   const [draftAsignacionesLista, setDraftAsignacionesLista] = useState<AsignacionPacienteProfesional[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [togglingNotifId, setTogglingNotifId] = useState<string | null>(null);
+  const [showConfirmDesactivarNotifModal, setShowConfirmDesactivarNotifModal] = useState(false);
+  const [pacienteToDesactivarNotif, setPacienteToDesactivarNotif] = useState<Paciente | null>(null);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [showExportPDFModal, setShowExportPDFModal] = useState(false);
+  const [pacienteForPDF, setPacienteForPDF] = useState<Paciente | null>(null);
+  const [exportRango, setExportRango] = useState<'todas' | 'rango'>('todas');
+  const [exportFechaInicio, setExportFechaInicio] = useState('');
+  const [exportFechaFin, setExportFechaFin] = useState('');
+  const [exportOrden, setExportOrden] = useState<'asc' | 'desc'>('asc');
 
   // Profesional logueado (para rol profesional: asignar al crear/vincular)
   const isProfesional = user?.rol === 'profesional';
@@ -303,12 +318,90 @@ export default function AdminPacientes() {
     }
   };
 
+  const handleDescargarPDF = (paciente: Paciente) => {
+    setPacienteForPDF(paciente);
+    setExportRango('todas');
+    setExportFechaInicio('');
+    setExportFechaFin('');
+    setExportOrden('asc');
+    setShowExportPDFModal(true);
+  };
+
+  const handleExportPDFConfirm = async () => {
+    if (!pacienteForPDF) return;
+    if (exportRango === 'rango') {
+      if (!exportFechaInicio || !exportFechaFin) {
+        reactToastify.error('Indicá fecha desde y hasta para el rango.', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+      if (new Date(exportFechaFin) < new Date(exportFechaInicio)) {
+        reactToastify.error('La fecha hasta debe ser posterior a la fecha desde.', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+    }
+    const opts: { fecha_inicio?: string; fecha_fin?: string; orden: 'asc' | 'desc' } = { orden: exportOrden };
+    if (exportRango === 'rango') {
+      opts.fecha_inicio = exportFechaInicio;
+      opts.fecha_fin = exportFechaFin;
+    }
+    setShowExportPDFModal(false);
+    setDownloadingPdfId(pacienteForPDF.id);
+    try {
+      const blob = await pacientesService.exportarHistoriaClinicaPDF(pacienteForPDF.id, opts);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `historia_clinica_${pacienteForPDF.apellido}_${pacienteForPDF.nombre}_${format(new Date(), 'yyyy-MM-dd')}.pdf`.replace(/\s+/g, '_');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      reactToastify.success('Historia clínica exportada correctamente', { position: 'top-right', autoClose: 3000 });
+    } catch {
+      reactToastify.error('Error al exportar la historia clínica', { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setDownloadingPdfId(null);
+      setPacienteForPDF(null);
+    }
+  };
+
+  const handleToggleNotificaciones = (paciente: Paciente) => {
+    // Al desactivar, pedir confirmación primero
+    if (paciente.notificaciones_activas) {
+      setPacienteToDesactivarNotif(paciente);
+      setShowConfirmDesactivarNotifModal(true);
+      return;
+    }
+    void handleConfirmToggleNotificaciones(paciente);
+  };
+
+  const handleConfirmToggleNotificaciones = async (paciente: Paciente) => {
+    setTogglingNotifId(paciente.id);
+    try {
+      await pacientesService.toggleNotificaciones(paciente.id, !paciente.notificaciones_activas);
+      await queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+      reactToastify.success(
+        paciente.notificaciones_activas
+          ? 'Notificaciones WhatsApp desactivadas'
+          : 'Notificaciones WhatsApp activadas',
+        { position: 'top-right', autoClose: 3000 }
+      );
+    } catch {
+      reactToastify.error('Error al cambiar notificaciones', { position: 'top-right', autoClose: 3000 });
+    } finally {
+      setTogglingNotifId(null);
+    }
+  };
+
   const canCreate = hasPermission(user, 'pacientes.crear');
   const canUpdate = hasPermission(user, 'pacientes.actualizar');
   const canDelete = hasPermission(user, 'pacientes.eliminar');
   const canActivate = hasPermission(user, 'pacientes.activar');
   const canDeactivate = hasPermission(user, 'pacientes.desactivar');
   const canAsignarProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
+  // El toggle de notif. WhatsApp solo aparece si el profesional tiene recordatorios habilitados
+  // (para admin/secretaria siempre se muestra; para profesional, solo si recordatorio_activo = true)
+  const mostrarToggleNotif = !isProfesional || profesionalLogueado?.recordatorio_activo === true;
 
   const { data: asignacionesListaData = [], isFetched: asignacionesListaFetched } = useQuery({
     queryKey: ['paciente-asignaciones', pacienteForAsignar?.id],
@@ -366,7 +459,7 @@ export default function AdminPacientes() {
     );
 
   return (
-    <div className="space-y-8 max-lg:pb-12">
+    <div className="flex-1 flex flex-col space-y-8 max-lg:space-y-4 max-lg:pb-12 min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -408,7 +501,7 @@ export default function AdminPacientes() {
 
       {/* Tabla / Empty States - filtros y header siempre visibles; carga solo en la tabla */}
       {!isLoading && filteredPacientes.length === 0 ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+        <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
               <User className="h-10 w-10 text-[#2563eb] stroke-[2]" />
@@ -431,19 +524,22 @@ export default function AdminPacientes() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border border-[#E5E7EB] rounded-[16px] max-lg:rounded-[12px] shadow-sm overflow-hidden">
-          <div className="max-lg:overflow-x-auto">
-            <Table className="min-w-[720px] table-fixed">
-              <TableHeader>
+        <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] max-lg:rounded-[12px] shadow-sm max-lg:min-h-[280px]">
+          <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
+            <Table className={`min-w-[820px] table-fixed ${!isProfesional ? 'max-lg:min-w-[1075px]' : 'max-lg:min-w-[890px]'}`}>
+              <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
                 <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
-                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] py-4 max-lg:py-3 w-[28%] min-w-[200px]">
-                    Paciente
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] py-4 max-lg:py-3 w-[22%] min-w-[160px]">
+                    Nombre completo
                   </TableHead>
                   <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[12%] min-w-[100px]">
                     DNI
                   </TableHead>
-                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[110px]">
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[110px] max-lg:min-w-[145px]">
                     Teléfono
+                  </TableHead>
+                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[120px] max-lg:min-w-[155px]">
+                    WhatsApp
                   </TableHead>
                   {isProfesional && (
                     <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[120px]">
@@ -454,19 +550,19 @@ export default function AdminPacientes() {
                     Obra Social
                   </TableHead>
                   {!isProfesional && (
-                    <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[80px]">
+                    <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] min-w-[80px] max-lg:min-w-[105px]">
                       Estado
                     </TableHead>
                   )}
-                  <TableHead className="font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[100px] min-w-[100px] text-center">
-                    {isProfesional ? '' : 'Acciones'}
+                  <TableHead className={`font-['Inter'] font-medium text-[14px] max-lg:text-[13px] text-[#374151] w-[100px] min-w-[100px] text-right ${!isProfesional ? 'max-lg:min-w-[260px]' : ''}`}>
+                    Acciones
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={isProfesional ? 6 : 7} className="py-16 text-center">
+                    <TableCell colSpan={isProfesional ? 7 : 8} className="py-16 text-center">
                       <Loader2 className="h-10 w-10 animate-spin mx-auto mb-2 text-[#2563eb]" />
                       <p className="text-[#6B7280] font-['Inter'] text-sm m-0">Cargando pacientes...</p>
                     </TableCell>
@@ -518,6 +614,15 @@ export default function AdminPacientes() {
                       <span className="text-[#9CA3AF]">-</span>
                     )}
                   </TableCell>
+                  <TableCell className="max-lg:text-[13px] overflow-hidden">
+                    {paciente.whatsapp ? (
+                      <TruncateWithTooltip value={paciente.whatsapp} maxWidth="max-w-full" className="text-[#6B7280] font-['Inter'] text-[14px] max-lg:text-[13px]">
+                        {paciente.whatsapp}
+                      </TruncateWithTooltip>
+                    ) : (
+                      <span className="text-[#9CA3AF]">-</span>
+                    )}
+                  </TableCell>
                   {isProfesional && (
                     <TableCell className="text-[#6B7280] font-['Inter'] text-[14px] overflow-hidden">
                       <TruncateWithTooltip value={paciente.email ?? undefined} maxWidth="max-w-full">
@@ -543,16 +648,73 @@ export default function AdminPacientes() {
                       </Badge>
                     </TableCell>
                   )}
-                  <TableCell className={isProfesional ? '' : 'text-right'}>
+                  <TableCell className="text-right">
                     {isProfesional ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          onClick={() => navigate(`/pacientes/${paciente.id}`)}
-                          className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-4 py-2 font-['Inter'] text-[14px] font-medium"
-                        >
-                          Ver ficha
-                        </Button>
-                      </div>
+                      <TooltipProvider>
+                        <div className="flex items-center justify-end gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/pacientes/${paciente.id}`)}
+                                className="h-8 w-8 rounded-[8px] hover:bg-[#dbeafe] transition-all duration-200 text-[#2563eb] hover:text-[#1d4ed8]"
+                              >
+                                <Eye className="h-4 w-4 stroke-[2]" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">Ver ficha</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={downloadingPdfId === paciente.id}
+                                onClick={() => handleDescargarPDF(paciente)}
+                                className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6] transition-all duration-200 text-[#6B7280] hover:text-[#374151]"
+                              >
+                                {downloadingPdfId === paciente.id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <Download className="h-4 w-4 stroke-[2]" />
+                                }
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">Descargar ficha PDF</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          {mostrarToggleNotif && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={togglingNotifId === paciente.id}
+                                  onClick={() => handleToggleNotificaciones(paciente)}
+                                  className={`h-8 w-8 rounded-[8px] transition-all duration-200 ${
+                                    paciente.notificaciones_activas
+                                      ? 'text-[#10B981] hover:bg-[#D1FAE5] hover:text-[#059669]'
+                                      : 'text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B7280]'
+                                  }`}
+                                >
+                                  {togglingNotifId === paciente.id
+                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                    : <WhatsAppIcon size={16} />
+                                  }
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                                <p className="text-white">
+                                  {paciente.notificaciones_activas ? 'Desactivar notif. WhatsApp' : 'Activar notif. WhatsApp'}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TooltipProvider>
                     ) : (
                     <TooltipProvider>
                       <div className="flex items-center justify-end gap-1">
@@ -605,6 +767,52 @@ export default function AdminPacientes() {
                             </TooltipTrigger>
                             <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
                               <p className="text-white">Editar</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={downloadingPdfId === paciente.id}
+                              onClick={() => handleDescargarPDF(paciente)}
+                              className="h-8 w-8 rounded-[8px] hover:bg-[#F3F4F6] transition-all duration-200 text-[#6B7280] hover:text-[#374151]"
+                            >
+                              {downloadingPdfId === paciente.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Download className="h-4 w-4 stroke-[2]" />
+                              }
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                            <p className="text-white">Descargar ficha PDF</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        {mostrarToggleNotif && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={togglingNotifId === paciente.id}
+                                onClick={() => handleToggleNotificaciones(paciente)}
+                                className={`h-8 w-8 rounded-[8px] transition-all duration-200 ${
+                                  paciente.notificaciones_activas
+                                    ? 'text-[#10B981] hover:bg-[#D1FAE5] hover:text-[#059669]'
+                                    : 'text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#6B7280]'
+                                }`}
+                              >
+                                {togglingNotifId === paciente.id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <WhatsAppIcon size={16} />
+                                }
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 [&>p]:text-white">
+                              <p className="text-white">
+                                {paciente.notificaciones_activas ? 'Desactivar notif. WhatsApp' : 'Activar notif. WhatsApp'}
+                              </p>
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -676,10 +884,26 @@ export default function AdminPacientes() {
           </Table>
           </div>
           {(totalPages >= 1) && !isLoading && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-                Página {page} de {totalPages || 1}
-              </p>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <div className="flex items-center gap-6">
+                <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                  Página {page} de {totalPages || 1}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                  <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}>
+                    <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -689,7 +913,7 @@ export default function AdminPacientes() {
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="max-lg:hidden">Anterior</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -698,7 +922,7 @@ export default function AdminPacientes() {
                   disabled={page >= totalPages}
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
-                  Siguiente
+                  <span className="max-lg:hidden">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -1015,6 +1239,99 @@ export default function AdminPacientes() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal exportar PDF */}
+      <Dialog open={showExportPDFModal} onOpenChange={(open) => { setShowExportPDFModal(open); if (!open) setPacienteForPDF(null); }}>
+        <DialogContent className="max-w-[580px] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
+            <div className="flex items-center gap-4">
+              <div className="max-lg:hidden h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20">
+                <FileDown className="h-6 w-6 text-white stroke-[2]" />
+              </div>
+              <div>
+                <DialogTitle className="text-[24px] max-lg:text-[20px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
+                  Exportar historia clínica
+                </DialogTitle>
+                <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
+                  {pacienteForPDF ? `${formatDisplayText(pacienteForPDF.apellido)}, ${formatDisplayText(pacienteForPDF.nombre)}` : ''}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="overflow-y-auto flex-1 px-8 max-lg:px-4 py-4">
+            <div className="space-y-5">
+              {/* Evoluciones a incluir */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 border-b border-[#E5E7EB] pb-1">
+                  <div className="h-2 w-2 rounded-full bg-[#2563eb]" />
+                  <h3 className="text-[15px] font-semibold text-[#111827] font-['Inter'] mb-0">Evoluciones a incluir</h3>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="radio" name="exportRangoList" checked={exportRango === 'todas'} onChange={() => setExportRango('todas')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4" />
+                    <span className="text-[14px] font-['Inter'] text-[#374151]">Todas las evoluciones</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="radio" name="exportRangoList" checked={exportRango === 'rango'} onChange={() => setExportRango('rango')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4" />
+                    <span className="text-[14px] font-['Inter'] text-[#374151]">Solo entre dos fechas</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <div className="space-y-2">
+                    <label className="block text-[13px] font-medium text-[#374151] font-['Inter']">Desde</label>
+                    <DatePicker value={exportFechaInicio} onChange={setExportFechaInicio} placeholder="Seleccionar fecha"
+                      disabled={exportRango === 'todas'}
+                      className="h-[44px] w-full border-[#D1D5DB] rounded-[10px] text-[14px] font-['Inter']" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[13px] font-medium text-[#374151] font-['Inter']">Hasta</label>
+                    <DatePicker value={exportFechaFin} onChange={setExportFechaFin} placeholder="Seleccionar fecha"
+                      min={exportFechaInicio || undefined}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                      disabled={exportRango === 'todas'}
+                      className="h-[44px] w-full border-[#D1D5DB] rounded-[10px] text-[14px] font-['Inter']" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Orden */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 border-b border-[#E5E7EB] pb-1">
+                  <div className="h-2 w-2 rounded-full bg-[#3B82F6]" />
+                  <h3 className="text-[15px] font-semibold text-[#111827] font-['Inter'] mb-0">Orden de las evoluciones</h3>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-1">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="radio" name="exportOrdenList" checked={exportOrden === 'asc'} onChange={() => setExportOrden('asc')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4" />
+                    <span className="text-[14px] font-['Inter'] text-[#374151]">Ascendente (más antigua primero)</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="radio" name="exportOrdenList" checked={exportOrden === 'desc'} onChange={() => setExportOrden('desc')}
+                      className="rounded-full border-[#2563eb] text-[#2563eb] h-4 w-4" />
+                    <span className="text-[14px] font-['Inter'] text-[#374151]">Descendente (más reciente primero)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="px-8 max-lg:px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB] flex flex-row justify-end gap-3 flex-shrink-0 mt-0">
+            <Button variant="outline" onClick={() => { setShowExportPDFModal(false); setPacienteForPDF(null); }}
+              className="h-[44px] px-5 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-['Inter'] text-[14px]">
+              Cancelar
+            </Button>
+            <Button onClick={handleExportPDFConfirm} disabled={!!downloadingPdfId}
+              className="h-[44px] px-5 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-['Inter'] text-[14px] gap-2">
+              {downloadingPdfId ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4 stroke-[2]" />}
+              Exportar PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* FAB Nuevo Paciente (solo mobile) */}
       {canCreate && (
         <Button
@@ -1025,6 +1342,64 @@ export default function AdminPacientes() {
           <Plus className="h-6 w-6 stroke-[2]" />
         </Button>
       )}
+
+      {/* Modal confirmación desactivar notificaciones WhatsApp de paciente */}
+      <Dialog
+        open={showConfirmDesactivarNotifModal}
+        onOpenChange={(open) => {
+          setShowConfirmDesactivarNotifModal(open);
+          if (!open) setPacienteToDesactivarNotif(null);
+        }}
+      >
+        <DialogContent className="max-w-[460px] rounded-[20px] border border-[#E5E7EB] shadow-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#E5E7EB]">
+            <DialogTitle className="text-[20px] font-bold text-[#111827] font-['Poppins'] mb-0">
+              Desactivar notificaciones WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 py-4 space-y-3">
+            <p className="text-sm text-[#374151] font-['Inter'] leading-relaxed">
+              Vas a desactivar las notificaciones WhatsApp de{' '}
+              <span className="font-semibold">
+                {formatDisplayText(pacienteToDesactivarNotif?.nombre)} {formatDisplayText(pacienteToDesactivarNotif?.apellido)}
+              </span>.
+            </p>
+            <p className="text-sm text-[#374151] font-['Inter'] leading-relaxed">
+              <span className="font-semibold">Todos los recordatorios pendientes de este paciente que aún no se hayan enviado dejarán de enviarse</span> hasta que vuelvas a activarlos.
+            </p>
+            <p className="text-sm text-[#6B7280] font-['Inter'] leading-relaxed">
+              Los recordatorios ya enviados no se verán afectados.
+            </p>
+          </div>
+          <DialogFooter className="px-6 pb-5 pt-0 flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowConfirmDesactivarNotifModal(false);
+                setPacienteToDesactivarNotif(null);
+              }}
+              className="rounded-[10px] font-['Inter']"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={togglingNotifId === pacienteToDesactivarNotif?.id}
+              onClick={() => {
+                if (!pacienteToDesactivarNotif) return;
+                setShowConfirmDesactivarNotifModal(false);
+                void handleConfirmToggleNotificaciones(pacienteToDesactivarNotif);
+                setPacienteToDesactivarNotif(null);
+              }}
+              className="rounded-[10px] font-['Inter'] bg-[#F59E0B] hover:bg-[#D97706] text-white"
+            >
+              {togglingNotifId === pacienteToDesactivarNotif?.id
+                ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                : null}
+              Confirmar y desactivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

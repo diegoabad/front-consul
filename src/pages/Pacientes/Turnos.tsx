@@ -163,7 +163,7 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
   }, [isProfesional, profesionalLogueado, profesionales]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-lg:space-y-3">
       {/* Header */}
       <div>
         <h2 className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
@@ -297,8 +297,8 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
         </Card>
 
       {/* Tabla siempre visible: carga o "No hay turnos" solo en el cuerpo, filtros no se mueven */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:min-h-[280px]">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto max-lg:min-h-[200px]">
             <Table className="table-fixed w-full max-lg:table-auto max-lg:min-w-[940px]">
               <TableHeader className="sticky top-0 bg-[#F9FAFB] z-10">
                 <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
@@ -395,7 +395,7 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="max-lg:hidden">Anterior</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -404,7 +404,7 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
                   disabled={page >= totalPages}
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
-                  Siguiente
+                  <span className="max-lg:hidden">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

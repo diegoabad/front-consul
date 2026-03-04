@@ -59,6 +59,7 @@ export default function AdminAgendas() {
   const [profesionalGestionar, setProfesionalGestionar] = useState<{ id: string; nombre: string; apellido: string } | null>(null);
   const [editingAgenda, setEditingAgenda] = useState<ConfiguracionAgenda | null>(null);
   const [pageAgendas, setPageAgendas] = useState(1);
+  const [limitAgendas, setLimitAgendas] = useState(PAGE_SIZE);
 
   // Queries
   const { data: profesionales = [], isLoading: loadingProfesionales } = useQuery({
@@ -162,11 +163,11 @@ export default function AdminAgendas() {
   }, [filteredAgendas, todasLasExcepciones, profesionales, isProfesional, profesionalLogueado]);
 
   const totalAgendas = agendasPorProfesional.length;
-  const totalPagesAgendas = Math.ceil(totalAgendas / PAGE_SIZE) || 0;
+  const totalPagesAgendas = Math.ceil(totalAgendas / limitAgendas) || 0;
   const agendasPorProfesionalPaginado = useMemo(() => {
-    const start = (pageAgendas - 1) * PAGE_SIZE;
-    return agendasPorProfesional.slice(start, start + PAGE_SIZE);
-  }, [agendasPorProfesional, pageAgendas]);
+    const start = (pageAgendas - 1) * limitAgendas;
+    return agendasPorProfesional.slice(start, start + limitAgendas);
+  }, [agendasPorProfesional, pageAgendas, limitAgendas]);
 
   useEffect(() => {
     setPageAgendas(1);
@@ -209,7 +210,7 @@ export default function AdminAgendas() {
 
   return (
     <>
-    <div className="space-y-8 max-lg:pb-20 relative">
+    <div className="flex-1 flex flex-col space-y-8 max-lg:space-y-4 max-lg:pb-20 relative min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -255,14 +256,14 @@ export default function AdminAgendas() {
 
           {/* Tabla o Empty State */}
           {isLoading ? (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+            <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando configuraciones...</p>
               </CardContent>
             </Card>
           ) : totalAgendas === 0 ? (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+            <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
                   <Calendar className="h-10 w-10 text-[#2563eb] stroke-[2]" />
@@ -283,9 +284,10 @@ export default function AdminAgendas() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
+            <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:min-h-[280px]">
+              <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
                   <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                     <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 min-w-[200px] w-[200px]">
                       Profesional
@@ -390,11 +392,28 @@ export default function AdminAgendas() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
               {(totalPagesAgendas >= 1) && !isLoading && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-                  <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-                    Página {pageAgendas} de {totalPagesAgendas || 1}
-                  </p>
+                <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+                  <div className="flex items-center gap-6">
+                    <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                      Página {pageAgendas} de {totalPagesAgendas || 1}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                      <Select value={String(limitAgendas)} onValueChange={(v) => { setLimitAgendas(Number(v)); setPageAgendas(1); }}>
+                        <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -404,7 +423,7 @@ export default function AdminAgendas() {
                       className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      Anterior
+                      <span className="max-lg:hidden">Anterior</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -413,7 +432,7 @@ export default function AdminAgendas() {
                       disabled={pageAgendas >= totalPagesAgendas}
                       className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                     >
-                      Siguiente
+                      <span className="max-lg:hidden">Siguiente</span>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>

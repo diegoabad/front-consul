@@ -325,7 +325,7 @@ export default function PacienteEvoluciones({ pacienteId, exportFichaButton }: P
   const pacienteInactivo = !!(paciente && !paciente.activo);
 
   return (
-    <div className="space-y-6 max-lg:pb-12 relative">
+    <div className="space-y-6 max-lg:space-y-3 max-lg:pb-12 relative">
       {/* Alerta paciente inactivo */}
       {pacienteInactivo && (
         <Card className="bg-[#FEF3C7] border-[1.5px] border-[#F59E0B] rounded-[16px]">
@@ -773,7 +773,7 @@ export default function PacienteEvoluciones({ pacienteId, exportFichaButton }: P
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Anterior
+                  <span className="max-lg:hidden">Anterior</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -782,7 +782,7 @@ export default function PacienteEvoluciones({ pacienteId, exportFichaButton }: P
                   disabled={pageEvoluciones >= totalPagesEvoluciones}
                   className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
                 >
-                  Siguiente
+                  <span className="max-lg:hidden">Siguiente</span>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
 import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
+import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { DatePicker } from '@/components/ui/date-picker';
 import { EditPacienteModal } from './modals';
 import PacienteArchivos from './Archivos';
@@ -348,7 +349,7 @@ export default function PacienteDetail() {
   };
 
   return (
-    <div className="space-y-6 max-lg:pb-12 max-lg:px-3">
+    <div className="space-y-6 max-lg:space-y-3 max-lg:pb-12 max-lg:px-3">
       {/* Volver arriba (pequeño) + Tabs abajo */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 w-full">
         <div className="space-y-3 w-full min-w-0">
@@ -431,14 +432,15 @@ export default function PacienteDetail() {
                   onClick={() => setShowExportPDFModal(true)}
                   disabled={isExportingPDF}
                   variant="outline"
-                  className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
+                  className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] max-lg:size-12 max-lg:p-0"
+                  aria-label="Exportar ficha"
                 >
                   {isExportingPDF ? (
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" />
+                    <Loader2 className="h-5 w-5 mr-2 max-lg:mr-0 animate-spin stroke-[2]" />
                   ) : (
-                    <FileDown className="h-5 w-5 mr-2 stroke-[2]" />
+                    <FileDown className="h-5 w-5 mr-2 max-lg:mr-0 stroke-[2]" />
                   )}
-                  Exportar ficha
+                  <span className="max-lg:hidden">Exportar ficha</span>
                 </Button>
               )}
               {canShowFabDatos && (
@@ -472,58 +474,63 @@ export default function PacienteDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.nombre ?? undefined}>
+                            {formatDisplayText(paciente.nombre) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.nombre ?? undefined}>
-                          {formatDisplayText(paciente.nombre) || <span className="text-[#9CA3AF] italic">No especificado</span>}
-                        </TruncateWithTooltip>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Apellido</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.apellido ?? undefined}>
-                          {formatDisplayText(paciente.apellido) || <span className="text-[#9CA3AF] italic">No especificado</span>}
-                        </TruncateWithTooltip>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <FileText className="h-4 w-4 text-[#2563eb] stroke-[2]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">DNI</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.dni ?? undefined}>
-                          {formatDNI(paciente.dni) || <span className="text-[#9CA3AF] italic">No especificado</span>}
-                        </TruncateWithTooltip>
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Apellido</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.apellido ?? undefined}>
+                            {formatDisplayText(paciente.apellido) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <Calendar className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                  <div className="border-t border-transparent" />
+                  <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">DNI</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.dni ?? undefined}>
+                            {formatDNI(paciente.dni) || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Fecha de Nacimiento</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        {paciente.fecha_nacimiento 
-                          ? `${format(new Date(paciente.fecha_nacimiento), 'dd/MM/yyyy', { locale: es })}${edad ? ` (${edad} años)` : ''}`
-                          : <span className="text-[#9CA3AF] italic">No especificada</span>
-                        }
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <Calendar className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Fecha de Nacimiento</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          {paciente.fecha_nacimiento 
+                            ? `${format(new Date(paciente.fecha_nacimiento), 'dd/MM/yyyy', { locale: es })}${edad ? ` (${edad} años)` : ''}`
+                            : <span className="text-[#9CA3AF] italic">No especificado</span>
+                          }
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -539,6 +546,7 @@ export default function PacienteDetail() {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="space-y-4">
+                  {/* Fila 1: Teléfono | WhatsApp */}
                   <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
@@ -554,6 +562,23 @@ export default function PacienteDetail() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dcfce7] flex items-center justify-center flex-shrink-0">
+                        <WhatsAppIcon size={16} className="text-[#25D366]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">WhatsApp</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.whatsapp ?? undefined}>
+                            {paciente.whatsapp || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-transparent" />
+                  {/* Fila 2: Email | Dirección */}
+                  <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                    <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-[#FEF3C7] flex items-center justify-center flex-shrink-0">
                         <Mail className="h-4 w-4 text-[#F59E0B] stroke-[2]" />
                       </div>
@@ -566,18 +591,18 @@ export default function PacienteDetail() {
                         </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#D1FAE5] flex items-center justify-center flex-shrink-0">
-                      <MapPin className="h-4 w-4 text-[#10B981] stroke-[2]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Dirección</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.direccion ?? undefined}>
-                          {paciente.direccion || <span className="text-[#9CA3AF] italic">No especificada</span>}
-                        </TruncateWithTooltip>
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#D1FAE5] flex items-center justify-center flex-shrink-0">
+                        <MapPin className="h-4 w-4 text-[#10B981] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Dirección</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.direccion ?? undefined}>
+                            {paciente.direccion || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -601,8 +626,8 @@ export default function PacienteDetail() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Obra Social</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                          <TruncateWithTooltip value={paciente.obra_social ?? undefined} className="uppercase">
-                            {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : <span className="text-[#9CA3AF] italic">No especificada</span>}
+                          <TruncateWithTooltip value={paciente.obra_social ?? undefined}>
+                            {paciente.obra_social ? <span className="uppercase">{paciente.obra_social}</span> : <span className="text-[#9CA3AF] italic">No especificado</span>}
                           </TruncateWithTooltip>
                         </p>
                       </div>
@@ -621,6 +646,7 @@ export default function PacienteDetail() {
                       </div>
                     </div>
                   </div>
+                  <div className="border-t border-transparent" />
                   <div className="flex items-center gap-3">
                     <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
                       <FileText className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
@@ -647,32 +673,70 @@ export default function PacienteDetail() {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
-                      <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                  {/* Contacto 1 */}
+                  <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                        <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.contacto_emergencia_nombre ?? undefined}>
+                            {paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.contacto_emergencia_nombre ?? undefined}>
-                          {paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : <span className="text-[#9CA3AF] italic">No especificado</span>}
-                        </TruncateWithTooltip>
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
+                        <Phone className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Teléfono</p>
+                        <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                          <TruncateWithTooltip value={paciente.contacto_emergencia_telefono ?? undefined}>
+                            {paciente.contacto_emergencia_telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                          </TruncateWithTooltip>
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
-                      <Phone className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Teléfono</p>
-                      <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
-                        <TruncateWithTooltip value={paciente.contacto_emergencia_telefono ?? undefined}>
-                          {paciente.contacto_emergencia_telefono || <span className="text-[#9CA3AF] italic">No especificado</span>}
-                        </TruncateWithTooltip>
-                      </p>
-                    </div>
-                  </div>
+
+                  {/* Contacto 2 — solo si tiene datos */}
+                  {(paciente.contacto_emergencia_nombre_2 || paciente.contacto_emergencia_telefono_2) && (
+                    <>
+                      <div className="border-t border-[#E5E7EB]" />
+                      <div className="grid grid-cols-2 max-lg:grid-cols-1 gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-[#dbeafe] flex items-center justify-center flex-shrink-0">
+                            <User className="h-4 w-4 text-[#2563eb] stroke-[2]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Nombre</p>
+                            <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                              <TruncateWithTooltip value={paciente.contacto_emergencia_nombre_2 ?? undefined}>
+                                {paciente.contacto_emergencia_nombre_2 ? formatDisplayText(paciente.contacto_emergencia_nombre_2) : <span className="text-[#9CA3AF] italic">No especificado</span>}
+                              </TruncateWithTooltip>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-[#DBEAFE] flex items-center justify-center flex-shrink-0">
+                            <Phone className="h-4 w-4 text-[#3B82F6] stroke-[2]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Teléfono</p>
+                            <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
+                              <TruncateWithTooltip value={paciente.contacto_emergencia_telefono_2 ?? undefined}>
+                                {paciente.contacto_emergencia_telefono_2 || <span className="text-[#9CA3AF] italic">No especificado</span>}
+                              </TruncateWithTooltip>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -754,14 +818,15 @@ export default function PacienteDetail() {
                 onClick={() => setShowExportPDFModal(true)}
                 disabled={isExportingPDF}
                 variant="outline"
-                className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe]"
+                className="rounded-[12px] px-4 sm:px-6 h-12 font-medium shrink-0 border-[#2563eb] text-[#2563eb] hover:bg-[#dbeafe] max-lg:size-12 max-lg:p-0"
+                aria-label="Exportar ficha"
               >
                 {isExportingPDF ? (
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin stroke-[2]" />
+                  <Loader2 className="h-5 w-5 mr-2 max-lg:mr-0 animate-spin stroke-[2]" />
                 ) : (
-                  <FileDown className="h-5 w-5 mr-2 stroke-[2]" />
+                  <FileDown className="h-5 w-5 mr-2 max-lg:mr-0 stroke-[2]" />
                 )}
-                Exportar ficha
+                <span className="max-lg:hidden">Exportar ficha</span>
               </Button>
             ) : undefined}
           />

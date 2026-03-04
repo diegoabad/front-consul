@@ -1,11 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { pacientesService } from '@/services/pacientes.service';
-import { profesionalesService } from '@/services/profesionales.service';
-import { turnosService } from '@/services/turnos.service';
-import { pagosService } from '@/services/pagos.service';
+import { dashboardService } from '@/services/dashboard.service';
 import { Users, Stethoscope, Calendar, FileText, DollarSign, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -13,28 +9,11 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   if (user?.rol !== 'administrador') return <Navigate to="/turnos" replace />;
 
-  const { data: pacientes, isLoading: loadingPacientes } = useQuery({
-    queryKey: ['pacientes'],
-    queryFn: () => pacientesService.getAll(),
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['dashboard', 'stats'],
+    queryFn: () => dashboardService.getStats(),
+    staleTime: 2 * 60 * 1000, // considerar fresh por 2 minutos
   });
-
-  const { data: profesionales, isLoading: loadingProfesionales } = useQuery({
-    queryKey: ['profesionales'],
-    queryFn: () => profesionalesService.getAll(),
-  });
-
-  const { data: turnos, isLoading: loadingTurnos } = useQuery({
-    queryKey: ['turnos'],
-    queryFn: () => turnosService.getAll(),
-  });
-
-  const { data: pagos = [], isLoading: loadingPagos } = useQuery({
-    queryKey: ['pagos', 'all'],
-    queryFn: () => pagosService.getAll(),
-  });
-
-  const isLoading =
-    loadingPacientes || loadingProfesionales || loadingTurnos || loadingPagos;
 
   if (isLoading) {
     return (
@@ -44,38 +23,16 @@ export default function AdminDashboard() {
     );
   }
 
-  const totalPacientes = pacientes?.data?.length ?? 0;
-  const totalProfesionales = profesionales?.length ?? 0;
-
-  const hoy = new Date();
-  const inicioMes = startOfMonth(hoy);
-  const finMes = endOfMonth(hoy);
-  const turnosEsteMes =
-    turnos?.filter((t) => {
-      try {
-        const fecha = parseISO(t.fecha_hora_inicio);
-        return isWithinInterval(fecha, { start: inicioMes, end: finMes });
-      } catch {
-        return false;
-      }
-    }).length ?? 0;
-  const conContrato =
-    profesionales?.filter(
-      (p) =>
-        p.fecha_inicio_contrato?.trim() &&
-        p.monto_mensual != null &&
-        Number(p.monto_mensual) > 0
-    ).length ?? 0;
-
-  const pagosPagados = pagos.filter((p) => p.estado === 'pagado');
-  const cantidadPagosPagados = pagosPagados.length;
-  const totalPagado =
-    pagosPagados.reduce((sum, p) => sum + (parseFloat(String(p.monto)) || 0), 0) || 0;
   const formatoMoneda = (n: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+    new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-lg:space-y-4">
       {/* Header */}
       <div>
         <h1 className="text-[32px] font-bold text-[#111827] font-['Poppins'] leading-tight tracking-[-0.02em] mb-0">
@@ -101,7 +58,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0 relative z-10">
             <div className="text-[32px] font-bold text-[#2563eb] mb-1 font-['Poppins']">
-              {turnosEsteMes}
+              {stats?.turnosEsteMes ?? 0}
             </div>
             <p className="text-sm text-[#1d4ed8] font-medium font-['Inter']">
               Turnos realizados o programados en el mes actual
@@ -121,7 +78,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-[32px] font-bold text-[#111827] mb-1 font-['Poppins']">
-              {totalPacientes}
+              {stats?.totalPacientes ?? 0}
             </div>
             <p className="text-sm text-[#6B7280] font-['Inter']">
               Pacientes registrados en el sistema
@@ -141,7 +98,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-[32px] font-bold text-[#111827] mb-1 font-['Poppins']">
-              {totalProfesionales}
+              {stats?.totalProfesionales ?? 0}
             </div>
             <p className="text-sm text-[#6B7280] font-['Inter']">
               Profesionales activos en el consultorio
@@ -164,7 +121,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-[32px] font-bold text-[#111827] mb-1 font-['Poppins']">
-              {conContrato}
+              {stats?.conContrato ?? 0}
             </div>
             <p className="text-sm text-[#6B7280] font-['Inter']">
               Profesionales con contrato (fecha de inicio y monto mensual definidos)
@@ -184,10 +141,10 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="text-[32px] font-bold text-[#111827] mb-1 font-['Poppins']">
-              {cantidadPagosPagados}
+              {stats?.pagosPagadosCount ?? 0}
             </div>
             <p className="text-sm text-[#6B7280] font-['Inter']">
-              Órdenes de pago cobradas · Total: {formatoMoneda(totalPagado)}
+              Órdenes de pago cobradas · Total: {formatoMoneda(stats?.pagosPagadosTotal ?? 0)}
             </p>
           </CardContent>
         </Card>

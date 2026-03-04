@@ -45,6 +45,10 @@ export interface Paciente {
   plan?: string;
   contacto_emergencia_nombre?: string;
   contacto_emergencia_telefono?: string;
+  contacto_emergencia_nombre_2?: string;
+  contacto_emergencia_telefono_2?: string;
+  whatsapp?: string;
+  notificaciones_activas: boolean;
   activo: boolean;
   fecha_creacion?: string;
   fecha_actualizacion?: string;

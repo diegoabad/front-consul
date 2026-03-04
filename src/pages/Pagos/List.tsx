@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -203,7 +203,9 @@ export default function AdminPagos() {
   const [filterContratoProfesionalId, setFilterContratoProfesionalId] = useState<string>('all');
   const [filterContratoPeriodo, setFilterContratoPeriodo] = useState<string>('todos');
   const [pageContrato, setPageContrato] = useState(1);
+  const [limitContratos, setLimitContratos] = useState(PAGE_SIZE);
   const [pagePagos, setPagePagos] = useState(1);
+  const [limitPagos, setLimitPagos] = useState(PAGE_SIZE);
   const [showEditContratoModal, setShowEditContratoModal] = useState(false);
   const [contratoEditando, setContratoEditando] = useState<Profesional | null>(null);
   const [editContratoForm, setEditContratoForm] = useState<{ fecha_inicio_contrato: string; monto_mensual: string; tipo_periodo_pago: 'mensual' | 'quincenal' | 'semanal' | 'anual' }>({ fecha_inicio_contrato: '', monto_mensual: '', tipo_periodo_pago: 'mensual' });
@@ -262,7 +264,7 @@ export default function AdminPagos() {
   // Contratos paginados (solo cuando no es profesional; si es profesional se usa profesionalLogueado)
   const contratosQueryFilters = useMemo(() => ({
     page: pageContrato,
-    limit: PAGE_SIZE,
+    limit: limitContratos,
     bloqueado: false,
     id: filterContratoProfesionalId && filterContratoProfesionalId !== 'all' ? filterContratoProfesionalId : undefined,
     tipo_periodo_pago: filterContratoPeriodo && filterContratoPeriodo !== 'todos' ? (filterContratoPeriodo as 'mensual' | 'quincenal' | 'semanal' | 'anual') : undefined,
@@ -325,10 +327,10 @@ export default function AdminPagos() {
   // Paginación órdenes de pago (tab Pagos)
   const pagosQueryFilters = useMemo(() => ({
     page: pagePagos,
-    limit: PAGE_SIZE,
+    limit: limitPagos,
     profesional_id: filterProfesionalId && filterProfesionalId !== 'all' ? filterProfesionalId : undefined,
     estado: activeTab !== 'todos' ? (activeTab as 'pendiente' | 'pagado' | 'vencido') : undefined,
-  }), [pagePagos, filterProfesionalId, activeTab]);
+  }), [pagePagos, limitPagos, filterProfesionalId, activeTab]);
 
   const { data: pagosPaginatedResponse, isLoading: isLoadingPagosPaginated } = useQuery({
     queryKey: ['pagos', 'paginated', pagosQueryFilters],
@@ -627,7 +629,7 @@ export default function AdminPagos() {
   };
 
   return (
-    <div className="space-y-6 max-lg:space-y-5">
+    <div className={`flex-1 flex flex-col space-y-6 max-lg:space-y-3 min-h-0 relative ${activeMainTab === 'pagos' && canCreate ? 'max-lg:pb-20' : ''}`}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-lg:gap-3">
         <div className="min-w-0 max-lg:flex-1">
@@ -650,8 +652,8 @@ export default function AdminPagos() {
       </div>
 
       {/* Pestañas principales: Contrato por profesional | Pagos */}
-      <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'contrato' | 'pagos')} className="space-y-6 max-lg:space-y-5">
-        <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[12px] p-1.5 w-full">
+      <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as 'contrato' | 'pagos')} className="flex-1 flex flex-col min-h-0 gap-4">
+        <div className="flex-shrink-0 bg-[#F9FAFB] border border-[#E5E7EB] rounded-[12px] p-1.5 w-full">
           <TabsList className="bg-transparent p-0 h-auto gap-1 w-full grid grid-cols-2">
             <TabsTrigger value="pagos" className="rounded-[10px] px-5 py-2.5 text-[14px] font-medium font-['Inter'] text-[#6B7280] hover:text-[#374151] data-[state=active]:bg-[#2563eb] data-[state=active]:text-white data-[state=active]:shadow-sm transition-all duration-200 max-lg:flex-1 max-lg:justify-center max-lg:py-3 max-lg:text-[13px]">
               Órdenes de pago
@@ -662,16 +664,17 @@ export default function AdminPagos() {
           </TabsList>
         </div>
 
-        <TabsContent value="contrato" className="mt-0 space-y-6 max-lg:space-y-5 max-lg:pb-6">
+        {activeMainTab === 'contrato' && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden mt-0">
           {isLoadingContratosTab ? (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+            <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando contratos...</p>
               </CardContent>
             </Card>
           ) : profesionalesParaContrato.length === 0 ? (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+            <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
                   <FileText className="h-10 w-10 text-[#2563eb] stroke-[2]" />
@@ -682,7 +685,7 @@ export default function AdminPagos() {
             </Card>
           ) : (
             <>
-              <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
+              <Card className="flex-shrink-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
                 <CardContent className="p-6 max-lg:p-4">
                   <div className={`grid gap-6 w-full ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} max-lg:gap-4`}>
                     {!isProfesional && (
@@ -724,7 +727,8 @@ export default function AdminPagos() {
                   </div>
                 </CardContent>
               </Card>
-              <ContratosTable
+              <div className="flex-1 min-h-0 flex flex-col mt-4">
+                <ContratosTable
                 profesionales={profesionalesParaContrato}
                 formatCurrency={formatCurrency}
                 onEdit={handleOpenEditContrato}
@@ -734,14 +738,19 @@ export default function AdminPagos() {
                   page: pageContrato,
                   totalPages: totalPagesContratos,
                   onPageChange: setPageContrato,
+                  limit: limitContratos,
+                  onLimitChange: (v) => { setLimitContratos(v); setPageContrato(1); },
                 } : undefined}
               />
+              </div>
             </>
           )}
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="pagos" className="mt-0 space-y-6 max-lg:space-y-5 max-lg:pb-6">
-          <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
+        {activeMainTab === 'pagos' && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden mt-0">
+          <Card className="flex-shrink-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px]">
             <CardContent className="p-6 max-lg:p-4">
               <div className={`grid gap-6 w-full ${isProfesional ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} max-lg:gap-4`}>
                 {!isProfesional && (
@@ -790,61 +799,35 @@ export default function AdminPagos() {
               </div>
             </CardContent>
           </Card>
+          <div className="flex-1 min-h-0 flex flex-col mt-4">
           {isLoadingPagosPaginated && pagosParaTabla.length === 0 ? (
-            <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+            <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
               <CardContent className="p-16 text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
                 <p className="text-[#6B7280] font-['Inter'] text-base">Cargando órdenes de pago...</p>
               </CardContent>
             </Card>
           ) : (
-            <>
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
-                <TabsContent value="vencidos" className="mt-0">
-<PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-                </TabsContent>
-              <TabsContent value="pendientes" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-              </TabsContent>
-              <TabsContent value="pagados" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={false} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-              </TabsContent>
-              <TabsContent value="todos" className="mt-0">
-                <PagosTable pagos={filteredPagos} formatCurrency={formatCurrency} showPayButton={canMarkPaid} onPay={handlePay} onMora={canUpdatePago ? handleMora : undefined} onDelete={canUpdatePago ? handleDeletePago : undefined} showAcciones={!isProfesional} />
-                </TabsContent>
-              </Tabs>
-              {(totalPagesPagos >= 1) && !isLoadingPagosPaginated && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-                  <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-                    Página {pagePagos} de {totalPagesPagos || 1}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPagePagos((p) => Math.max(1, p - 1))}
-                      disabled={pagePagos <= 1}
-                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPagePagos((p) => Math.min(totalPagesPagos, p + 1))}
-                      disabled={pagePagos >= totalPagesPagos}
-                      className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
-                    >
-                      Siguiente
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            <PagosTable
+              pagos={filteredPagos}
+              formatCurrency={formatCurrency}
+              showPayButton={canMarkPaid && activeTab !== 'pagados'}
+              onPay={handlePay}
+              onMora={canUpdatePago ? handleMora : undefined}
+              onDelete={canUpdatePago ? handleDeletePago : undefined}
+              showAcciones={!isProfesional}
+              pagination={totalPagesPagos >= 1 && !isLoadingPagosPaginated ? {
+                page: pagePagos,
+                totalPages: totalPagesPagos,
+                onPageChange: setPagePagos,
+                limit: limitPagos,
+                onLimitChange: (v: number) => { setLimitPagos(v); setPagePagos(1); },
+              } : undefined}
+            />
           )}
-        </TabsContent>
+          </div>
+        </div>
+        )}
       </Tabs>
 
       {/* Botón flotante: solo en mobile/tablet (en desktop se usa el botón del header) */}
@@ -1003,7 +986,7 @@ export default function AdminPagos() {
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0 line-clamp-2">
                   {selectedPago && (
                     <>
-                      {selectedPago.profesional_nombre} {selectedPago.profesional_apellido} — {formatPeriodoDisplay(selectedPago)} — {formatCurrency(selectedPago.monto)}. Indique método y fecha de pago.
+                      {formatDisplayText(selectedPago.profesional_nombre)} {formatDisplayText(selectedPago.profesional_apellido)} — {formatPeriodoDisplay(selectedPago)} — {formatCurrency(selectedPago.monto)}. Indique método y fecha de pago.
                     </>
                   )}
                 </DialogDescription>
@@ -1285,7 +1268,7 @@ export default function AdminPagos() {
         open={showDeletePagoConfirm}
         onOpenChange={(open) => { setShowDeletePagoConfirm(open); if (!open) setPagoToDelete(null); }}
         title="Eliminar orden de pago"
-        description={<>¿Estás seguro de que deseas eliminar la orden de <span className="font-semibold text-[#374151]">{pagoToDelete ? `${pagoToDelete.profesional_nombre} ${pagoToDelete.profesional_apellido} — ${formatPeriodoDisplay(pagoToDelete)}` : ''}</span>? Esta acción no se puede deshacer.</>}
+        description={<>¿Estás seguro de que deseas eliminar la orden de <span className="font-semibold text-[#374151]">{pagoToDelete ? `${formatDisplayText(pagoToDelete.profesional_nombre)} ${formatDisplayText(pagoToDelete.profesional_apellido)} — ${formatPeriodoDisplay(pagoToDelete)}` : ''}</span>? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDeletePago}
         isLoading={deletePagoMutation.isPending}
       />
@@ -1299,7 +1282,7 @@ interface ContratosTableProps {
   onEdit: (p: Profesional) => void;
   onEliminar: (p: Profesional) => void;
   canEditContrato?: boolean;
-  pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void };
+  pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void; limit?: number; onLimitChange?: (limit: number) => void };
 }
 
 function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, canEditContrato = true, pagination }: ContratosTableProps) {
@@ -1307,10 +1290,10 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
     (p.fecha_inicio_contrato && p.fecha_inicio_contrato.trim() !== '') || (p.monto_mensual != null && p.monto_mensual > 0);
 
   return (
-    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:rounded-[12px]">
-      <div className="max-lg:overflow-x-auto">
+    <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px] max-lg:min-h-[280px]">
+      <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
       <Table className="max-lg:min-w-[600px]">
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
           <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Profesional</TableHead>
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3">Especialidad</TableHead>
@@ -1396,10 +1379,28 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
       </Table>
       </div>
       {pagination && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-          <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-            Página {pagination.page} de {pagination.totalPages || 1}
-          </p>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+          <div className="flex items-center gap-6">
+            <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+              Página {pagination.page} de {pagination.totalPages || 1}
+            </p>
+            {pagination.onLimitChange && pagination.limit !== undefined && (
+              <div className="flex items-center gap-1.5">
+                <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                <Select value={String(pagination.limit)} onValueChange={(v) => pagination.onLimitChange!(Number(v))}>
+                  <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -1409,7 +1410,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
               className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
             >
               <ChevronLeft className="h-4 w-4" />
-              Anterior
+              <span className="max-lg:hidden">Anterior</span>
             </Button>
             <Button
               variant="outline"
@@ -1418,7 +1419,7 @@ function ContratosTable({ profesionales, formatCurrency, onEdit, onEliminar, can
               disabled={pagination.page >= pagination.totalPages}
               className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
             >
-              Siguiente
+              <span className="max-lg:hidden">Siguiente</span>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -1437,9 +1438,10 @@ interface PagosTableProps {
   onDelete?: (pago: Pago) => void;
   /** Si false, no se muestra la columna Acciones (ej. cuando el usuario es profesional) */
   showAcciones?: boolean;
+  pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void; limit?: number; onLimitChange?: (limit: number) => void };
 }
 
-function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMora, onDelete, showAcciones = true }: PagosTableProps) {
+function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMora, onDelete, showAcciones = true, pagination }: PagosTableProps) {
   if (pagos.length === 0) {
     return (
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
@@ -1459,10 +1461,10 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
   }
 
   return (
-    <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:rounded-[12px]">
-      <div className="max-lg:overflow-x-auto">
+    <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:rounded-[12px] max-lg:min-h-[280px]">
+      <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
       <Table className="max-lg:min-w-[560px]">
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
           <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
             <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 max-lg:py-3 min-w-[160px]">
               Período
@@ -1503,7 +1505,7 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
               <TableCell className="min-w-[200px]">
                 <div>
                   <p className="font-medium text-[#374151] font-['Inter'] text-[15px] mb-0">
-                    {pago.profesional_nombre} {pago.profesional_apellido}
+                    {formatDisplayText(pago.profesional_nombre)} {formatDisplayText(pago.profesional_apellido)}
                   </p>
                   <p className="text-xs text-[#6B7280] md:hidden font-['Inter'] mt-0">
                     {formatCurrency(pago.monto)}
@@ -1589,6 +1591,53 @@ function PagosTable({ pagos, formatCurrency, showPayButton = false, onPay, onMor
         </TableBody>
       </Table>
       </div>
+      {pagination && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+          <div className="flex items-center gap-6">
+            <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+              Página {pagination.page} de {pagination.totalPages || 1}
+            </p>
+            {pagination.onLimitChange && pagination.limit !== undefined && (
+              <div className="flex items-center gap-1.5">
+                <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                <Select value={String(pagination.limit)} onValueChange={(v) => pagination.onLimitChange!(Number(v))}>
+                  <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+              disabled={pagination.page <= 1}
+              className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span className="max-lg:hidden">Anterior</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pagination.onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+              disabled={pagination.page >= pagination.totalPages}
+              className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+            >
+              <span className="max-lg:hidden">Siguiente</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

@@ -23,6 +23,7 @@ export interface CreatePacienteData {
   apellido: string;
   fecha_nacimiento?: string;
   telefono: string;
+  whatsapp?: string;
   email?: string;
   direccion?: string;
   obra_social?: string;
@@ -30,6 +31,8 @@ export interface CreatePacienteData {
   plan?: string;
   contacto_emergencia_nombre?: string;
   contacto_emergencia_telefono?: string;
+  contacto_emergencia_nombre_2?: string;
+  contacto_emergencia_telefono_2?: string;
   activo?: boolean;
 }
 
@@ -193,6 +196,13 @@ export const pacientesService = {
       responseType: 'blob',
     });
     return response.data;
+  },
+
+  /**
+   * Activar o desactivar notificaciones WhatsApp para un paciente
+   */
+  toggleNotificaciones: async (pacienteId: string, activas: boolean): Promise<void> => {
+    await api.put(`/pacientes/${pacienteId}`, { notificaciones_activas: activas });
   },
 
   /**

@@ -9,7 +9,7 @@ import type { UserRole } from '@/types';
 
 // Rutas permitidas por rol (deben coincidir con el sidebar). Incluye /perfil para todos.
 const RUTAS_POR_ROL: Record<UserRole, string[]> = {
-  administrador: ['/dashboard', '/contrato', '/turnos', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/logs', '/perfil'],
+  administrador: ['/dashboard', '/contrato', '/turnos', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/logs', '/recordatorios', '/perfil'],
   profesional: ['/turnos', '/pacientes', '/contrato', '/perfil'],
   secretaria: ['/turnos', '/contrato', '/pacientes', '/agendas', '/usuarios', '/especialidades', '/obras-sociales', '/perfil'],
 };
@@ -97,7 +97,7 @@ export function DashboardLayout() {
           sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[224px]'
         )}
       >
-        <div className="p-4 md:p-6 lg:p-8 text-[#374151]">
+        <div className="p-4 md:p-6 lg:p-8 text-[#374151] flex flex-col h-full">
           <ErrorBoundary fullPage={false}>
             <Outlet />
           </ErrorBoundary>

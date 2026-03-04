@@ -484,7 +484,7 @@ export default function AdminProfesionales() {
   const canUnblock = hasPermission(user, 'profesionales.desbloquear');
 
   return (
-    <div className="space-y-8">
+    <div className="flex-1 flex flex-col space-y-8 max-lg:space-y-4 min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -572,14 +572,14 @@ export default function AdminProfesionales() {
 
       {/* Tabla / Empty States */}
       {isLoading ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+        <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[#2563eb]" />
             <p className="text-[#6B7280] font-['Inter'] text-base">Cargando profesionales...</p>
           </CardContent>
         </Card>
       ) : filteredProfesionales.length === 0 ? (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+        <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
               <Stethoscope className="h-10 w-10 text-[#2563eb] stroke-[2]" />
@@ -602,9 +602,10 @@ export default function AdminProfesionales() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden">
+        <Card className="flex-1 flex flex-col overflow-hidden min-h-0 border border-[#E5E7EB] rounded-[16px] shadow-sm max-lg:min-h-[280px]">
+          <div className="flex-1 overflow-auto min-h-0 max-lg:min-h-[200px]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-[#F9FAFB]">
               <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4">
                   Profesional
@@ -809,6 +810,7 @@ export default function AdminProfesionales() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </Card>
       )}
 
