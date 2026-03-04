@@ -49,7 +49,6 @@ import {
   BellOff,
 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
-import { format } from 'date-fns';
 import { recordatoriosService, type RecordatorioEntry, type EstadoRecordatorio } from '@/services/recordatorios.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { formatDisplayText } from '@/lib/utils';

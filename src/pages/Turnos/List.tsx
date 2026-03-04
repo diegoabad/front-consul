@@ -476,12 +476,11 @@ export default function AdminTurnos() {
 
   const { data: paginatedTurnos, isLoading } = useQuery({
     queryKey: ['turnos', filters],
-    queryFn: () => turnosService.getAllPaginated(filters as Parameters<typeof turnosService.getAllPaginated>[0]),
+    queryFn: () => turnosService.getAllPaginated(filters as unknown as Parameters<typeof turnosService.getAllPaginated>[0]),
     enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
   });
 
   const filteredTurnos = paginatedTurnos?.data ?? [];
-  const total = paginatedTurnos?.total ?? 0;
   const totalPages = paginatedTurnos?.totalPages ?? 0;
 
   // Si la página restaurada excede totalPages (ej. datos cambiaron), volver a 1

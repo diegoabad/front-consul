@@ -863,7 +863,7 @@ export default function ForoList() {
         onOpenChange={(o) => !o && setTemaToDelete(null)}
         title="Eliminar tema"
         description={temaToDelete ? <>¿Estás seguro de que deseas eliminar el tema <span className="font-semibold text-[#374151]">&quot;{formatDisplayText(temaToDelete.titulo)}&quot;</span>? Se eliminarán todas las respuestas. Esta acción no se puede deshacer.</> : ''}
-        onConfirm={async () => temaToDelete && deleteMutation.mutateAsync(temaToDelete.id)}
+        onConfirm={async () => { if (temaToDelete) await deleteMutation.mutateAsync(temaToDelete.id); }}
         isLoading={deleteMutation.isPending}
       />
     </div>

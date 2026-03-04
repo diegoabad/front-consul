@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Loader2, Send, MessageSquare, Reply, Pencil,
 import { toast as reactToastify } from 'react-toastify';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { foroService, type ForoTema, type ForoPost, type RootWithReplies } from '@/services/foro.service';
+import { foroService, type ForoPost, type RootWithReplies } from '@/services/foro.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';

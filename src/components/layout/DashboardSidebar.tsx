@@ -153,9 +153,9 @@ export function DashboardSidebar({ role, user, collapsed = false, onNavigate, mo
   const location = useLocation();
 
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
-  const beforeSeparator = filterMenuForPermissions(config.beforeSeparator, user);
-  const afterSeparator = filterMenuForPermissions(config.afterSeparator, user);
-  const afterSecondSeparator = filterMenuForPermissions(config.afterSecondSeparator ?? [], user);
+  const beforeSeparator = filterMenuForPermissions(config.beforeSeparator, user ?? null);
+  const afterSeparator = filterMenuForPermissions(config.afterSeparator, user ?? null);
+  const afterSecondSeparator = filterMenuForPermissions(config.afterSecondSeparator ?? [], user ?? null);
   return (
     <aside
       className={cn(
