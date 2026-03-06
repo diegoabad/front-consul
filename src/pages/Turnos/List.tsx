@@ -3380,7 +3380,7 @@ export default function AdminTurnos() {
                                   className="w-full px-4 py-3 text-left hover:bg-[#F3F4F6] border-b border-[#F3F4F6] last:border-b-0 font-['Inter'] text-[14px] text-[#374151] flex items-center justify-between gap-2"
                                 >
                                   <span>
-                                    {formatDisplayText(p.apellido)}, {formatDisplayText(p.nombre)}
+                                    {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
                                     {p.dni ? ` — DNI: ${formatDni(p.dni)}` : ''}
                                   </span>
                                 </button>

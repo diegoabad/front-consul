@@ -582,11 +582,11 @@ export default function AdminPacientes() {
                         </Avatar>
                         <div className="min-w-0 flex-1">
                           <TruncateWithTooltip
-                            value={`${formatDisplayText(paciente.apellido)}, ${formatDisplayText(paciente.nombre)}`}
+                            value={`${formatDisplayText(paciente.nombre)} ${formatDisplayText(paciente.apellido)}`}
                             maxWidth="max-w-full"
                             className="font-medium text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px]"
                           >
-                            {formatDisplayText(paciente.apellido)}, {formatDisplayText(paciente.nombre)}
+                            {formatDisplayText(paciente.nombre)} {formatDisplayText(paciente.apellido)}
                           </TruncateWithTooltip>
                           {!isProfesional && paciente.email && (
                             <TruncateWithTooltip
@@ -1252,7 +1252,7 @@ export default function AdminPacientes() {
                   Exportar historia clínica
                 </DialogTitle>
                 <DialogDescription className="text-sm text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  {pacienteForPDF ? `${formatDisplayText(pacienteForPDF.apellido)}, ${formatDisplayText(pacienteForPDF.nombre)}` : ''}
+                  {pacienteForPDF ? `${formatDisplayText(pacienteForPDF.nombre)} ${formatDisplayText(pacienteForPDF.apellido)}` : ''}
                 </DialogDescription>
               </div>
             </div>
