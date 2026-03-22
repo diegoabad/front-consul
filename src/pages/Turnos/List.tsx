@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -187,6 +187,79 @@ function generarOpcionesHora(inicio: string, finExcl: string, pasoMinutos: numbe
     current = sumarMinutos(current, pasoMinutos);
   }
   return opciones;
+}
+
+type AgendaSlotDia = { hora_inicio: string; hora_fin: string; duracion_turno_minutos: number };
+
+type ExcepcionAgendaLike = {
+  fecha?: string | null;
+  hora_inicio: string;
+  hora_fin: string;
+  duracion_turno_minutos?: number | null;
+};
+
+type ConfigAgendaLike = {
+  dia_semana: number;
+  activo: boolean;
+  vigencia_desde?: unknown;
+  vigencia_hasta?: unknown;
+  hora_inicio: string;
+  hora_fin: string;
+  duracion_turno_minutos?: number | null;
+};
+
+function getDiaSemanaLocalAgenda(fechaStr: string): number {
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).getDay();
+}
+
+function toDateStrVigencia(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  if (typeof v === 'string') {
+    const s = String(v).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  }
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+/** Slots de agenda / día puntual para una fecha (sin caché; usar con mapa de excepciones indexado). */
+function computeAgendaSlotsForDate(
+  fechaStr: string,
+  excepcionesPorFecha: Map<string, ExcepcionAgendaLike[]>,
+  agendasDelProfesional: ConfigAgendaLike[]
+): AgendaSlotDia[] {
+  const excepcionesDelDia = excepcionesPorFecha.get(fechaStr);
+  if (excepcionesDelDia && excepcionesDelDia.length > 0) {
+    return excepcionesDelDia.map((e) => ({
+      hora_inicio: e.hora_inicio,
+      hora_fin: e.hora_fin,
+      duracion_turno_minutos: e.duracion_turno_minutos ?? 30,
+    }));
+  }
+  const diaSemana = getDiaSemanaLocalAgenda(fechaStr);
+  const vigentEnFecha = agendasDelProfesional.filter((a) => {
+    if (a.dia_semana === 7 || a.dia_semana !== diaSemana || !a.activo) return false;
+    const tieneVigencia =
+      (a.vigencia_desde != null && a.vigencia_desde !== '') || (a.vigencia_hasta != null && a.vigencia_hasta !== '');
+    if (!tieneVigencia) return true;
+    const desdeStr = toDateStrVigencia(a.vigencia_desde);
+    const hastaStr = toDateStrVigencia(a.vigencia_hasta);
+    if (desdeStr && fechaStr < desdeStr) return false;
+    if (hastaStr && fechaStr > hastaStr) return false;
+    return true;
+  });
+  return vigentEnFecha.map((a) => ({
+    hora_inicio: a.hora_inicio,
+    hora_fin: a.hora_fin,
+    duracion_turno_minutos: a.duracion_turno_minutos ?? 30,
+  }));
 }
 
 export default function AdminTurnos() {
@@ -394,6 +467,19 @@ export default function AdminTurnos() {
     enabled: Boolean(profesionalFilter),
   });
 
+  /** Excepciones indexadas por YYYY-MM-DD (evita filtrar todo el array por cada día del calendario). */
+  const excepcionesPorFecha = useMemo(() => {
+    const m = new Map<string, ExcepcionAgendaLike[]>();
+    for (const e of excepcionesDelRango) {
+      if (!e.fecha) continue;
+      const k = String(e.fecha).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(e);
+    }
+    return m;
+  }, [excepcionesDelRango]);
+
   // Profesional sin agenda (ni config semanal ni fechas puntuales): mostrar modal "¿Querés crearla?"
   const loadingAgendaYExcepciones = loadingAgendasDelProfesional || loadingExcepcionesDelRango;
   const sinAgendaDelProfesional = Boolean(
@@ -544,42 +630,42 @@ export default function AdminTurnos() {
     enabled: Boolean(profesionalFilter),
   });
 
+  /** Bloques que tocan cada día local (evita O(bloques × días) al pintar el calendario). */
+  const bloquesPorFechaStr = useMemo(() => {
+    const m = new Map<string, typeof bloquesDelMes>();
+    for (const b of bloquesDelMes) {
+      const bStart = new Date(b.fecha_hora_inicio);
+      const bEnd = new Date(b.fecha_hora_fin);
+      let d = startOfDay(bStart);
+      const last = startOfDay(bEnd);
+      while (d.getTime() <= last.getTime()) {
+        const k = format(d, 'yyyy-MM-dd');
+        if (!m.has(k)) m.set(k, []);
+        m.get(k)!.push(b);
+        d = addDays(d, 1);
+      }
+    }
+    return m;
+  }, [bloquesDelMes]);
+
   /** Bloques del día listado (fechaFilter) para mostrar en la grilla */
   const bloquesDelDiaListado = useMemo(() => {
     if (!fechaFilter || !profesionalFilter) return [];
-    const dayStart = new Date(fechaFilter + 'T00:00:00').getTime();
-    const dayEnd = new Date(fechaFilter + 'T23:59:59.999').getTime();
-    return bloquesDelMes.filter((b) => {
-      const bStart = new Date(b.fecha_hora_inicio).getTime();
-      const bEnd = new Date(b.fecha_hora_fin).getTime();
-      return bStart < dayEnd && bEnd > dayStart;
-    });
-  }, [fechaFilter, profesionalFilter, bloquesDelMes]);
+    return bloquesPorFechaStr.get(fechaFilter) ?? [];
+  }, [fechaFilter, profesionalFilter, bloquesPorFechaStr]);
 
   /** Bloques del día seleccionado en el modal de crear (createFecha) */
   const bloquesDelDiaCreate = useMemo(() => {
     if (!createFecha || !profesionalFilter) return [];
-    const dayStart = new Date(createFecha + 'T00:00:00').getTime();
-    const dayEnd = new Date(createFecha + 'T23:59:59.999').getTime();
-    return bloquesDelMes.filter((b) => {
-      const bStart = new Date(b.fecha_hora_inicio).getTime();
-      const bEnd = new Date(b.fecha_hora_fin).getTime();
-      return bStart < dayEnd && bEnd > dayStart;
-    });
-  }, [createFecha, profesionalFilter, bloquesDelMes]);
+    return bloquesPorFechaStr.get(createFecha) ?? [];
+  }, [createFecha, profesionalFilter, bloquesPorFechaStr]);
 
   /** Bloques del día seleccionado en el modal de bloqueo (cuando es un solo día) para mostrar/eliminar */
   const bloquesDelDiaEnModal = useMemo(() => {
     if (!bloqueForm.fecha_inicio || bloqueForm.fecha_inicio !== bloqueForm.fecha_fin || !bloqueForm.profesional_id) return [];
-    const dayStart = new Date(bloqueForm.fecha_inicio + 'T00:00:00').getTime();
-    const dayEnd = new Date(bloqueForm.fecha_inicio + 'T23:59:59.999').getTime();
-    return bloquesDelMes.filter((b) => {
-      if (b.profesional_id !== bloqueForm.profesional_id) return false;
-      const bStart = new Date(b.fecha_hora_inicio).getTime();
-      const bEnd = new Date(b.fecha_hora_fin).getTime();
-      return bStart < dayEnd && bEnd > dayStart;
-    });
-  }, [bloqueForm.fecha_inicio, bloqueForm.fecha_fin, bloqueForm.profesional_id, bloquesDelMes]);
+    const day = bloqueForm.fecha_inicio;
+    return (bloquesPorFechaStr.get(day) ?? []).filter((b) => b.profesional_id === bloqueForm.profesional_id);
+  }, [bloqueForm.fecha_inicio, bloqueForm.fecha_fin, bloqueForm.profesional_id, bloquesPorFechaStr]);
 
   /** Verifica si el slot [slotStart, slotEnd] (Date) solapa con algún bloque */
   const slotSolapaConBloque = (slotStart: Date, slotEnd: Date, bloques: { fecha_hora_inicio: string; fecha_hora_fin: string }[]) => {
@@ -598,58 +684,69 @@ export default function AdminTurnos() {
     return `${part[0] ?? '00'}:${part[1] ?? '00'}`;
   };
 
-  /** Día de la semana en hora local (0=Dom, 1=Lun, ..., 6=Sab) para una fecha YYYY-MM-DD */
-  const getDiaSemanaLocal = (fechaStr: string) => {
-    const [y, m, d] = fechaStr.split('-').map(Number);
-    return new Date(y, (m ?? 1) - 1, d ?? 1).getDay();
-  };
+  /**
+   * Slots de agenda por fecha (precalculados para el rango visible y pickers).
+   * Evita filtrar excepciones/agendas por cada celda del calendario (~40+ veces por render).
+   */
+  const agendaSlotsByDateStr = useMemo(() => {
+    const map = new Map<string, AgendaSlotDia[]>();
+    if (!profesionalFilter) return map;
 
-  /** Para una fecha YYYY-MM-DD: si hay excepción ese día, devuelve esos horarios; si no, la agenda vigente EN ESA FECHA (histórico). */
-  const getAgendaForDate = useMemo(() => {
-    return (fechaStr: string): { hora_inicio: string; hora_fin: string; duracion_turno_minutos: number }[] => {
-      const excepcionesDelDia = excepcionesDelRango.filter(
-        (e) => (e.fecha && e.fecha.slice(0, 10) === fechaStr)
-      );
-      if (excepcionesDelDia.length > 0) {
-        return excepcionesDelDia.map((e) => ({
-          hora_inicio: e.hora_inicio,
-          hora_fin: e.hora_fin,
-          duracion_turno_minutos: e.duracion_turno_minutos ?? 30,
-        }));
-      }
-      const diaSemana = getDiaSemanaLocal(fechaStr);
-      /** Normalizar a YYYY-MM-DD para comparar sin efectos de zona horaria */
-      const toDateStr = (v: unknown): string | null => {
-        if (v == null || v === '') return null;
-        if (typeof v === 'string') {
-          const s = String(v).slice(0, 10);
-          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-          return null;
-        }
-        if (v instanceof Date && !Number.isNaN(v.getTime())) {
-          const y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, '0'), d = String(v.getDate()).padStart(2, '0');
-          return `${y}-${m}-${d}`;
-        }
-        return null;
-      };
-      // dia_semana 7 = "sin días fijos" (placeholder): no se incluye en slots; solo excepciones/fechas puntuales
-      const vigentEnFecha = agendasDelProfesional.filter((a) => {
-        if (a.dia_semana === 7 || a.dia_semana !== diaSemana || !a.activo) return false;
-        const tieneVigencia = a.vigencia_desde != null && a.vigencia_desde !== '' || a.vigencia_hasta != null && a.vigencia_hasta !== '';
-        if (!tieneVigencia) return true;
-        const desdeStr = toDateStr(a.vigencia_desde);
-        const hastaStr = toDateStr(a.vigencia_hasta);
-        if (desdeStr && fechaStr < desdeStr) return false;
-        if (hastaStr && fechaStr > hastaStr) return false;
-        return true;
-      });
-      return vigentEnFecha.map((a) => ({
-        hora_inicio: a.hora_inicio,
-        hora_fin: a.hora_fin,
-        duracion_turno_minutos: a.duracion_turno_minutos ?? 30,
-      }));
+    const parseYmdLocal = (s: string) => {
+      const [y, mo, d] = s.split('-').map(Number);
+      return new Date(y, mo - 1, d);
     };
-  }, [agendasDelProfesional, excepcionesDelRango]);
+
+    const addRange = (start: Date, end: Date) => {
+      eachDayOfInterval({ start, end }).forEach((day) => {
+        const k = format(day, 'yyyy-MM-dd');
+        if (!map.has(k)) {
+          map.set(
+            k,
+            computeAgendaSlotsForDate(k, excepcionesPorFecha, agendasDelProfesional as ConfigAgendaLike[])
+          );
+        }
+      });
+    };
+
+    addRange(parseYmdLocal(excepcionesDateRange.fecha_desde), parseYmdLocal(excepcionesDateRange.fecha_hasta));
+
+    const calMonthStart = startOfMonth(calendarViewMonth);
+    const calMonthEnd = endOfMonth(calendarViewMonth);
+    addRange(startOfWeek(calMonthStart, { weekStartsOn: 1 }), endOfWeek(calMonthEnd, { weekStartsOn: 1 }));
+
+    addRange(startOfMonth(createDatePickerMonth), endOfMonth(createDatePickerMonth));
+    addRange(startOfMonth(bloqueDatePickerDesdeMonth), endOfMonth(bloqueDatePickerDesdeMonth));
+    addRange(startOfMonth(bloqueDatePickerHastaMonth), endOfMonth(bloqueDatePickerHastaMonth));
+
+    const singles = [fechaFilter, createFecha, format(new Date(), 'yyyy-MM-dd')];
+    for (const s of singles) {
+      if (s && !map.has(s)) {
+        map.set(s, computeAgendaSlotsForDate(s, excepcionesPorFecha, agendasDelProfesional as ConfigAgendaLike[]));
+      }
+    }
+
+    return map;
+  }, [
+    profesionalFilter,
+    agendasDelProfesional,
+    excepcionesPorFecha,
+    excepcionesDateRange.fecha_desde,
+    excepcionesDateRange.fecha_hasta,
+    calendarViewMonth,
+    createDatePickerMonth,
+    bloqueDatePickerDesdeMonth,
+    bloqueDatePickerHastaMonth,
+    fechaFilter,
+    createFecha,
+  ]);
+
+  const getAgendaForDate = useCallback(
+    (fechaStr: string): AgendaSlotDia[] =>
+      agendaSlotsByDateStr.get(fechaStr) ??
+      computeAgendaSlotsForDate(fechaStr, excepcionesPorFecha, agendasDelProfesional as ConfigAgendaLike[]),
+    [agendaSlotsByDateStr, excepcionesPorFecha, agendasDelProfesional]
+  );
 
   /** Hora de fin del día de hoy según agenda o excepción (para deshabilitar "hoy" si ya pasó). */
   const horaFinHoyAgenda = useMemo(() => {
@@ -733,7 +830,7 @@ export default function AdminTurnos() {
     const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
     for (const day of days) {
       const dateStr = format(day, 'yyyy-MM-dd');
-      const agendasDelDia = getAgendaForDate(dateStr);
+      const agendasDelDia = agendaSlotsByDateStr.get(dateStr) ?? [];
       if (agendasDelDia.length === 0) continue;
       const horasInicio = agendasDelDia.map((a) => horaToHHmm(a.hora_inicio));
       const horasFin = agendasDelDia.map((a) => horaToHHmm(a.hora_fin));
@@ -745,13 +842,7 @@ export default function AdminTurnos() {
         set.add(dateStr);
         continue;
       }
-      const dayStart = new Date(dateStr + 'T00:00:00').getTime();
-      const dayEnd = new Date(dateStr + 'T23:59:59.999').getTime();
-      const bloquesDelDia = bloquesDelMes.filter((b) => {
-        const bStart = new Date(b.fecha_hora_inicio).getTime();
-        const bEnd = new Date(b.fecha_hora_fin).getTime();
-        return bStart < dayEnd && bEnd > dayStart;
-      });
+      const bloquesDelDia = bloquesPorFechaStr.get(dateStr) ?? [];
       if (bloquesDelDia.length === 0) continue;
       const opciones = generarOpcionesHora(min, sumarMinutos(ultimoInicio, duracion), duracion);
       const disponibles = opciones.filter((h) => {
@@ -762,7 +853,7 @@ export default function AdminTurnos() {
       if (disponibles.length === 0) set.add(dateStr);
     }
     return set;
-  }, [profesionalFilter, getAgendaForDate, calendarViewMonth, bloquesDelMes]);
+  }, [profesionalFilter, agendaSlotsByDateStr, calendarViewMonth, bloquesPorFechaStr]);
 
   /** Opciones para hora inicio: desde min hasta max - duracion, cada duracion */
   const opcionesHoraInicio = useMemo(() => {
@@ -881,13 +972,15 @@ export default function AdminTurnos() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showPacienteDropdown]);
 
-  // Cerrar date picker al hacer clic fuera
+  // Cerrar date picker al hacer clic fuera (el popup va en portal a body, no está bajo createDatePickerRef)
   useEffect(() => {
     if (!createDatePickerOpen) return;
     const handleClick = (e: MouseEvent) => {
-      if (createDatePickerRef.current && !createDatePickerRef.current.contains(e.target as Node)) {
-        setCreateDatePickerOpen(false);
-      }
+      const target = e.target as Node;
+      if ((e.target as Element).closest?.('[data-create-cal]')) return;
+      if (createDatePickerRef.current?.contains(target)) return;
+      setCreateDatePickerOpen(false);
+      setCreateDatePickerAnchor(null);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -1890,7 +1983,7 @@ export default function AdminTurnos() {
                 const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
                 const isTodayDate = isToday(day);
                 const dateStr = format(day, 'yyyy-MM-dd');
-                const isLaborable = getAgendaForDate(dateStr).length > 0;
+                const isLaborable = (agendaSlotsByDateStr.get(dateStr)?.length ?? 0) > 0;
                 const isDiaPuntual = excepcionesDelRango.some((e) => e.fecha && e.fecha.slice(0, 10) === dateStr);
                 const isDisabled = !isLaborable;
                 const isCompletamenteBloqueado = isLaborable && diasCompletamenteBloqueadosCalendario.has(dateStr);
@@ -2433,7 +2526,7 @@ export default function AdminTurnos() {
                             const dateStr = format(day, 'yyyy-MM-dd');
                             const isCurrentMonth = isSameMonth(day, bloqueDatePickerDesdeMonth);
                             const isPast = isBefore(day, today);
-                            const isLaborable = getAgendaForDate(dateStr).length > 0;
+                            const isLaborable = (agendaSlotsByDateStr.get(dateStr)?.length ?? 0) > 0;
                             const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
                             const isDisabled = isPast || !isLaborable || isHoyYaLegó;
                             const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
@@ -2537,7 +2630,7 @@ export default function AdminTurnos() {
                             const dateStr = format(day, 'yyyy-MM-dd');
                             const isCurrentMonth = isSameMonth(day, bloqueDatePickerHastaMonth);
                             const isPast = isBefore(day, today);
-                            const isLaborable = getAgendaForDate(dateStr).length > 0;
+                            const isLaborable = (agendaSlotsByDateStr.get(dateStr)?.length ?? 0) > 0;
                             const isHoyYaLegó = isToday(day) && hoyYaPasóHorario;
                             const beforeDesde = fechaDesde ? isBefore(day, fechaDesde) : false;
                             const isDisabled = isPast || !isLaborable || isHoyYaLegó || beforeDesde;
@@ -3023,6 +3116,7 @@ export default function AdminTurnos() {
                       {createDatePickerOpen && createDatePickerAnchor && createPortal(
                         <div
                           data-create-cal
+                          onPointerDown={(e) => e.stopPropagation()}
                           style={{ position: 'fixed', top: createDatePickerAnchor.bottom + 8, left: createDatePickerAnchor.left, width: Math.min(Math.max(createDatePickerAnchor.width, 252), 308), zIndex: 9999 }}
                           className="bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto"
                         >
@@ -3031,10 +3125,10 @@ export default function AdminTurnos() {
                               {format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).charAt(0).toUpperCase() + format(createDatePickerMonth, 'MMMM yyyy', { locale: es }).slice(1)}
                             </span>
                             <div className="flex gap-1">
-                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setCreateDatePickerMonth((m) => subMonths(m, 1))}>
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb] [&_svg]:pointer-events-auto" onClick={() => setCreateDatePickerMonth((m) => subMonths(m, 1))}>
                                 <ChevronLeft className="h-3.5 w-3.5 stroke-[2]" />
                               </Button>
-                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb]" onClick={() => setCreateDatePickerMonth((m) => addMonths(m, 1))}>
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 rounded-[8px] hover:bg-[#dbeafe] text-[#2563eb] [&_svg]:pointer-events-auto" onClick={() => setCreateDatePickerMonth((m) => addMonths(m, 1))}>
                                 <ChevronRight className="h-3.5 w-3.5 stroke-[2]" />
                               </Button>
                             </div>
@@ -3053,7 +3147,7 @@ export default function AdminTurnos() {
                               return days.map((day) => {
                                 const isCurrentMonth = isSameMonth(day, createDatePickerMonth);
                                 const dateStrCreate = format(day, 'yyyy-MM-dd');
-                                const isLaborable = getAgendaForDate(dateStrCreate).length > 0;
+                                const isLaborable = (agendaSlotsByDateStr.get(dateStrCreate)?.length ?? 0) > 0;
                                 const isDisabled = !isLaborable;
                                 const isSelected = selectedCreateDate ? isSameDay(day, selectedCreateDate) : false;
                                 return (

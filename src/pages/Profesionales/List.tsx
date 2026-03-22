@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -34,17 +34,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Search, Plus, Eye, Edit, Lock, Unlock, Calendar, 
-  CreditCard, Loader2, Stethoscope, Trash2, Mail, Phone, User, MessageCircle
+  CreditCard, Loader2, Stethoscope, Trash2, Mail, Phone, User, MessageCircle,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { toast as reactToastify } from 'react-toastify';
-import { profesionalesService, type CreateProfesionalData, type BlockProfesionalData } from '@/services/profesionales.service';
+import {
+  profesionalesService,
+  type CreateProfesionalData,
+  type BlockProfesionalData,
+  type ProfesionalFiltersPaginated,
+} from '@/services/profesionales.service';
 import { usuariosService } from '@/services/usuarios.service';
 import { especialidadesService } from '@/services/especialidades.service';
 import type { Profesional } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
+import { PAGE_SIZE } from '@/lib/constants';
 
 const estadoOptions = [
   { value: 'todos', label: 'Todos los estados' },
@@ -113,6 +120,8 @@ export default function AdminProfesionales() {
   const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [estadoFilter, setEstadoFilter] = useState<string>('todos');
   const [estadoPagoFilter, setEstadoPagoFilter] = useState<string>('todos');
   const [especialidadFilter, setEspecialidadFilter] = useState<string>('todas');
@@ -142,26 +151,41 @@ export default function AdminProfesionales() {
     recordatorio_horas_antes: 24,
   });
 
-  // Fetch profesionales
-  const { data: profesionales = [], isLoading } = useQuery({
-    queryKey: ['profesionales', estadoFilter, estadoPagoFilter, especialidadFilter],
-    queryFn: async () => {
-      const filters: any = {};
-      if (estadoFilter === 'activos') {
-        filters.activo = true;
-        filters.bloqueado = false;
-      } else if (estadoFilter === 'bloqueados') {
-        filters.bloqueado = true;
-      }
-      if (estadoPagoFilter !== 'todos') {
-        filters.estado_pago = estadoPagoFilter;
-      }
-      if (especialidadFilter !== 'todas' && especialidadFilter) {
-        filters.especialidad = especialidadFilter;
-      }
-      return profesionalesService.getAll(filters);
-    },
+  const effectiveSearchTerm = searchTerm.trim().length >= 3 ? searchTerm.trim() : '';
+
+  useEffect(() => {
+    setPage(1);
+  }, [effectiveSearchTerm, estadoFilter, estadoPagoFilter, especialidadFilter]);
+
+  const listFilters = useMemo((): ProfesionalFiltersPaginated => {
+    const f: ProfesionalFiltersPaginated = {
+      page,
+      limit,
+    };
+    if (estadoFilter === 'activos') {
+      f.activo = true;
+      f.bloqueado = false;
+    } else if (estadoFilter === 'bloqueados') {
+      f.bloqueado = true;
+    }
+    if (estadoPagoFilter !== 'todos') {
+      f.estado_pago = estadoPagoFilter as 'al_dia' | 'pendiente' | 'moroso';
+    }
+    if (especialidadFilter !== 'todas' && especialidadFilter) {
+      f.especialidad = especialidadFilter;
+    }
+    if (effectiveSearchTerm) f.q = effectiveSearchTerm;
+    return f;
+  }, [page, limit, estadoFilter, estadoPagoFilter, especialidadFilter, effectiveSearchTerm]);
+
+  const { data: paginatedResponse, isLoading } = useQuery({
+    queryKey: ['profesionales', 'list', listFilters],
+    queryFn: () => profesionalesService.getAllPaginated(listFilters),
   });
+
+  const profesionales = paginatedResponse?.data ?? [];
+  const total = paginatedResponse?.total ?? 0;
+  const totalPages = paginatedResponse?.totalPages ?? 0;
 
   // Fetch usuarios con rol profesional para el select
   const { data: usuariosProfesionalesResponse } = useQuery({
@@ -175,23 +199,6 @@ export default function AdminProfesionales() {
     queryKey: ['especialidades'],
     queryFn: () => especialidadesService.getAll(),
   });
-
-  // Filter profesionales
-  const filteredProfesionales = useMemo(() => {
-    let result = profesionales;
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(p => 
-        `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase().includes(term) ||
-        p.email?.toLowerCase().includes(term) ||
-        p.matricula?.toLowerCase().includes(term) ||
-        p.especialidad?.toLowerCase().includes(term)
-      );
-    }
-
-    return result;
-  }, [profesionales, searchTerm]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -473,9 +480,14 @@ export default function AdminProfesionales() {
     setEstadoFilter('todos');
     setEstadoPagoFilter('todos');
     setEspecialidadFilter('todas');
+    setPage(1);
   };
 
-  const hasActiveFilters = searchTerm || estadoFilter !== 'todos' || estadoPagoFilter !== 'todos' || especialidadFilter !== 'todas';
+  const hasActiveFilters =
+    searchTerm.trim().length > 0 ||
+    estadoFilter !== 'todos' ||
+    estadoPagoFilter !== 'todos' ||
+    especialidadFilter !== 'todas';
 
   const canCreate = hasPermission(user, 'profesionales.crear');
   const canUpdate = hasPermission(user, 'profesionales.actualizar');
@@ -492,7 +504,11 @@ export default function AdminProfesionales() {
             Profesionales
           </h1>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
-            {isLoading ? 'Cargando...' : `${filteredProfesionales.length} ${filteredProfesionales.length === 1 ? 'profesional registrado' : 'profesionales registrados'}`}
+            {isLoading
+              ? 'Cargando...'
+              : totalPages > 0
+                ? `Mostrando ${(page - 1) * limit + 1}-${Math.min(page * limit, total)} de ${total} profesionales`
+                : `${total} ${total === 1 ? 'profesional registrado' : 'profesionales registrados'}`}
           </p>
         </div>
         {canCreate && (
@@ -514,7 +530,7 @@ export default function AdminProfesionales() {
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#9CA3AF] stroke-[2]" />
               <Input
-                placeholder="Buscar por nombre, email, matrícula o especialidad..."
+                placeholder="Buscar (mín. 3 letras): nombre, email, matrícula o especialidad..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-12 h-12 border-[#D1D5DB] rounded-[10px] text-[16px] font-['Inter'] focus:border-[#2563eb] focus:ring-[#2563eb]/20 transition-all duration-200"
@@ -578,7 +594,7 @@ export default function AdminProfesionales() {
             <p className="text-[#6B7280] font-['Inter'] text-base">Cargando profesionales...</p>
           </CardContent>
         </Card>
-      ) : filteredProfesionales.length === 0 ? (
+      ) : profesionales.length === 0 ? (
         <Card className="flex-1 border border-[#E5E7EB] rounded-[16px] shadow-sm">
           <CardContent className="p-16 text-center">
             <div className="h-20 w-20 rounded-full bg-[#dbeafe] flex items-center justify-center mx-auto mb-4">
@@ -588,9 +604,15 @@ export default function AdminProfesionales() {
               No hay profesionales
             </h3>
             <p className="text-[#6B7280] mb-6 font-['Inter']">
-              {hasActiveFilters ? 'No se encontraron profesionales con los filtros aplicados' : 'Comienza agregando tu primer profesional'}
+              {effectiveSearchTerm || estadoFilter !== 'todos' || estadoPagoFilter !== 'todos' || especialidadFilter !== 'todas'
+                ? 'No se encontraron profesionales con los filtros aplicados'
+                : 'Comienza agregando tu primer profesional'}
             </p>
-            {canCreate && !hasActiveFilters && (
+            {canCreate &&
+              !effectiveSearchTerm &&
+              estadoFilter === 'todos' &&
+              estadoPagoFilter === 'todos' &&
+              especialidadFilter === 'todas' && (
               <Button
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
                 className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-6 py-3 h-auto font-medium"
@@ -631,7 +653,7 @@ export default function AdminProfesionales() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProfesionales.map((prof) => (
+              {profesionales.map((prof) => (
                 <TableRow
                   key={prof.id}
                   className="border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors duration-150"
@@ -811,6 +833,51 @@ export default function AdminProfesionales() {
             </TableBody>
           </Table>
           </div>
+          {totalPages >= 1 && !isLoading && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
+              <div className="flex items-center gap-6">
+                <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                  Página {page} de {totalPages || 1}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Por página</span>
+                  <Select value={String(limit)} onValueChange={(v) => { setLimit(Number(v)); setPage(1); }}>
+                    <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="max-lg:hidden">Anterior</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="h-9 rounded-[8px] border-[#D1D5DB] font-['Inter'] m-0"
+                >
+                  <span className="max-lg:hidden">Siguiente</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

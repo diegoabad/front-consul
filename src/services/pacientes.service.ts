@@ -36,7 +36,20 @@ export interface CreatePacienteData {
   activo?: boolean;
 }
 
-export interface UpdatePacienteData extends Partial<CreatePacienteData> {}
+/** En PUT, `null` borra el valor en BD; `undefined` omite el campo. */
+export interface UpdatePacienteData extends Partial<CreatePacienteData> {
+  fecha_nacimiento?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  direccion?: string | null;
+  obra_social?: string | null;
+  numero_afiliado?: string | null;
+  plan?: string | null;
+  contacto_emergencia_nombre?: string | null;
+  contacto_emergencia_telefono?: string | null;
+  contacto_emergencia_nombre_2?: string | null;
+  contacto_emergencia_telefono_2?: string | null;
+}
 
 export const pacientesService = {
   /**

@@ -27,7 +27,7 @@ import { profesionalesService } from '@/services/profesionales.service';
 import { toast as reactToastify } from 'react-toastify';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
-import { formatDisplayText } from '@/lib/utils';
+import { formatDisplayText, parseLocalDateFromYMD } from '@/lib/utils';
 import { TruncateWithTooltip } from '@/components/shared/TruncateWithTooltip';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -48,7 +48,7 @@ const formatDNI = (dni: string): string => {
 const calcularEdad = (fechaNacimiento?: string): number | null => {
   if (!fechaNacimiento) return null;
   const hoy = new Date();
-  const nacimiento = new Date(fechaNacimiento);
+  const nacimiento = parseLocalDateFromYMD(fechaNacimiento);
   let edad = hoy.getFullYear() - nacimiento.getFullYear();
   const m = hoy.getMonth() - nacimiento.getMonth();
   if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
@@ -526,7 +526,7 @@ export default function PacienteDetail() {
                         <p className="text-sm text-[#6B7280] font-['Inter'] mb-0">Fecha de Nacimiento</p>
                         <p className="text-[15px] font-medium text-[#374151] font-['Inter'] mb-0">
                           {paciente.fecha_nacimiento 
-                            ? `${format(new Date(paciente.fecha_nacimiento), 'dd/MM/yyyy', { locale: es })}${edad ? ` (${edad} años)` : ''}`
+                            ? `${format(parseLocalDateFromYMD(paciente.fecha_nacimiento), 'dd/MM/yyyy', { locale: es })}${edad ? ` (${edad} años)` : ''}`
                             : <span className="text-[#9CA3AF] italic">No especificado</span>
                           }
                         </p>

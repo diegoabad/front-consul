@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -85,6 +87,7 @@ export function CreatePacienteModal({
   const [isVincularLoading, setIsVincularLoading] = useState(false);
   const [vinculadoOk, setVinculadoOk] = useState(false);
   const navigate = useNavigate();
+  const modalScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -307,7 +310,7 @@ export function CreatePacienteModal({
         </DialogHeader>
 
         {/* Contenido scrolleable */}
-        <div className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
+        <div ref={modalScrollRef} className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
           {step === 'dni' ? (
             <div className="space-y-4">
               {!pacienteExistente ? (
@@ -402,13 +405,16 @@ export function CreatePacienteModal({
                   <Label htmlFor="fecha_nacimiento" className="text-[14px] font-medium text-[#374151] font-['Inter']">
                     Fecha de Nacimiento
                   </Label>
-                  <Input
+                  <DatePicker
                     id="fecha_nacimiento"
-                    type="date"
-                    value={formData.fecha_nacimiento || ''}
-                    onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value || '' })}
-                    autoComplete="off"
-                    className="h-[48px] border-[1.5px] border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    value={formData.fecha_nacimiento ?? ''}
+                    onChange={(v) => setFormData({ ...formData, fecha_nacimiento: v })}
+                    placeholder="Seleccionar fecha"
+                    max={format(new Date(), 'yyyy-MM-dd')}
+                    scrollContainerRef={modalScrollRef}
+                    showMonthYearSelects
+                    directInputWhenEmpty
+                    className="h-[48px] w-full border-[#D1D5DB] rounded-[10px] text-[15px] font-['Inter']"
                   />
                 </div>
               </div>

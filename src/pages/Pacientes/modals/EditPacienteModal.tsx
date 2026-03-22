@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { format } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -17,16 +19,16 @@ import { User, Loader2, Phone, Mail, Copy, Info, MapPin } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { toast as reactToastify } from 'react-toastify';
-import type { CreatePacienteData } from '@/services/pacientes.service';
+import type { CreatePacienteData, UpdatePacienteData } from '@/services/pacientes.service';
 import type { Paciente } from '@/types';
 import { obrasSocialesService } from '@/services/obras-sociales.service';
-import { formatDisplayText } from '@/lib/utils';
+import { formatDisplayText, normalizeDateOnlyForInput } from '@/lib/utils';
 
 interface EditPacienteModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   paciente: Paciente | null;
-  onSubmit: (data: CreatePacienteData) => Promise<void>;
+  onSubmit: (data: UpdatePacienteData) => Promise<void>;
   isSubmitting?: boolean;
 }
 
@@ -38,6 +40,7 @@ export function EditPacienteModal({
   isSubmitting = false,
 }: EditPacienteModalProps) {
   const queryClient = useQueryClient();
+  const modalScrollRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState<CreatePacienteData>({
     dni: '',
     nombre: '',
@@ -104,26 +107,44 @@ export function EditPacienteModal({
     }
   };
 
-  // Normalizar obra_social al valor exacto de la lista (mismo texto que en el Select) para que quede seleccionada
-  const obraSocialInicial = useMemo(() => {
-    const valor = paciente?.obra_social?.trim();
-    if (!valor || obrasSociales.length === 0) return valor || '';
-    const match = obrasSociales.find((os) => (os.nombre || '').trim().toLowerCase() === valor.toLowerCase());
+  /** Evita resetear el formulario cuando cargan obras sociales u otra referencia de paciente (mismo id). */
+  const editSessionRef = useRef<{ patientId: string | null; obraCanonicalized: boolean }>({
+    patientId: null,
+    obraCanonicalized: false,
+  });
+
+  function obraSocialDisplayForForm(p: Paciente, lista: typeof obrasSociales): string {
+    const valor = p.obra_social?.trim() ?? '';
+    if (!valor || lista.length === 0) return valor;
+    const match = lista.find((os) => (os.nombre || '').trim().toLowerCase() === valor.toLowerCase());
     return match ? match.nombre : valor;
-  }, [paciente?.obra_social, obrasSociales]);
+  }
 
   useEffect(() => {
-    if (paciente) {
+    if (!open) {
+      editSessionRef.current = { patientId: null, obraCanonicalized: false };
+      return;
+    }
+    if (!paciente) return;
+
+    const pid = paciente.id;
+    const isNewSession = editSessionRef.current.patientId !== pid;
+
+    if (isNewSession) {
+      editSessionRef.current = {
+        patientId: pid,
+        obraCanonicalized: obrasSociales.length > 0,
+      };
       setFormData({
         dni: paciente.dni,
         nombre: paciente.nombre,
         apellido: paciente.apellido,
-        fecha_nacimiento: paciente.fecha_nacimiento || '',
+        fecha_nacimiento: normalizeDateOnlyForInput(paciente.fecha_nacimiento) || '',
         telefono: paciente.telefono || '',
         whatsapp: paciente.whatsapp || '',
         email: paciente.email || '',
         direccion: paciente.direccion || '',
-        obra_social: obraSocialInicial,
+        obra_social: obraSocialDisplayForForm(paciente, obrasSociales),
         numero_afiliado: paciente.numero_afiliado || '',
         plan: paciente.plan || '',
         contacto_emergencia_nombre: paciente.contacto_emergencia_nombre ? formatDisplayText(paciente.contacto_emergencia_nombre) : '',
@@ -136,8 +157,25 @@ export function EditPacienteModal({
       const hayContacto = !!(paciente.contacto_emergencia_nombre?.trim() || paciente.contacto_emergencia_telefono?.trim());
       setTieneContactoEmergencia(hayContacto);
       setTieneSegundoContacto(!!(paciente.contacto_emergencia_nombre_2?.trim() || paciente.contacto_emergencia_telefono_2?.trim()));
+      return;
     }
-  }, [paciente, obraSocialInicial]);
+
+    // Misma sesión de edición: solo alinear obra social al catálogo cuando llega la lista (sin tocar el resto del formulario)
+    if (
+      !editSessionRef.current.obraCanonicalized &&
+      obrasSociales.length > 0 &&
+      paciente.obra_social?.trim()
+    ) {
+      editSessionRef.current.obraCanonicalized = true;
+      const valor = paciente.obra_social.trim();
+      const canonical = obraSocialDisplayForForm(paciente, obrasSociales);
+      setFormData((prev) => {
+        if (prev.obra_social.trim().toLowerCase() !== valor.toLowerCase()) return prev;
+        if (prev.obra_social === canonical) return prev;
+        return { ...prev, obra_social: canonical };
+      });
+    }
+  }, [open, paciente, obrasSociales]);
 
   const handleSubmit = async () => {
     try {
@@ -191,22 +229,24 @@ export function EditPacienteModal({
           }
         }
       }
-      const dataToSubmit: CreatePacienteData = {
+      const dataToSubmit: UpdatePacienteData = {
         dni: formData.dni.trim(),
         nombre: formData.nombre.trim(),
         apellido: formData.apellido.trim(),
-        fecha_nacimiento: formData.fecha_nacimiento && formData.fecha_nacimiento.trim() ? formData.fecha_nacimiento.trim() : undefined,
+        fecha_nacimiento: formData.fecha_nacimiento?.trim() ? formData.fecha_nacimiento.trim() : null,
         telefono: telefonoTrim,
-        whatsapp: whatsappTrim || undefined,
-        email: formData.email?.trim() || undefined,
-        direccion: formData.direccion?.trim() || undefined,
-        obra_social: tieneCobertura ? (formData.obra_social?.trim() || undefined) : undefined,
-        numero_afiliado: tieneCobertura ? (formData.numero_afiliado?.trim() || undefined) : undefined,
-        plan: formData.plan?.trim() || undefined,
-        contacto_emergencia_nombre: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre?.trim() || undefined) : undefined,
-        contacto_emergencia_telefono: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono?.trim() || undefined) : undefined,
-        contacto_emergencia_nombre_2: tieneContactoEmergencia && tieneSegundoContacto ? (formData.contacto_emergencia_nombre_2?.trim() || undefined) : undefined,
-        contacto_emergencia_telefono_2: tieneContactoEmergencia && tieneSegundoContacto ? (formData.contacto_emergencia_telefono_2?.trim() || undefined) : undefined,
+        whatsapp: whatsappTrim ? whatsappTrim : null,
+        email: formData.email?.trim() ? formData.email.trim() : null,
+        direccion: formData.direccion?.trim() ? formData.direccion.trim() : null,
+        obra_social: tieneCobertura ? (formData.obra_social?.trim() || null) : null,
+        numero_afiliado: tieneCobertura ? (formData.numero_afiliado?.trim() || null) : null,
+        plan: tieneCobertura ? (formData.plan?.trim() || null) : null,
+        contacto_emergencia_nombre: tieneContactoEmergencia ? (formData.contacto_emergencia_nombre?.trim() || null) : null,
+        contacto_emergencia_telefono: tieneContactoEmergencia ? (formData.contacto_emergencia_telefono?.trim() || null) : null,
+        contacto_emergencia_nombre_2:
+          tieneContactoEmergencia && tieneSegundoContacto ? (formData.contacto_emergencia_nombre_2?.trim() || null) : null,
+        contacto_emergencia_telefono_2:
+          tieneContactoEmergencia && tieneSegundoContacto ? (formData.contacto_emergencia_telefono_2?.trim() || null) : null,
         activo: formData.activo,
       };
 
@@ -250,7 +290,7 @@ export function EditPacienteModal({
         </DialogHeader>
 
         {/* Contenido scrolleable */}
-        <div className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
+        <div ref={modalScrollRef} className="overflow-y-auto flex-1 min-h-0 px-8 max-lg:px-4 py-4 scrollbar-violet">
           <div className="space-y-5 max-lg:space-y-4">
             {/* Sección: Datos Personales */}
             <div className="space-y-3 max-lg:space-y-2">
@@ -316,13 +356,16 @@ export function EditPacienteModal({
                   <Label htmlFor="edit-fecha_nacimiento" className="text-[14px] font-medium text-[#374151] font-['Inter']">
                     Fecha de Nacimiento
                   </Label>
-                  <Input
+                  <DatePicker
                     id="edit-fecha_nacimiento"
-                    type="date"
-                    value={formData.fecha_nacimiento || ''}
-                    onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value || '' })}
-                    autoComplete="off"
-                    className="h-[48px] max-lg:h-10 border-[1.5px] border-[#D1D5DB] rounded-[10px] max-lg:rounded-[8px] text-[15px] max-lg:text-[14px] font-['Inter'] focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all duration-200"
+                    value={formData.fecha_nacimiento ?? ''}
+                    onChange={(v) => setFormData({ ...formData, fecha_nacimiento: v })}
+                    placeholder="Seleccionar fecha"
+                    max={format(new Date(), 'yyyy-MM-dd')}
+                    scrollContainerRef={modalScrollRef}
+                    showMonthYearSelects
+                    directInputWhenEmpty
+                    className="h-[48px] max-lg:h-10 w-full border-[#D1D5DB] rounded-[10px] max-lg:rounded-[8px] text-[15px] max-lg:text-[14px] font-['Inter']"
                   />
                 </div>
               </div>

@@ -14,6 +14,8 @@ export interface ProfesionalFiltersPaginated extends ProfesionalFilters {
   /** Filtrar por un único profesional (id) */
   id?: string;
   tipo_periodo_pago?: 'mensual' | 'quincenal' | 'semanal' | 'anual';
+  /** Búsqueda en nombre, apellido, email, matrícula, especialidad */
+  q?: string;
 }
 
 export interface PaginatedProfesionalesResponse {
@@ -88,6 +90,7 @@ export const profesionalesService = {
     if (filters?.estado_pago) params.append('estado_pago', filters.estado_pago);
     if (filters?.id) params.append('id', filters.id);
     if (filters?.tipo_periodo_pago) params.append('tipo_periodo_pago', filters.tipo_periodo_pago);
+    if (filters?.q && filters.q.trim()) params.append('q', filters.q.trim());
 
     const response = await api.get<ApiResponse<PaginatedProfesionalesResponse>>(
       `/profesionales${params.toString() ? `?${params.toString()}` : ''}`

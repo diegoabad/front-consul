@@ -42,7 +42,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { pacientesService, type CreatePacienteData, type AsignacionPacienteProfesional } from '@/services/pacientes.service';
+import {
+  pacientesService,
+  type CreatePacienteData,
+  type UpdatePacienteData,
+  type AsignacionPacienteProfesional,
+} from '@/services/pacientes.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import type { Paciente } from '@/types';
 import { toast as reactToastify } from 'react-toastify';
@@ -175,7 +180,7 @@ export default function AdminPacientes() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreatePacienteData> }) =>
+    mutationFn: ({ id, data }: { id: string; data: UpdatePacienteData }) =>
       pacientesService.update(id, data),
     onSuccess: async (updatedPaciente) => {
       setShowEditModal(false);
@@ -288,7 +293,7 @@ export default function AdminPacientes() {
     setShowEditModal(true);
   };
 
-  const handleUpdate = async (data: CreatePacienteData) => {
+  const handleUpdate = async (data: UpdatePacienteData) => {
     if (!selectedPaciente) return;
     setIsSubmitting(true);
     try {
