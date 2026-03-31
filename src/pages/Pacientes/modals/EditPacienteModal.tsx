@@ -170,7 +170,8 @@ export function EditPacienteModal({
       const valor = paciente.obra_social.trim();
       const canonical = obraSocialDisplayForForm(paciente, obrasSociales);
       setFormData((prev) => {
-        if (prev.obra_social.trim().toLowerCase() !== valor.toLowerCase()) return prev;
+        const prevOs = (prev.obra_social ?? '').trim();
+        if (prevOs.toLowerCase() !== valor.toLowerCase()) return prev;
         if (prev.obra_social === canonical) return prev;
         return { ...prev, obra_social: canonical };
       });
