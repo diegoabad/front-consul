@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -380,6 +380,8 @@ export default function AdminTurnos() {
     }
     return startOfMonth(new Date());
   });
+  /** Admin: no pedir GET todas las agendas hasta abrir el selector (no hay agenda de referencia antes). */
+  const [profesionalFilterSelectOpened, setProfesionalFilterSelectOpened] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -606,7 +608,7 @@ export default function AdminTurnos() {
   }, [location.pathname]);
 
   // Fetch profesionales
-  const { data: profesionales = [] } = useQuery({
+  const { data: profesionales = [], isLoading: loadingProfesionales } = useQuery({
     queryKey: ['profesionales', 'for-turnos'],
     queryFn: () => profesionalesService.getAll({ activo: true }),
   });
@@ -616,6 +618,13 @@ export default function AdminTurnos() {
     () => profesionales.find((p: { usuario_id?: string }) => p.usuario_id === user?.id),
     [profesionales, user?.id]
   );
+
+  /** Evita llamadas a agenda/excepciones/bloques con un id huérfano (p. ej. localStorage o BD vacía). */
+  const puedeConsultarAgenda = useMemo(() => {
+    if (!profesionalFilter) return false;
+    if (loadingProfesionales) return false;
+    return profesionales.some((p) => p.id === profesionalFilter);
+  }, [profesionalFilter, loadingProfesionales, profesionales]);
 
   const [searchParams] = useSearchParams();
 
@@ -661,11 +670,24 @@ export default function AdminTurnos() {
     });
   }, [profesionalFilter, fechaFilter, estadoFilter, limit, page]);
 
+  // Si el filtro apunta a un id que ya no existe (localStorage / BD vacía), limpiar y avisar una vez
+  useEffect(() => {
+    if (loadingProfesionales) return;
+    if (!profesionalFilter) return;
+    if (profesionales.some((p) => p.id === profesionalFilter)) return;
+    setProfesionalFilter('');
+    setFechaFilter('');
+    reactToastify.info(
+      'El profesional guardado ya no está disponible. Elegí uno de la lista cuando haya profesionales cargados.',
+      { position: 'top-right', autoClose: 4500 }
+    );
+  }, [loadingProfesionales, profesionalFilter, profesionales]);
+
   // Agenda del profesional (antes que cualquier hook que la use, para evitar "before initialization")
   const { data: agendasDelProfesional = [], isLoading: loadingAgendasDelProfesional } = useQuery({
     queryKey: ['agendas', profesionalFilter, 'conHistorico'],
     queryFn: () => agendaService.getAllAgenda({ profesional_id: profesionalFilter!, activo: true, vigente: false }),
-    enabled: Boolean(profesionalFilter),
+    enabled: puedeConsultarAgenda,
   });
 
   // Días puntuales del profesional (rango: mes del calendario ± 1 mes) — antes de loadingAgendaYExcepciones
@@ -682,7 +704,7 @@ export default function AdminTurnos() {
         excepcionesDateRange.fecha_desde,
         excepcionesDateRange.fecha_hasta
       ),
-    enabled: Boolean(profesionalFilter),
+    enabled: puedeConsultarAgenda,
   });
 
   /** Excepciones indexadas por YYYY-MM-DD (evita filtrar todo el array por cada día del calendario). */
@@ -701,16 +723,22 @@ export default function AdminTurnos() {
   // Profesional sin agenda (ni config semanal ni fechas puntuales): mostrar modal "¿Querés crearla?"
   const loadingAgendaYExcepciones = loadingAgendasDelProfesional || loadingExcepcionesDelRango;
   const sinAgendaDelProfesional = Boolean(
-    profesionalFilter &&
+    puedeConsultarAgenda &&
     !loadingAgendaYExcepciones &&
     agendasDelProfesional.length === 0 &&
     excepcionesDelRango.length === 0
   );
   useEffect(() => {
-    if (isProfesional && profesionalFilter && !loadingAgendaYExcepciones && agendasDelProfesional.length === 0 && excepcionesDelRango.length === 0) {
+    if (
+      isProfesional &&
+      puedeConsultarAgenda &&
+      !loadingAgendaYExcepciones &&
+      agendasDelProfesional.length === 0 &&
+      excepcionesDelRango.length === 0
+    ) {
       setShowSinAgendaModal(true);
     }
-  }, [isProfesional, profesionalFilter, loadingAgendaYExcepciones, agendasDelProfesional.length, excepcionesDelRango.length]);
+  }, [isProfesional, puedeConsultarAgenda, loadingAgendaYExcepciones, agendasDelProfesional.length, excepcionesDelRango.length]);
 
   // Búsqueda automática de paciente por nombre o DNI (después de 3 caracteres, sin tocar lupa)
   useEffect(() => {
@@ -781,7 +809,7 @@ export default function AdminTurnos() {
   const { data: paginatedTurnos, isLoading } = useQuery({
     queryKey: ['turnos', filters],
     queryFn: () => turnosService.getAllPaginated(filters as unknown as Parameters<typeof turnosService.getAllPaginated>[0]),
-    enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
+    enabled: puedeConsultarAgenda && Boolean(fechaFilter),
     refetchInterval: agendaRefetchInterval,
     refetchOnWindowFocus: true,
   });
@@ -843,10 +871,11 @@ export default function AdminTurnos() {
     return m;
   }, [turnosPreviewRango]);
 
-  // Todas las agendas (para saber qué profesionales tienen agenda y pueden ser elegidos en Turnos)
-  const { data: todasLasAgendas = [] } = useQuery({
+  // Todas las agendas (solo admin, al abrir el desplegable): quién tiene agenda en el listado del filtro
+  const { data: todasLasAgendas = [], isLoading: loadingTodasLasAgendas } = useQuery({
     queryKey: ['agendas', 'todos-profesionales'],
     queryFn: () => agendaService.getAllAgenda({ activo: true, vigente: false }),
+    enabled: !isProfesional && profesionalFilterSelectOpened,
   });
   const profesionalesConAgendaIds = useMemo(
     () => new Set(todasLasAgendas.map((a) => a.profesional_id)),
@@ -886,7 +915,7 @@ export default function AdminTurnos() {
         new Date(bloquesQueryStartStr).toISOString(),
         new Date(bloquesQueryEndStr).toISOString()
       ),
-    enabled: Boolean(profesionalFilter),
+    enabled: puedeConsultarAgenda,
   });
 
   /** Bloques que tocan cada día local (evita O(bloques × días) al pintar el calendario). */
@@ -2264,7 +2293,8 @@ export default function AdminTurnos() {
     const dayStr = format(day, 'yyyy-MM-dd');
     const isLaborable = getAgendaForDate(dayStr).length > 0;
 
-    if (!profesionalFilter) {
+    if (loadingProfesionales) return;
+    if (!puedeConsultarAgenda) {
       reactToastify.info('Seleccioná un profesional para ver la agenda de ese día.', {
         position: 'top-right',
         autoClose: 3000,
@@ -2360,7 +2390,9 @@ export default function AdminTurnos() {
           <DialogDescription asChild>
             <div className="space-y-3 text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px]">
               <p className="mb-0">
-                Este día no tiene horario en la agenda semanal ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.
+                {isProfesional
+                  ? 'Este día no tiene horario en tu agenda semanal ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.'
+                  : 'Este día no tiene horario en la agenda semanal de este profesional ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.'}
               </p>
               {fechaFilter ? (
                 <p className="mb-0 font-medium text-[#111827]">
@@ -2383,16 +2415,27 @@ export default function AdminTurnos() {
               Cerrar
             </Button>
             {sinAgendaDelProfesional ? (
-              <Button
-                type="button"
-                onClick={() => {
-                  setShowDiaNoHabilitadoModal(false);
-                  setShowCreateAgendaModalFromTurnos(true);
-                }}
-                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] w-full sm:w-auto font-['Inter']"
-              >
-                Crear agenda semanal
-              </Button>
+              isProfesional ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowDiaNoHabilitadoModal(false);
+                    setShowCreateAgendaModalFromTurnos(true);
+                  }}
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] w-full sm:w-auto font-['Inter']"
+                >
+                  Crear agenda semanal
+                </Button>
+              ) : (
+                <Button
+                  asChild
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] w-full sm:w-auto font-['Inter']"
+                >
+                  <Link to="/agendas" onClick={() => setShowDiaNoHabilitadoModal(false)}>
+                    Ir a Agendas
+                  </Link>
+                </Button>
+              )
             ) : (
               canHabilitarDiaPuntual && (
                 <Button
@@ -2621,10 +2664,28 @@ export default function AdminTurnos() {
               </label>
               {isProfesional ? (
                 <div className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[15px] max-lg:text-[13px] text-[#374151]">
-                  {profesionalLogueado ? `${formatDisplayText(profesionalLogueado.nombre)} ${formatDisplayText(profesionalLogueado.apellido)}` : 'Cargando...'}
+                  {loadingProfesionales
+                    ? 'Cargando...'
+                    : profesionalLogueado
+                      ? `${formatDisplayText(profesionalLogueado.nombre)} ${formatDisplayText(profesionalLogueado.apellido)}`
+                      : 'No hay un profesional asociado a tu usuario en el sistema.'}
+                </div>
+              ) : loadingProfesionales ? (
+                <div className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 flex items-center px-3 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[15px] max-lg:text-[13px] text-[#6B7280]">
+                  Cargando profesionales...
+                </div>
+              ) : profesionales.length === 0 ? (
+                <div className="min-h-12 flex items-center px-3 py-2 border border-[#E5E7EB] rounded-[10px] max-lg:rounded-[6px] bg-[#F9FAFB] font-['Inter'] text-[14px] max-lg:text-[13px] text-[#6B7280] leading-snug">
+                  No hay profesionales activos cargados. Creá al menos un profesional para elegir agenda y turnos.
                 </div>
               ) : (
-              <Select value={profesionalFilter || undefined} onValueChange={setProfesionalFilter}>
+              <Select
+                value={profesionalFilter || undefined}
+                onValueChange={setProfesionalFilter}
+                onOpenChange={(open) => {
+                  if (open) setProfesionalFilterSelectOpened(true);
+                }}
+              >
                 <SelectTrigger className="h-12 min-h-12 max-lg:h-10 max-lg:min-h-10 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px] w-full focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 pl-3 max-lg:py-1.5 flex items-center">
                   <SelectValue placeholder="Seleccionar profesional" />
                 </SelectTrigger>
@@ -2633,7 +2694,7 @@ export default function AdminTurnos() {
                     <SelectItem
                       key={opt.value}
                       value={opt.value}
-                      disabled={!opt.tieneAgenda}
+                      disabled={!loadingTodasLasAgendas && !opt.tieneAgenda}
                       className="font-['Inter'] text-[13px]"
                     >
                       <span className="truncate">{opt.label}</span>
@@ -2816,11 +2877,15 @@ export default function AdminTurnos() {
                     {selectedDate
                       ? `Turnos del ${format(selectedDate, "d 'de' MMMM", { locale: es }).replace(/\s+(\w+)$/, (_, month) => ' ' + month.charAt(0).toUpperCase() + month.slice(1))}`
                       : 'Turnos'}
-                    {selectedDate && profesionalFilter ? (
+                    {selectedDate && puedeConsultarAgenda ? (
                       horarioDelDiaListado ? (
                         <span className="font-normal text-[#6B7280] text-[13px] max-lg:text-[12px]"> ({horarioDelDiaListado.min} - {horarioDelDiaListado.max})</span>
                       ) : (
-                        <span className="font-normal text-[#9CA3AF] text-[13px] max-lg:text-[12px]"> (Sin horario para este día)</span>
+                        <span className="font-normal text-[#9CA3AF] text-[13px] max-lg:text-[12px]">
+                          {isProfesional
+                            ? ' (Sin horario para este día)'
+                            : ' (Este profesional no tiene horario de atención este día)'}
+                        </span>
                       )
                     ) : null}
                   </h2>
@@ -2923,16 +2988,32 @@ export default function AdminTurnos() {
               </div>
             ) : sinAgendaDelProfesional ? (
               <div className="p-16 text-center max-lg:p-8 min-h-[200px] flex flex-col justify-center">
-                <h3 className="text-lg max-lg:text-[15px] font-semibold mb-4 text-[#374151] font-['Inter']">
-                  Tiene que crear su agenda
-                </h3>
-                <Button
-                  type="button"
-                  onClick={() => setShowCreateAgendaModalFromTurnos(true)}
-                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 py-2.5 font-medium font-['Inter']"
-                >
-                  Crear agenda
-                </Button>
+                {isProfesional ? (
+                  <>
+                    <h3 className="text-lg max-lg:text-[15px] font-semibold mb-4 text-[#374151] font-['Inter']">
+                      Tenés que crear tu agenda
+                    </h3>
+                    <Button
+                      type="button"
+                      onClick={() => setShowCreateAgendaModalFromTurnos(true)}
+                      className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 py-2.5 font-medium font-['Inter']"
+                    >
+                      Crear agenda
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg max-lg:text-[15px] font-semibold mb-3 text-[#374151] font-['Inter']">
+                      Este profesional no tiene agenda configurada
+                    </h3>
+                    <p className="text-[#6B7280] font-['Inter'] text-[15px] max-lg:text-[14px] mb-4 max-w-md mx-auto">
+                      No hay horarios semanales ni días puntuales. Como administrador, configurá la agenda del profesional desde la sección Agendas.
+                    </p>
+                    <Button asChild className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] px-5 py-2.5 font-medium font-['Inter']">
+                      <Link to="/agendas">Ir a Agendas</Link>
+                    </Button>
+                  </>
+                )}
               </div>
             ) : !fechaFilter ? (
               <div className="p-16 text-center min-h-[200px] flex flex-col justify-center">
