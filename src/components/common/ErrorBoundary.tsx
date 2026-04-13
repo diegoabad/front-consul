@@ -1,7 +1,9 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { getToken, getUser } from '@/utils/storage';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://consul-mm.onrender.com/api';
+import { getApiBaseUrl } from '@/lib/api-base-url';
+
+const API_URL = getApiBaseUrl();
 
 /** Construye el detalle completo del error para guardar en stack (visible en pestaña Detalle del modal de logs) */
 function buildErrorDetail(error: Error | null, errorInfo: ErrorInfo | null): string {

@@ -4,7 +4,9 @@
  */
 import { getToken, getUser } from '@/utils/storage';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://consul-mm.onrender.com/api';
+import { getApiBaseUrl } from '@/lib/api-base-url';
+
+const API_URL = getApiBaseUrl();
 
 function sendToLogs(payload: {
   mensaje: string;

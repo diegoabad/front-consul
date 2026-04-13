@@ -1,11 +1,12 @@
 import axios from 'axios';
 import { toast as reactToastify } from 'react-toastify';
 import type { ApiResponse } from '@/types';
+import { getApiBaseUrl } from '@/lib/api-base-url';
 import { getToken, clearAuth } from '@/utils/storage';
 import { showApiErrorToast } from '@/utils/apiErrorToast';
 
-// Vite solo expone variables que empiezan con VITE_. En Netlify la variable DEBE llamarse exactamente VITE_API_URL.
-const API_URL = import.meta.env.VITE_API_URL || 'https://consul-mm.onrender.com/api';
+// Vite solo expone variables que empiezan con VITE_. En Netlify: VITE_API_URL=https://tu-api.onrender.com (con o sin /api al final).
+const API_URL = getApiBaseUrl();
 
 // Diagnóstico: abrí la consola del navegador (F12 → Console). Si no ves la URL esperada, la variable no se leyó en el build (nombre o redeploy).
 if (typeof window !== 'undefined') {
