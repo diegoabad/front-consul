@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import type { AxiosError } from 'axios';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastContainer } from 'react-toastify';
@@ -24,11 +25,24 @@ const EspecialidadesList = lazy(() => import('./pages/Especialidades/List'));
 const ObrasSocialesList = lazy(() => import('./pages/ObrasSociales/List'));
 const LogsList = lazy(() => import('./pages/Logs/List'));
 
+/** Sin segundo intento en timeout/red/5xx: evita otro fallo ~10s después y otro toast vía interceptor */
+function queryShouldRetry(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1) return false;
+  const ax = error as AxiosError;
+  const status = ax.response?.status;
+  if (status !== undefined && (status >= 500 || status === 408 || status === 504)) return false;
+  if (!ax.response) return false;
+  return true;
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: queryShouldRetry,
+    },
+    mutations: {
+      retry: queryShouldRetry,
     },
   },
 });
