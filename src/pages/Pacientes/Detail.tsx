@@ -349,9 +349,9 @@ export default function PacienteDetail() {
   };
 
   return (
-    <div className="space-y-6 max-lg:space-y-3 max-lg:pb-12 max-lg:px-3">
+    <div className="flex flex-col flex-1 min-h-0 gap-6 max-lg:gap-3 max-lg:pb-12 max-lg:px-3">
       {/* Volver arriba (pequeño) + Tabs abajo */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 gap-6 w-full">
         <div className="space-y-3 w-full min-w-0">
           <Button
             variant="ghost"
@@ -805,7 +805,7 @@ export default function PacienteDetail() {
         )}
 
         {/* Otros Tabs */}
-        <TabsContent value="turnos" className="space-y-4">
+        <TabsContent value="turnos" className="flex flex-col flex-1 min-h-0 gap-4 data-[state=inactive]:hidden">
           <PacienteTurnos pacienteId={paciente.id} />
         </TabsContent>
 

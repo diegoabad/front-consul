@@ -73,7 +73,7 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
   const [filterFechaDesde, setFilterFechaDesde] = useState<string>('');
   const [filterFechaHasta, setFilterFechaHasta] = useState<string>('');
   const [page, setPage] = useState(1);
-  const limit = PAGE_SIZE;
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   // Filtros para la API (paginación y filtros en backend)
   const turnosQueryFilters = useMemo(() => {
@@ -99,7 +99,18 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
     enabled: !isProfesional || !!profesionalLogueado,
   });
 
-  const turnos = Array.isArray(paginatedResponse?.data) ? paginatedResponse.data : [];
+  /** Referencia estable para re-ordenar cuando React Query devuelve datos nuevos */
+  const turnosData = paginatedResponse?.data;
+  /**
+   * Cronológico ascendente (fecha + hora de inicio): el mismo día queda 20:00 antes que 23:30.
+   * Las fechas ISO (`…Z`) se ordenan bien con localeCompare sin depender del parseo local de `Date`.
+   */
+  const turnos = useMemo(() => {
+    const raw = Array.isArray(turnosData) ? turnosData : [];
+    return [...raw].sort((a, b) =>
+      (a.fecha_hora_inicio ?? '').localeCompare(b.fecha_hora_inicio ?? '')
+    );
+  }, [turnosData]);
   const total = paginatedResponse?.total ?? 0;
   const totalPages = paginatedResponse?.totalPages ?? 0;
 
@@ -110,10 +121,10 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
     }
   }, [isProfesional, profesionalLogueado?.id]);
 
-  // Reset page when filters change
+  // Reset page when filters or cantidad por página cambian
   useEffect(() => {
     setPage(1);
-  }, [filterProfesionalId, filterEstado, filterFechaDesde, filterFechaHasta]);
+  }, [filterProfesionalId, filterEstado, filterFechaDesde, filterFechaHasta, limit]);
 
   const [datePickerDesdeOpen, setDatePickerDesdeOpen] = useState(false);
   const [datePickerHastaOpen, setDatePickerHastaOpen] = useState(false);
@@ -163,9 +174,9 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
   }, [isProfesional, profesionalLogueado, profesionales]);
 
   return (
-    <div className="space-y-6 max-lg:space-y-3">
+    <div className="flex flex-col flex-1 min-h-0 gap-6 max-lg:gap-3">
       {/* Header */}
-      <div>
+      <div className="shrink-0">
         <h2 className="text-[24px] font-bold text-[#111827] font-['Poppins'] mb-0">
           Historial de Turnos
         </h2>
@@ -175,7 +186,7 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
       </div>
 
       {/* Filtros: siempre visibles para no perder selección al cargar */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
+      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm shrink-0">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-4">
               <div className="flex-1 min-w-[200px]">
@@ -296,11 +307,11 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
           </CardContent>
         </Card>
 
-      {/* Tabla siempre visible: carga o "No hay turnos" solo en el cuerpo, filtros no se mueven */}
-      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden max-lg:min-h-[280px]">
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto max-lg:min-h-[200px]">
+      {/* Tabla: crece con el alto disponible (flex); sin scroll interno — el scroll es el del layout. Mínimo alto en mobile */}
+      <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+          <div className="overflow-x-auto flex-1 min-h-[220px] max-lg:min-h-[280px]">
             <Table className="table-fixed w-full max-lg:table-auto max-lg:min-w-[940px]">
-              <TableHeader className="sticky top-0 bg-[#F9FAFB] z-10">
+              <TableHeader className="bg-[#F9FAFB] z-10">
                 <TableRow className="bg-[#F9FAFB] border-b-2 border-[#E5E7EB] hover:bg-[#F9FAFB]">
                   <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] py-4 w-1/6 min-w-0 max-lg:w-[150px] max-lg:min-w-[150px]">
                     Fecha
@@ -381,11 +392,27 @@ export default function PacienteTurnos({ pacienteId }: PacienteTurnosProps) {
               </TableBody>
             </Table>
           </div>
-          {(totalPages >= 1) && !isLoading && turnos.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-              <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
-                Página {page} de {totalPages || 1}
-              </p>
+          {(totalPages >= 1) && !isLoading && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB] shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 w-full sm:w-auto">
+                <p className="text-sm text-[#6B7280] font-['Inter'] m-0">
+                  Página {page} de {totalPages || 1}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="max-lg:hidden text-sm text-[#6B7280] font-['Inter']">Cantidad de elementos</span>
+                  <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+                    <SelectTrigger className="h-7 w-[80px] border-[#D1D5DB] rounded-[6px] font-['Inter'] text-[12px] focus:ring-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"

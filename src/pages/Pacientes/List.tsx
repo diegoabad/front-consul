@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -107,6 +107,7 @@ export default function AdminPacientes() {
     queryKey: ['profesional-by-user', user?.id],
     queryFn: () => profesionalesService.getByUsuarioId(user!.id),
     enabled: isProfesional && Boolean(user?.id),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Solo buscar cuando hay al menos 3 caracteres; si hay menos, no enviar filtro
@@ -127,6 +128,9 @@ export default function AdminPacientes() {
         q: effectiveSearchTerm || undefined,
       });
     },
+    /** Menos refetch al volver a la pantalla; el listado paginado se invalida tras mutaciones. */
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const pacientes = Array.isArray(paginatedResponse?.data) ? paginatedResponse.data : [];

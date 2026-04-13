@@ -1,4 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { pacientesService } from '@/services/pacientes.service';
+import { PAGE_SIZE } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -96,7 +99,8 @@ function renderNavItem(
   item: MenuItem,
   location: ReturnType<typeof useLocation>,
   collapsed: boolean,
-  onNavigate?: () => void
+  onNavigate?: () => void,
+  onPrefetchPacientes?: () => void
 ) {
   const isActive = location.pathname === item.url || location.pathname.startsWith(item.url + '/');
   const Icon = item.icon;
@@ -106,6 +110,7 @@ function renderNavItem(
       key={item.url}
       to={item.url}
       onClick={onNavigate}
+      onMouseEnter={item.url === '/pacientes' ? onPrefetchPacientes : undefined}
       className={cn(
         'flex items-center rounded-[10px] transition-all duration-200 text-[13px] font-medium relative group',
         collapsed ? 'justify-center px-0 py-2.5 w-full' : 'gap-2.5 px-3 py-2.5',
@@ -151,6 +156,15 @@ function filterMenuForPermissions(items: MenuItem[], user: User | null): MenuIte
 
 export function DashboardSidebar({ role, user, collapsed = false, onNavigate, mobileDrawer = false }: DashboardSidebarProps) {
   const location = useLocation();
+  const queryClient = useQueryClient();
+
+  const prefetchPacientes = () => {
+    queryClient.prefetchQuery({
+      queryKey: ['pacientes', 1, PAGE_SIZE, ''],
+      queryFn: () => pacientesService.getAll({ page: 1, limit: PAGE_SIZE }),
+      staleTime: 60 * 1000,
+    });
+  };
 
   const config = menuConfig[role] || { beforeSeparator: [], afterSeparator: [] };
   const beforeSeparator = filterMenuForPermissions(config.beforeSeparator, user ?? null);
@@ -178,13 +192,13 @@ export function DashboardSidebar({ role, user, collapsed = false, onNavigate, mo
       >
         <TooltipProvider delayDuration={300} skipDelayDuration={0}>
           <div className="space-y-1">
-            {beforeSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
+            {beforeSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate, prefetchPacientes))}
           </div>
           {afterSeparator.length > 0 && (
             <>
               <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
               <div className="space-y-1">
-                {afterSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
+                {afterSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate, prefetchPacientes))}
               </div>
             </>
           )}
@@ -192,7 +206,7 @@ export function DashboardSidebar({ role, user, collapsed = false, onNavigate, mo
             <>
               <div className={cn('border-t border-[#E5E7EB] my-3', collapsed ? 'mx-0' : 'mx-1')} aria-hidden />
               <div className="space-y-1">
-                {afterSecondSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate))}
+                {afterSecondSeparator.map((item) => renderNavItem(item, location, collapsed, onNavigate, prefetchPacientes))}
               </div>
             </>
           )}

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -271,6 +271,7 @@ export default function AdminTurnos() {
   const [fechaFilter, setFechaFilter] = useState<string>(() => storedState.current.fecha);
   const [page, setPage] = useState(() => storedState.current.page);
   const [limit, setLimit] = useState(() => storedState.current.limit);
+  /** Mes visible del calendario: alinear con la fecha persistida si existe; si no, mes actual. */
   const [calendarViewMonth, setCalendarViewMonth] = useState<Date>(() => {
     const f = storedState.current.fecha;
     if (f && /^\d{4}-\d{2}-\d{2}$/.test(f)) {
@@ -379,6 +380,7 @@ export default function AdminTurnos() {
     razon_cancelacion: '',
   });
   const [showSinAgendaModal, setShowSinAgendaModal] = useState(false);
+  const [showDiaNoHabilitadoModal, setShowDiaNoHabilitadoModal] = useState(false);
   const [showSobreturnoModal, setShowSobreturnoModal] = useState(false);
   const [pendingCreatePayload, setPendingCreatePayload] = useState<CreateTurnoData | null>(null);
   const [showConfirmHorarioFueraModal, setShowConfirmHorarioFueraModal] = useState(false);
@@ -389,6 +391,39 @@ export default function AdminTurnos() {
     if (!open) setShowGestionarAgendaModalFromTurnos(false);
   }, []);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Al entrar a Turnos: mes actual en calendario; si se vuelve desde otra pantalla (Agendas, Pacientes…), día = hoy.
+  // No usar location.key: cambia en navegaciones internas y dejaba el calendario/día desincronizado (ej. siempre marzo).
+  // queueMicrotask: leer consul_prev_route después de que DashboardLayout escriba la ruta anterior.
+  useEffect(() => {
+    if (location.pathname !== '/turnos') return;
+    const ahora = new Date();
+    const todayStr = format(ahora, 'yyyy-MM-dd');
+
+    queueMicrotask(() => {
+      let rutaAnterior = '';
+      try {
+        rutaAnterior = sessionStorage.getItem('consul_prev_route') ?? '';
+      } catch {
+        /* ignore */
+      }
+      const volvioDesdeOtraPantalla = rutaAnterior !== '' && rutaAnterior !== '/turnos';
+
+      setCalendarViewMonth(startOfMonth(ahora));
+
+      if (volvioDesdeOtraPantalla) {
+        setFechaFilter(todayStr);
+        return;
+      }
+
+      setFechaFilter((prev) => {
+        if (!prev) return prev;
+        const d = new Date(prev + 'T12:00:00');
+        return isSameMonth(d, ahora) ? prev : '';
+      });
+    });
+  }, [location.pathname]);
 
   // Fetch profesionales
   const { data: profesionales = [] } = useQuery({
@@ -404,12 +439,13 @@ export default function AdminTurnos() {
 
   const [searchParams] = useSearchParams();
 
-  // Al entrar con ?profesional=id (ej. desde Agendas "Ir a la agenda"), preseleccionar ese profesional y limpiar día
+  // Al entrar con ?profesional=id (ej. desde Agendas "Ir a la agenda"), preseleccionar ese profesional, limpiar día y mes en curso
   useEffect(() => {
     const id = searchParams.get('profesional');
     if (id) {
       setProfesionalFilter(id);
       setFechaFilter('');
+      setCalendarViewMonth(startOfMonth(new Date()));
     }
   }, [searchParams]);
 
@@ -418,11 +454,13 @@ export default function AdminTurnos() {
     if (isProfesional && profesionalLogueado?.id) setProfesionalFilter(profesionalLogueado.id);
   }, [isProfesional, profesionalLogueado?.id]);
 
-  // Al cambiar de profesional (por acción del usuario), quitar el día seleccionado
+  // Al cambiar de profesional (por acción del usuario), quitar el día seleccionado y volver al mes en curso
   const prevProfesionalRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevProfesionalRef.current !== null && prevProfesionalRef.current !== profesionalFilter) {
       setFechaFilter('');
+      setCalendarViewMonth(startOfMonth(new Date()));
+      setShowDiaNoHabilitadoModal(false);
     }
     prevProfesionalRef.current = profesionalFilter;
   }, [profesionalFilter]);
@@ -1562,6 +1600,8 @@ export default function AdminTurnos() {
   const canCreate = hasPermission(user, 'turnos.crear');
   const canUpdate = hasPermission(user, 'turnos.actualizar');
   const canDelete = hasPermission(user, 'turnos.eliminar');
+  const canHabilitarDiaPuntual =
+    hasPermission(user, 'agenda.excepciones.crear') || hasPermission(user, 'agenda.crear');
 
   const [pendingEstado, setPendingEstado] = useState<Record<string, string>>({});
   const handleUpdateEstado = useCallback((turnoId: string, nuevoEstado: string) => {
@@ -1625,6 +1665,46 @@ export default function AdminTurnos() {
     setCalendarViewMonth(startOfMonth(day));
   };
 
+  const handleClickCalendarDay = (day: Date) => {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    const isLaborable = getAgendaForDate(dayStr).length > 0;
+
+    if (!profesionalFilter) {
+      reactToastify.info('Seleccioná un profesional para ver la agenda de ese día.', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    if (isLaborable) {
+      setShowDiaNoHabilitadoModal(false);
+      handleCalendarDayClick(day);
+      return;
+    }
+
+    setFechaFilter((prev) => {
+      if (prev === dayStr) {
+        setShowDiaNoHabilitadoModal(false);
+        return '';
+      }
+      setShowDiaNoHabilitadoModal(true);
+      return dayStr;
+    });
+    setCalendarViewMonth(startOfMonth(day));
+  };
+
+  const handleFechaFilterFromPicker = (v: string) => {
+    setFechaFilter(v);
+    setCalendarViewMonth(startOfMonth(new Date(v + 'T12:00:00')));
+    if (profesionalFilter) {
+      const laborable = getAgendaForDate(v).length > 0;
+      setShowDiaNoHabilitadoModal(!laborable);
+    } else {
+      setShowDiaNoHabilitadoModal(false);
+    }
+  };
+
   const monthTitle = format(calendarMonthStart, 'MMMM yyyy', { locale: es });
   const monthTitleCapitalized = monthTitle.charAt(0).toUpperCase() + monthTitle.slice(1);
 
@@ -1663,6 +1743,77 @@ export default function AdminTurnos() {
             >
               Sí, crear agenda
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDiaNoHabilitadoModal}
+        onOpenChange={(open) => {
+          if (!open) setShowDiaNoHabilitadoModal(false);
+        }}
+      >
+        <DialogContent
+          className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl max-lg:max-w-[92vw] max-lg:px-5 gap-4"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="mb-0">
+            <DialogTitle className="pr-14 mb-0 text-[20px] max-lg:text-[18px] font-['Poppins']">
+              Día no habilitado en la agenda
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription asChild>
+            <div className="space-y-3 text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px]">
+              <p className="mb-0">
+                Este día no tiene horario en la agenda semanal ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.
+              </p>
+              {fechaFilter ? (
+                <p className="mb-0 font-medium text-[#111827]">
+                  {isLoading
+                    ? 'Cargando turnos...'
+                    : (paginatedTurnos?.total ?? 0) === 0
+                      ? 'No hay turnos registrados para este día.'
+                      : `Hay ${paginatedTurnos?.total ?? 0} turno${(paginatedTurnos?.total ?? 0) === 1 ? '' : 's'} registrados para este día.`}
+                </p>
+              ) : null}
+            </div>
+          </DialogDescription>
+          <DialogFooter className="mt-2 flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDiaNoHabilitadoModal(false)}
+              className="rounded-[10px] w-full sm:w-auto font-['Inter']"
+            >
+              Cerrar
+            </Button>
+            {sinAgendaDelProfesional ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowDiaNoHabilitadoModal(false);
+                  setShowCreateAgendaModalFromTurnos(true);
+                }}
+                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] w-full sm:w-auto font-['Inter']"
+              >
+                Crear agenda semanal
+              </Button>
+            ) : (
+              canHabilitarDiaPuntual && (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setDiaPuntualEditId(null);
+                    setShowDiaNoHabilitadoModal(false);
+                    setShowDiaPuntualModal(true);
+                  }}
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] w-full sm:w-auto font-['Inter']"
+                >
+                  <CalendarPlus className="h-4 w-4 mr-2 stroke-[2] inline" />
+                  Habilitar día puntual
+                </Button>
+              )
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1928,10 +2079,12 @@ export default function AdminTurnos() {
                 <DatePicker
                   value={fechaFilter || ''}
                   onChange={(v) => {
-                    if (v) {
-                      setFechaFilter(v);
-                      setCalendarViewMonth(startOfMonth(new Date(v + 'T12:00:00')));
+                    if (!v) {
+                      setFechaFilter('');
+                      setShowDiaNoHabilitadoModal(false);
+                      return;
                     }
+                    handleFechaFilterFromPicker(v);
                   }}
                   placeholder="Seleccionar día"
                   className="h-12 max-lg:h-10 border-[#D1D5DB] rounded-[10px] max-lg:rounded-[6px] font-['Inter'] text-[15px] max-lg:text-[13px]"
@@ -1992,16 +2145,15 @@ export default function AdminTurnos() {
                 const dayButton = (
                   <button
                     type="button"
-                    disabled={isDisabled}
-                    onClick={() => !isDisabled && handleCalendarDayClick(day)}
+                    onClick={() => handleClickCalendarDay(day)}
                     className={`
                       h-9 w-full rounded-[10px] text-[13px] font-medium font-['Inter'] transition-all
                       ${isSelected ? 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]' : ''}
-                      ${!isSelected && isDisabled && !isTodayDate ? 'text-[#9CA3AF] cursor-not-allowed opacity-50' : ''}
+                      ${!isSelected && isDisabled && !isTodayDate ? 'text-[#9CA3AF] cursor-pointer opacity-50 hover:opacity-70' : ''}
                       ${!isSelected && !isDisabled && !isCurrentMonth ? 'text-[#9CA3AF] hover:bg-[#F3F4F6]' : ''}
                       ${!isSelected && !isDisabled && isCurrentMonth && !isCompletamenteBloqueado && !isDiaPuntual && !isTodayDate ? 'text-[#374151] hover:bg-[#dbeafe]' : ''}
                       ${!isSelected && isTodayDate && !isDisabled ? 'bg-[#dbeafe] text-[#2563eb] font-semibold border-2 border-[#2563eb]' : ''}
-                      ${!isSelected && isTodayDate && isDisabled ? 'bg-[#EFF6FF] text-[#2563eb]/80 font-semibold border-2 border-[#2563eb] cursor-not-allowed opacity-70' : ''}
+                      ${!isSelected && isTodayDate && isDisabled ? 'bg-[#EFF6FF] text-[#2563eb]/80 font-semibold border-2 border-[#2563eb] cursor-pointer opacity-70 hover:opacity-90' : ''}
                       ${recuadroBloqueado ? 'bg-transparent text-gray-600 font-medium' : ''}
                       ${recuadroVerde ? 'bg-transparent text-emerald-600 font-medium hover:bg-emerald-100/50' : ''}
                     `}

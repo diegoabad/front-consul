@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardSidebar } from './DashboardSidebar';
@@ -32,6 +32,8 @@ export function DashboardLayout() {
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  /** Ruta anterior (para Turnos: al volver desde Agendas/Pacientes, ir al día de hoy). */
+  const prevPathnameRef = useRef<string | null>(null);
 
   const rutaNoPermitida = useMemo(() => {
     if (!user) return false;
@@ -53,6 +55,17 @@ export function DashboardLayout() {
   // Cerrar menú móvil al cambiar de ruta (al hacer clic en un enlace del sidebar)
   useEffect(() => {
     setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  // Guardar ruta previa en sessionStorage (Turnos lee si volvió desde otra pantalla)
+  useEffect(() => {
+    const prev = prevPathnameRef.current;
+    prevPathnameRef.current = location.pathname;
+    try {
+      sessionStorage.setItem('consul_prev_route', prev ?? '');
+    } catch {
+      /* ignore */
+    }
   }, [location.pathname]);
 
   if (!isAuthenticated || !user) {
@@ -130,11 +143,11 @@ export function DashboardLayout() {
       {/* Main Content: único área con scroll vertical en desktop */}
       <main
         className={cn(
-          'flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-white transition-all duration-300 pt-16',
+          'flex flex-1 min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-white transition-all duration-300 pt-16',
           sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[224px]'
         )}
       >
-        <div className="p-4 md:p-6 lg:p-8 text-[#374151] flex flex-col min-h-full">
+        <div className="p-4 md:p-6 lg:p-8 text-[#374151] flex flex-col flex-1 min-h-0 w-full">
           <ErrorBoundary fullPage={false}>
             <Outlet />
           </ErrorBoundary>
