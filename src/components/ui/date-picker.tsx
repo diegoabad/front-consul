@@ -36,6 +36,14 @@ export interface DatePickerProps {
    * Con fecha: un solo botón con el texto formateado; clic abre el calendario (sin campo de texto en el popup).
    */
   directInputWhenEmpty?: boolean;
+  /**
+   * Altura y estilo alineados a un Select compacto (h-9, bordes grises, texto 13px). Útil en tablas o grillas junto a un desplegable de hora.
+   */
+  dense?: boolean;
+  /** Si devuelve true para YYYY-MM-DD, ese día no se puede elegir (además de min/max y allowedDaysOfWeek). */
+  isDateDisabled?: (ymd: string) => boolean;
+  /** Si false, no se muestra el botón para limpiar la fecha (evita pasar a modo vacío y escribir a mano). Por defecto true. */
+  allowClear?: boolean;
 }
 
 function effectiveYearRange(min?: string, max?: string): { from: number; to: number } {
@@ -85,6 +93,9 @@ export function DatePicker({
   disabled = false,
   showMonthYearSelects = false,
   directInputWhenEmpty = false,
+  dense = false,
+  isDateDisabled,
+  allowClear = true,
 }: DatePickerProps) {
   const [openInternal, setOpenInternal] = useState(false);
   const isControlled = onOpenChange !== undefined;
@@ -178,6 +189,10 @@ export function DatePicker({
     }
     if (!isYmdInBounds(ymd, min, max)) {
       setEmptyInputError('Fecha fuera del rango permitido');
+      return;
+    }
+    if (isDateDisabled?.(ymd)) {
+      setEmptyInputError('Ese día no está habilitado');
       return;
     }
     setEmptyInputError(null);
@@ -297,7 +312,9 @@ export function DatePicker({
                   const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
                   const dayOfWeek = day.getDay();
                   const notAllowedDay = allowedDaysOfWeek != null && allowedDaysOfWeek.length > 0 && !allowedDaysOfWeek.includes(dayOfWeek);
-                  const isDisabled = (min && dayStr(day) < min) || (max && dayStr(day) > max) || notAllowedDay;
+                  const ds = dayStr(day);
+                  const customDisabled = Boolean(isDateDisabled?.(ds));
+                  const isDisabled = (min && ds < min) || (max && ds > max) || notAllowedDay || customDisabled;
                   return (
                     <button
                       key={day.toISOString()}
@@ -330,7 +347,10 @@ export function DatePicker({
   const showEmptyInput = directInputWhenEmpty && !value;
 
   return (
-    <div ref={containerRef} className="relative w-full min-w-0">
+    <div
+      ref={containerRef}
+      className="relative w-full min-w-0"
+    >
       {showEmptyInput ? (
         <div className="space-y-1.5">
           <div className={cn('flex w-full min-w-0', className)}>
@@ -393,6 +413,27 @@ export function DatePicker({
             <p className="text-[11px] text-[#DC2626] px-0.5">{emptyInputError}</p>
           ) : null}
         </div>
+      ) : dense ? (
+        <button
+          type="button"
+          id={!showEmptyInput ? id : undefined}
+          disabled={disabled}
+          onClick={handleOpen}
+          className={cn(
+            'relative box-border flex h-9 w-full min-h-0 shrink-0 items-center justify-start gap-2 overflow-hidden whitespace-nowrap rounded-[8px] border-[1.5px] border-[#D1D5DB] bg-white px-3 py-0 font-[\'Inter\'] text-left text-[13px] font-normal leading-none text-[#374151] shadow-none transition-colors',
+            'hover:bg-[#F9FAFB] hover:border-[#2563eb] focus:outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20',
+            !value && 'text-[#9CA3AF]',
+            disabled && 'cursor-not-allowed opacity-60 hover:bg-transparent',
+            value && !disabled && allowClear && 'pr-10',
+            className
+          )}
+        >
+          <Calendar className="h-3.5 w-3.5 shrink-0 text-[#6B7280] stroke-[2]" />
+          <span className={cn('min-w-0 flex-1 truncate text-left', value ? 'text-[#374151]' : '')}>{displayText}</span>
+          {!value ? (
+            <ChevronRight className={cn('h-4 w-4 shrink-0 text-[#6B7280] transition-transform', open && 'rotate-90')} />
+          ) : null}
+        </button>
       ) : (
         <Button
           type="button"
@@ -416,7 +457,7 @@ export function DatePicker({
         </Button>
       )}
 
-      {value && !disabled && (
+      {value && !disabled && allowClear && (
         <button
           type="button"
           aria-label="Limpiar fecha"

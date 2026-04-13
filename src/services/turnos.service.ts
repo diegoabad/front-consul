@@ -7,6 +7,8 @@ export interface Turno {
   paciente_id: string;
   fecha_hora_inicio: string; // ISO datetime
   fecha_hora_fin: string; // ISO datetime
+  serie_id?: string | null;
+  serie_secuencia?: number | null;
   estado: 'confirmado' | 'pendiente' | 'cancelado' | 'completado' | 'ausente';
   sobreturno?: boolean;
   motivo?: string;
@@ -66,6 +68,79 @@ export interface AvailabilityCheck {
   profesional_id: string;
   fecha_hora_inicio: string; // ISO datetime
   fecha_hora_fin: string; // ISO datetime
+}
+
+export type FrecuenciaRecurrencia = 'semanal' | 'quincenal' | 'mensual';
+
+export interface PreviewRecurrenciaPayload {
+  profesional_id: string;
+  paciente_id: string;
+  frecuencia: FrecuenciaRecurrencia;
+  fecha_hora_inicio: string;
+  fecha_hora_fin: string;
+  dia_semana?: number;
+  semana_del_mes?: number | null;
+  fecha_fin?: string | null;
+  max_ocurrencias?: number;
+  meses_max?: number;
+  permiso_fuera_agenda?: boolean;
+}
+
+export interface PreviewRecurrenciaFila {
+  indice: number;
+  fecha_hora_inicio: string;
+  fecha_hora_fin: string;
+  ok: boolean;
+  flags: {
+    profesional_inexistente?: boolean;
+    profesional_bloqueado?: boolean;
+    paciente_inexistente?: boolean;
+    paciente_inactivo?: boolean;
+    fuera_de_agenda?: boolean;
+    bloque?: boolean;
+    paciente_solapado?: boolean;
+    ocupado?: boolean;
+  };
+  mensaje: string | null;
+}
+
+export interface CreateRecurrenciaPayload {
+  profesional_id: string;
+  paciente_id: string;
+  motivo?: string;
+  permiso_fuera_agenda?: boolean;
+  serie: {
+    frecuencia: FrecuenciaRecurrencia;
+    mensual_modo?: 'nth_weekday' | 'dia_calendario' | null;
+    dia_semana?: number | null;
+    semana_del_mes?: number | null;
+    fecha_fin?: string | null;
+    max_ocurrencias?: number;
+  };
+  ocurrencias: Array<{
+    fecha_hora_inicio: string;
+    fecha_hora_fin: string;
+    permiso_fuera_agenda?: boolean;
+  }>;
+}
+
+/** Validar varios intervalos en una sola petición (mismo profesional/paciente). */
+export interface ValidarSlotsBatchPayload {
+  profesional_id: string;
+  paciente_id: string;
+  permiso_fuera_agenda?: boolean;
+  slots: Array<{
+    fecha_hora_inicio: string;
+    fecha_hora_fin: string;
+    permiso_fuera_agenda?: boolean;
+  }>;
+}
+
+export interface ValidarSlotsBatchResultadoFila {
+  indice: number;
+  ok: boolean;
+  flags: PreviewRecurrenciaFila['flags'];
+  mensaje: string | null;
 }
 
 export const turnosService = {
@@ -178,6 +253,58 @@ export const turnosService = {
   },
 
   /**
+   * Preview de turnos recurrentes (sin guardar)
+   */
+  previewRecurrencia: async (
+    data: PreviewRecurrenciaPayload
+  ): Promise<{ ocurrencias: PreviewRecurrenciaFila[] }> => {
+    const response = await api.post<ApiResponse<{ ocurrencias: PreviewRecurrenciaFila[] }>>(
+      '/turnos/recurrencia/preview',
+      data
+    );
+    const result = getData(response);
+    if (!result?.ocurrencias) {
+      throw new Error('Error al generar vista previa');
+    }
+    return result;
+  },
+
+  /**
+   * Validar disponibilidad de varios horarios de una vez (sin persistir).
+   * Útil para revalidar tras editar fechas en la vista previa de recurrencia.
+   */
+  validarSlotsBatch: async (
+    data: ValidarSlotsBatchPayload
+  ): Promise<{ resultados: ValidarSlotsBatchResultadoFila[] }> => {
+    const response = await api.post<ApiResponse<{ resultados: ValidarSlotsBatchResultadoFila[] }>>(
+      '/turnos/slots/validar-batch',
+      data
+    );
+    const result = getData(response);
+    if (!result?.resultados) {
+      throw new Error('Error al validar horarios');
+    }
+    return result;
+  },
+
+  /**
+   * Crear serie de turnos (lista ya editada en cliente)
+   */
+  createRecurrencia: async (
+    data: CreateRecurrenciaPayload
+  ): Promise<{ serie_id: string; turnos: Turno[] }> => {
+    const response = await api.post<ApiResponse<{ serie_id: string; turnos: Turno[] }>>(
+      '/turnos/recurrencia',
+      data
+    );
+    const result = getData(response);
+    if (!result?.turnos || !result.serie_id) {
+      throw new Error('Error al crear la serie de turnos');
+    }
+    return result;
+  },
+
+  /**
    * Crear nuevo turno
    */
   create: async (data: CreateTurnoData): Promise<Turno> => {
@@ -239,8 +366,10 @@ export const turnosService = {
 
   /**
    * Eliminar turno
+   * @param alcance solo_este (default) | desde_aqui_en_adelante (solo si hay serie_id)
    */
-  delete: async (id: string): Promise<void> => {
-    await api.delete<ApiResponse<unknown>>(`/turnos/${id}`);
+  delete: async (id: string, alcance: 'solo_este' | 'desde_aqui_en_adelante' = 'solo_este'): Promise<void> => {
+    const q = alcance !== 'solo_este' ? `?alcance=${encodeURIComponent(alcance)}` : '';
+    await api.delete<ApiResponse<unknown>>(`/turnos/${id}${q}`);
   },
 };

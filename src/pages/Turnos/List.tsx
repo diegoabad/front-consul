@@ -30,10 +30,18 @@ import {
 } from '@/components/ui/tooltip';
 import { 
   Calendar, CalendarPlus, User, Eye, X, Plus, 
-  Loader2, Filter, Stethoscope, ChevronLeft, ChevronRight, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle
+  Loader2, Filter, Stethoscope, ChevronLeft, ChevronRight, Phone, Mail, Trash2, Lock, LockOpen, AlertTriangle, Repeat
 } from 'lucide-react';
 import { toast as reactToastify } from 'react-toastify';
-import { turnosService, type CreateTurnoData, type CancelTurnoData, type UpdateTurnoData } from '@/services/turnos.service';
+import {
+  turnosService,
+  type CreateTurnoData,
+  type CancelTurnoData,
+  type UpdateTurnoData,
+  type CreateRecurrenciaPayload,
+  type PreviewRecurrenciaFila,
+  type FrecuenciaRecurrencia,
+} from '@/services/turnos.service';
 import { profesionalesService } from '@/services/profesionales.service';
 import { pacientesService } from '@/services/pacientes.service';
 import { agendaService, type CreateBloqueData, type CreateExcepcionAgendaData, type UpdateExcepcionAgendaData } from '@/services/agenda.service';
@@ -189,6 +197,55 @@ function generarOpcionesHora(inicio: string, finExcl: string, pasoMinutos: numbe
     current = sumarMinutos(current, pasoMinutos);
   }
   return opciones;
+}
+
+/** YYYY-MM-DD en hora local desde ISO */
+function isoToYmdLocal(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** HH:mm en hora local desde ISO */
+function isoToHhMmLocal(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Igual que api/recurrenciaFechas (UTC): qué ocurrencia del mismo weekday es en el mes (1–5) */
+function weekOfMonthUTC(date: Date): number {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const dow = date.getUTCDay();
+  const dom = date.getUTCDate();
+  let n = 0;
+  for (let day = 1; day <= dom; day++) {
+    const t = new Date(Date.UTC(y, m, day));
+    if (t.getUTCDay() === dow) n += 1;
+  }
+  return n;
+}
+
+function isLastWeekdayOfMonthUTC(d: Date): boolean {
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const dow = d.getUTCDay();
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  for (let day = d.getUTCDate() + 1; day <= lastDay; day++) {
+    if (new Date(Date.UTC(y, m, day)).getUTCDay() === dow) return false;
+  }
+  return true;
+}
+
+/** Metadata serie mensual alineada con generarOcurrencias (primer turno de la lista) */
+function inferSerieMensualDesdeInicio(isoInicio: string): { dia_semana: number; semana_del_mes: number | null } {
+  const d = new Date(isoInicio);
+  return {
+    dia_semana: d.getUTCDay(),
+    semana_del_mes: isLastWeekdayOfMonthUTC(d) ? null : weekOfMonthUTC(d),
+  };
 }
 
 type AgendaSlotDia = { hora_inicio: string; hora_fin: string; duracion_turno_minutos: number };
@@ -378,17 +435,38 @@ export default function AdminTurnos() {
   useEffect(() => {
     if (showCreateModal) {
       if (profesionalFilter) {
-        setCreateFormData((prev) => (prev.profesional_id !== profesionalFilter ? { ...prev, profesional_id: profesionalFilter } : prev));
+        setCreateFormData((prev) =>
+          prev.profesional_id !== profesionalFilter
+            ? { ...prev, profesional_id: profesionalFilter, paciente_id: '' }
+            : { ...prev, paciente_id: '' }
+        );
+      } else {
+        setCreateFormData((prev) => ({ ...prev, paciente_id: '' }));
       }
       setCreateFecha(fechaFilter);
       setCreateHoraInicio('09:00');
       setCreateHoraFin('09:30');
       setPacienteSearchInput('');
+      setPacienteSearchResults([]);
+      setShowPacienteDropdown(false);
       setPacienteFound(null);
       setShowQuickCreatePaciente(false);
       setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
+      setRecurrenciaFrecuencia('no');
+      setCreateRecurrenciaStep('datos');
+      setPreviewRows([]);
+      setPreviewSlotValidatingIndex(null);
     }
   }, [showCreateModal, profesionalFilter, fechaFilter]);
+
+  /** Al cerrar el modal de crear turno, refrescar la agenda (la invalidación solo a veces no repinta el día actual). */
+  const prevShowCreateModalRef = useRef(showCreateModal);
+  useEffect(() => {
+    if (prevShowCreateModalRef.current && !showCreateModal) {
+      void queryClient.refetchQueries({ queryKey: ['turnos'], type: 'all' });
+    }
+    prevShowCreateModalRef.current = showCreateModal;
+  }, [showCreateModal, queryClient]);
 
   // Form state para crear turno
   const [createFormData, setCreateFormData] = useState<CreateTurnoData>({
@@ -418,6 +496,64 @@ export default function AdminTurnos() {
   const [showPacienteDropdown, setShowPacienteDropdown] = useState(false);
   const pacienteSearchRef = useRef<HTMLDivElement>(null);
   const [isCreatingPaciente, setIsCreatingPaciente] = useState(false);
+
+  /** Paciente elegido de forma coherente (evita avanzar solo con paciente_id huérfano). */
+  const pacienteSeleccionValida = useMemo(
+    () =>
+      Boolean(
+        createFormData.paciente_id?.trim() &&
+        pacienteFound &&
+        createFormData.paciente_id === pacienteFound.id
+      ),
+    [createFormData.paciente_id, pacienteFound]
+  );
+
+  /** Recurrencia: no | semanal | quincenal | mensual */
+  const [recurrenciaFrecuencia, setRecurrenciaFrecuencia] = useState<'no' | 'semanal' | 'quincenal' | 'mensual'>('no');
+  const [createRecurrenciaStep, setCreateRecurrenciaStep] = useState<'datos' | 'preview'>('datos');
+  const [previewRows, setPreviewRows] = useState<
+    Array<{
+      fecha_hora_inicio: string;
+      fecha_hora_fin: string;
+      ok: boolean;
+      flags: PreviewRecurrenciaFila['flags'];
+      mensaje: string | null;
+    }>
+  >([]);
+  const [previewRecurrenciaLoading, setPreviewRecurrenciaLoading] = useState(false);
+  /** Índice de fila del preview cuyo borrado se está confirmando (null = modal cerrado). */
+  const [previewQuitarIndex, setPreviewQuitarIndex] = useState<number | null>(null);
+  /** Fila en la que se está validando disponibilidad tras cambiar fecha/hora (un solo slot a la API). */
+  const [previewSlotValidatingIndex, setPreviewSlotValidatingIndex] = useState<number | null>(null);
+  const createModalScrollRef = useRef<HTMLDivElement>(null);
+  const previewDateMin = useMemo(() => format(startOfDay(new Date()), 'yyyy-MM-dd'), []);
+  const previewDateMax = useMemo(
+    () => format(addMonths(startOfDay(new Date(`${createFecha}T12:00:00`)), 6), 'yyyy-MM-dd'),
+    [createFecha]
+  );
+  /** Todos los slots OK y sin validación en curso → habilita confirmar la serie. */
+  const previewSerieConfirmable = useMemo(
+    () =>
+      previewRows.length > 0 &&
+      previewRows.every((r) => r.ok) &&
+      previewSlotValidatingIndex === null,
+    [previewRows, previewSlotValidatingIndex]
+  );
+  const previewRowsPorMes = useMemo(() => {
+    type PreviewRow = (typeof previewRows)[number];
+    const map = new Map<string, { key: string; label: string; items: Array<{ row: PreviewRow; idx: number }> }>();
+    previewRows.forEach((row, idx) => {
+      const d = new Date(row.fecha_hora_inicio);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const raw = format(d, 'MMMM yyyy', { locale: es });
+      const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+      if (!map.has(key)) {
+        map.set(key, { key, label, items: [] });
+      }
+      map.get(key)!.items.push({ row, idx });
+    });
+    return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
+  }, [previewRows]);
 
   // Form state para cancelar turno
   const [cancelData, setCancelData] = useState<CancelTurnoData>({
@@ -679,6 +815,34 @@ export default function AdminTurnos() {
     refetchOnWindowFocus: true,
   });
 
+  /** Turnos del rango permitido en vista previa de recurrencia (Bloqueado/Ocupado por día). */
+  const filtersPreviewTurnosRange = useMemo(() => {
+    if (!showCreateModal || createRecurrenciaStep !== 'preview' || !createFormData.profesional_id) return null;
+    const fechaInicio = new Date(previewDateMin + 'T00:00:00');
+    const fechaFin = new Date(previewDateMax + 'T23:59:59.999');
+    return {
+      profesional_id: createFormData.profesional_id,
+      fecha_inicio: fechaInicio.toISOString(),
+      fecha_fin: fechaFin.toISOString(),
+    };
+  }, [showCreateModal, createRecurrenciaStep, createFormData.profesional_id, previewDateMin, previewDateMax]);
+  const { data: turnosPreviewRango = [] } = useQuery({
+    queryKey: ['turnos', 'preview-range', filtersPreviewTurnosRange],
+    queryFn: () => turnosService.getAll(filtersPreviewTurnosRange!),
+    enabled: Boolean(filtersPreviewTurnosRange),
+    refetchInterval: showCreateModal && createRecurrenciaStep === 'preview' && isTabVisible ? agendaPollMs : false,
+    refetchOnWindowFocus: true,
+  });
+  const turnosPorYmdPreview = useMemo(() => {
+    const m = new Map<string, Turno[]>();
+    for (const t of turnosPreviewRango) {
+      const k = isoToYmdLocal(t.fecha_hora_inicio);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(t);
+    }
+    return m;
+  }, [turnosPreviewRango]);
+
   // Todas las agendas (para saber qué profesionales tienen agenda y pueden ser elegidos en Turnos)
   const { data: todasLasAgendas = [] } = useQuery({
     queryKey: ['agendas', 'todos-profesionales'],
@@ -689,20 +853,29 @@ export default function AdminTurnos() {
     [todasLasAgendas]
   );
 
-  // Rango de bloques: mes visible del calendario + mes del día seleccionado (si hay y es distinto), para que el calendario muestre bloqueados sin necesidad de tener día seleccionado
+  // Rango de bloques: mes visible del calendario + mes del día seleccionado (si hay y es distinto), para que el calendario muestre bloqueados sin necesidad de tener día seleccionado; en vista previa de recurrencia incluye todo el rango de fechas del DatePicker
   const bloquesQueryRange = useMemo(() => {
     const calStart = startOfMonth(calendarViewMonth);
     const calEnd = endOfMonth(calendarViewMonth);
-    if (!fechaFilter) {
-      return { start: calStart, end: calEnd };
+    let start = calStart;
+    let end = calEnd;
+    if (fechaFilter) {
+      const selDate = new Date(fechaFilter + 'T12:00:00');
+      const selStart = startOfMonth(selDate);
+      const selEnd = endOfMonth(selDate);
+      start = selStart.getTime() < start.getTime() ? selStart : start;
+      end = selEnd.getTime() > end.getTime() ? selEnd : end;
     }
-    const selDate = new Date(fechaFilter + 'T12:00:00');
-    const selStart = startOfMonth(selDate);
-    const selEnd = endOfMonth(selDate);
-    const start = selStart.getTime() < calStart.getTime() ? selStart : calStart;
-    const end = selEnd.getTime() > calEnd.getTime() ? selEnd : calEnd;
+    if (showCreateModal && createRecurrenciaStep === 'preview' && profesionalFilter) {
+      const pMin = new Date(previewDateMin + 'T12:00:00');
+      const pMax = new Date(previewDateMax + 'T12:00:00');
+      const pvStart = startOfMonth(pMin);
+      const pvEnd = endOfMonth(pMax);
+      start = pvStart.getTime() < start.getTime() ? pvStart : start;
+      end = pvEnd.getTime() > end.getTime() ? pvEnd : end;
+    }
     return { start, end };
-  }, [calendarViewMonth, fechaFilter]);
+  }, [calendarViewMonth, fechaFilter, showCreateModal, createRecurrenciaStep, profesionalFilter, previewDateMin, previewDateMax]);
   const bloquesQueryStartStr = format(bloquesQueryRange.start, "yyyy-MM-dd'T'00:00:00");
   const bloquesQueryEndStr = format(bloquesQueryRange.end, "yyyy-MM-dd'T'23:59:59.999");
   const { data: bloquesDelMes = [] } = useQuery({
@@ -812,6 +985,10 @@ export default function AdminTurnos() {
       }
     }
 
+    if (showCreateModal && createRecurrenciaStep === 'preview') {
+      addRange(parseYmdLocal(previewDateMin), parseYmdLocal(previewDateMax));
+    }
+
     return map;
   }, [
     profesionalFilter,
@@ -825,6 +1002,10 @@ export default function AdminTurnos() {
     bloqueDatePickerHastaMonth,
     fechaFilter,
     createFecha,
+    showCreateModal,
+    createRecurrenciaStep,
+    previewDateMin,
+    previewDateMax,
   ]);
 
   const getAgendaForDate = useCallback(
@@ -1012,6 +1193,79 @@ export default function AdminTurnos() {
       });
   }, [opcionesHoraFinTodas, createHoraInicio, createFecha, bloquesDelDiaCreate, turnosDelDiaCreate]);
 
+  /** Rango y duración de agenda para cualquier YYYY-MM-DD (vista previa recurrencia). */
+  const getRangoHorarioForYmd = useCallback(
+    (ymd: string) => {
+      const agendasDelDia = getAgendaForDate(ymd);
+      if (agendasDelDia.length === 0)
+        return { min: undefined as string | undefined, max: undefined as string | undefined, duracionMinutos: 30 };
+      const horasInicio = agendasDelDia.map((a) => horaToHHmm(a.hora_inicio));
+      const horasFin = agendasDelDia.map((a) => horaToHHmm(a.hora_fin));
+      const min = horasInicio.sort()[0];
+      const max = horasFin.sort()[horasFin.length - 1];
+      const duracionMinutos = Math.min(...agendasDelDia.map((a) => a.duracion_turno_minutos));
+      return { min, max, duracionMinutos };
+    },
+    [getAgendaForDate]
+  );
+
+  const snapHoraInicioParaYmd = useCallback(
+    (ymd: string, hhmmPreferido: string) => {
+      const { min, max, duracionMinutos } = getRangoHorarioForYmd(ymd);
+      if (min === undefined || max === undefined) return hhmmPreferido;
+      const ultimoInicio = sumarMinutos(max, -duracionMinutos);
+      if (min > ultimoInicio) return hhmmPreferido;
+      const finExcl = sumarMinutos(ultimoInicio, duracionMinutos);
+      const opciones = generarOpcionesHora(min, finExcl, duracionMinutos);
+      if (opciones.includes(hhmmPreferido)) return hhmmPreferido;
+      return opciones[0] ?? hhmmPreferido;
+    },
+    [getRangoHorarioForYmd]
+  );
+
+  /** Opciones de hora inicio en vista previa (misma lógica que crear turno: Bloqueado / Ocupado). */
+  const getPreviewOpcionesHoraConEstado = useCallback(
+    (index: number, ymd: string) => {
+      const { min, max, duracionMinutos } = getRangoHorarioForYmd(ymd);
+      if (min === undefined || max === undefined) {
+        return [] as { value: string; label: string; bloqueado: boolean; ocupado: boolean }[];
+      }
+      const ultimoInicio = sumarMinutos(max, -duracionMinutos);
+      if (min > ultimoInicio) return [];
+      const finExcl = sumarMinutos(ultimoInicio, duracionMinutos);
+      const opcionesHoraInicioTodas = generarOpcionesHora(min, finExcl, duracionMinutos);
+      const bloquesDelDia = bloquesPorFechaStr.get(ymd) ?? [];
+      const activosDb = (turnosPorYmdPreview.get(ymd) ?? []).filter((t) => t.estado !== 'cancelado' && t.estado !== 'completado');
+      return opcionesHoraInicioTodas.map((h) => {
+        const slotStart = new Date(ymd + 'T' + h + ':00');
+        const slotEnd = new Date(ymd + 'T' + sumarMinutos(h, duracionMinutos) + ':00');
+        const bloqueado = slotSolapaConBloque(slotStart, slotEnd, bloquesDelDia);
+        const ocupadoDb = activosDb.some((t) => {
+          const tStart = new Date(t.fecha_hora_inicio).getTime();
+          const tEnd = new Date(t.fecha_hora_fin).getTime();
+          return slotStart.getTime() < tEnd && slotEnd.getTime() > tStart;
+        });
+        let ocupadoPreview = false;
+        for (let j = 0; j < previewRows.length; j++) {
+          if (j === index) continue;
+          if (isoToYmdLocal(previewRows[j]!.fecha_hora_inicio) !== ymd) continue;
+          const rStart = new Date(previewRows[j]!.fecha_hora_inicio).getTime();
+          const rEnd = new Date(previewRows[j]!.fecha_hora_fin).getTime();
+          if (slotStart.getTime() < rEnd && slotEnd.getTime() > rStart) {
+            ocupadoPreview = true;
+            break;
+          }
+        }
+        const ocupado = ocupadoDb || ocupadoPreview;
+        const label = bloqueado ? `${h} - Bloqueado` : ocupado ? `${h} - Ocupado` : h;
+        return { value: h, label, bloqueado, ocupado };
+      });
+    },
+    [getRangoHorarioForYmd, bloquesPorFechaStr, turnosPorYmdPreview, previewRows, slotSolapaConBloque]
+  );
+
+  const previewDateIsDisabled = useCallback((ymd: string) => getAgendaForDate(ymd).length === 0, [getAgendaForDate]);
+
   /** Día sin horario configurado (no hay opciones) */
   const diaCompletamenteBloqueadoCreate = useMemo(() => {
     return opcionesHoraInicioTodas.length === 0;
@@ -1099,8 +1353,8 @@ export default function AdminTurnos() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: (data: CreateTurnoData) => turnosService.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turnos'] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['turnos'] });
       reactToastify.success('Turno creado correctamente', {
         position: 'top-right',
         autoClose: 3000,
@@ -1124,6 +1378,40 @@ export default function AdminTurnos() {
       reactToastify.error(errorMessage, {
         position: 'top-right',
         autoClose: 3000,
+      });
+    },
+  });
+
+  const createRecurrenciaMutation = useMutation({
+    mutationFn: (data: CreateRecurrenciaPayload) => turnosService.createRecurrencia(data),
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['turnos'] });
+      reactToastify.success('Serie de turnos creada correctamente', {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+      setShowCreateModal(false);
+      setCreateFormData({
+        profesional_id: '',
+        paciente_id: '',
+        fecha_hora_inicio: '',
+        fecha_hora_fin: '',
+        estado: 'pendiente',
+        motivo: '',
+      });
+      setCreateFecha(format(new Date(), 'yyyy-MM-dd'));
+      setCreateHoraInicio('09:00');
+      setCreateHoraFin('09:30');
+      setRecurrenciaFrecuencia('no');
+      setCreateRecurrenciaStep('datos');
+      setPreviewRows([]);
+      setPreviewSlotValidatingIndex(null);
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } } };
+      reactToastify.error(err.response?.data?.message || 'Error al crear la serie', {
+        position: 'top-right',
+        autoClose: 4000,
       });
     },
   });
@@ -1490,7 +1778,7 @@ export default function AdminTurnos() {
     const tzStr = (tzMin >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tzMin) / 60)) + ':' + pad(Math.abs(tzMin) % 60);
     const fecha_hora_inicio = new Date(`${createFecha}T${horaInicioNorm}${tzStr}`).toISOString();
     const fecha_hora_fin = new Date(`${createFecha}T${horaFinNorm}${tzStr}`).toISOString();
-    if (!createFormData.profesional_id || !createFormData.paciente_id || !createFecha || !createHoraInicio || !horaFinParaPayload) {
+    if (!createFormData.profesional_id || !pacienteSeleccionValida || !createFecha || !createHoraInicio || !horaFinParaPayload) {
       reactToastify.error('Complete todos los campos requeridos', {
         position: 'top-right',
         autoClose: 3000,
@@ -1621,6 +1909,253 @@ export default function AdminTurnos() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getCreateFechasISO = useCallback((): { fecha_hora_inicio: string; fecha_hora_fin: string } | null => {
+    const horaFinParaPayload = createHoraFinManual ? createHoraFin : resolvedHoraFin;
+    const horaInicioNorm = createHoraInicio.length <= 5 ? `${createHoraInicio}:00` : createHoraInicio;
+    const horaFinNorm = horaFinParaPayload.length <= 5 ? `${horaFinParaPayload}:00` : horaFinParaPayload;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(`${createFecha}T${horaInicioNorm}`);
+    const tzMin = -d.getTimezoneOffset();
+    const tzStr = (tzMin >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tzMin) / 60)) + ':' + pad(Math.abs(tzMin) % 60);
+    const fecha_hora_inicio = new Date(`${createFecha}T${horaInicioNorm}${tzStr}`).toISOString();
+    const fecha_hora_fin = new Date(`${createFecha}T${horaFinNorm}${tzStr}`).toISOString();
+    return { fecha_hora_inicio, fecha_hora_fin };
+  }, [createFecha, createHoraInicio, createHoraFin, createHoraFinManual, resolvedHoraFin]);
+
+  /** Limpia todo el formulario del modal (también al Cancelar: Radix no siempre dispara onOpenChange). */
+  const resetCreateTurnoModalState = useCallback(() => {
+    setCreateFormData({
+      profesional_id: '',
+      paciente_id: '',
+      fecha_hora_inicio: '',
+      fecha_hora_fin: '',
+      estado: 'pendiente',
+      motivo: '',
+    });
+    setCreateFecha(format(new Date(), 'yyyy-MM-dd'));
+    setCreateHoraInicio('09:00');
+    setCreateHoraFin('09:30');
+    setCreateHoraInicioManual(false);
+    setCreateHoraFinManual(false);
+    setCreateDatePickerOpen(false);
+    setCreateDatePickerAnchor(null);
+    setPacienteSearchInput('');
+    setPacienteSearchResults([]);
+    setPacienteFound(null);
+    setShowPacienteDropdown(false);
+    setShowQuickCreatePaciente(false);
+    setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
+    setRecurrenciaFrecuencia('no');
+    setCreateRecurrenciaStep('datos');
+    setPreviewRows([]);
+    setPreviewQuitarIndex(null);
+    setPreviewSlotValidatingIndex(null);
+  }, []);
+
+  const handleIrAPreviewRecurrencia = async () => {
+    if (recurrenciaFrecuencia === 'no') return;
+    const horaFinParaPayload = createHoraFinManual ? createHoraFin : resolvedHoraFin;
+    if (!createFormData.profesional_id || !pacienteSeleccionValida) {
+      reactToastify.error('Seleccioná un paciente antes de continuar', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    if (!createFecha || !createHoraInicio || !horaFinParaPayload) {
+      reactToastify.error('Completá fecha y horario', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    if (horaFinParaPayload <= createHoraInicio) {
+      reactToastify.error('La hora fin debe ser posterior a la hora inicio', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    const pair = getCreateFechasISO();
+    if (!pair) return;
+    const { min: minHora, max: maxHora } = rangoHorarioCreate;
+    const horasManuales = createHoraInicioManual || createHoraFinManual;
+    const diaSinAgenda = minHora === undefined || maxHora === undefined;
+    const fueraDeRango = minHora != null && maxHora != null && (createHoraInicio < minHora || horaFinParaPayload > maxHora);
+    if (diaSinAgenda) {
+      reactToastify.error('El horario debe estar dentro de la agenda del profesional', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    if (!horasManuales && fueraDeRango) {
+      reactToastify.error('El horario debe estar dentro de la agenda del profesional', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    const permisoFuera = Boolean(horasManuales && fueraDeRango);
+
+    setPreviewRecurrenciaLoading(true);
+    try {
+      const data = await turnosService.previewRecurrencia({
+        profesional_id: createFormData.profesional_id,
+        paciente_id: createFormData.paciente_id,
+        frecuencia: recurrenciaFrecuencia,
+        fecha_hora_inicio: pair.fecha_hora_inicio,
+        fecha_hora_fin: pair.fecha_hora_fin,
+        fecha_fin: null,
+        max_ocurrencias: undefined,
+        meses_max: 6,
+        permiso_fuera_agenda: permisoFuera,
+      });
+      setPreviewRows(
+        data.ocurrencias.map((o) => ({
+          fecha_hora_inicio: o.fecha_hora_inicio,
+          fecha_hora_fin: o.fecha_hora_fin,
+          ok: o.ok,
+          flags: o.flags,
+          mensaje: o.mensaje,
+        }))
+      );
+      setCreateRecurrenciaStep('preview');
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'No se pudo generar la vista previa';
+      reactToastify.error(msg, { position: 'top-right', autoClose: 4000 });
+    } finally {
+      setPreviewRecurrenciaLoading(false);
+    }
+  };
+
+  const isoFromYmdAndHhmm = useCallback((ymd: string, hhmm: string): string => {
+    const horaNorm = hhmm.length <= 5 ? `${hhmm}:00` : hhmm;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(`${ymd}T${horaNorm}`);
+    const tzMin = -d.getTimezoneOffset();
+    const tzStr = (tzMin >= 0 ? '+' : '-') + pad(Math.floor(Math.abs(tzMin) / 60)) + ':' + pad(Math.abs(tzMin) % 60);
+    return new Date(`${ymd}T${horaNorm}${tzStr}`).toISOString();
+  }, []);
+
+  const revalidarUnaFilaPreview = useCallback(
+    async (index: number, fecha_hora_inicio: string, fecha_hora_fin: string) => {
+      const pid = createFormData.profesional_id;
+      const pacId = createFormData.paciente_id;
+      if (!pid || !pacId) return;
+      setPreviewSlotValidatingIndex(index);
+      try {
+        const { resultados } = await turnosService.validarSlotsBatch({
+          profesional_id: pid,
+          paciente_id: pacId,
+          slots: [{ fecha_hora_inicio, fecha_hora_fin }],
+        });
+        const ev = resultados[0];
+        if (!ev) return;
+        setPreviewRows((rows) => {
+          const r = rows[index];
+          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio) return rows;
+          const next = [...rows];
+          next[index] = {
+            ...next[index],
+            ok: ev.ok,
+            flags: ev.flags as PreviewRecurrenciaFila['flags'],
+            mensaje: ev.mensaje,
+          };
+          return next;
+        });
+      } catch {
+        setPreviewRows((rows) => {
+          const r = rows[index];
+          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio) return rows;
+          const next = [...rows];
+          next[index] = {
+            ...next[index],
+            ok: false,
+            mensaje: 'No se pudo validar el horario',
+          };
+          return next;
+        });
+      } finally {
+        setPreviewSlotValidatingIndex((cur) => (cur === index ? null : cur));
+      }
+    },
+    [createFormData.profesional_id, createFormData.paciente_id]
+  );
+
+  const updatePreviewFecha = (index: number, ymd: string) => {
+    let inicioIso = '';
+    let finIso = '';
+    setPreviewRows((prev) => {
+      const row = prev[index];
+      if (!row) return prev;
+      const hhPreferido = isoToHhMmLocal(row.fecha_hora_inicio);
+      const hhmm = snapHoraInicioParaYmd(ymd, hhPreferido);
+      const { duracionMinutos } = getRangoHorarioForYmd(ymd);
+      inicioIso = isoFromYmdAndHhmm(ymd, hhmm);
+      finIso = new Date(new Date(inicioIso).getTime() + duracionMinutos * 60 * 1000).toISOString();
+      const next = [...prev];
+      next[index] = {
+        ...row,
+        fecha_hora_inicio: inicioIso,
+        fecha_hora_fin: finIso,
+        ok: true,
+        mensaje: null,
+      };
+      return next;
+    });
+    if (inicioIso && finIso) void revalidarUnaFilaPreview(index, inicioIso, finIso);
+  };
+
+  const updatePreviewHora = (index: number, hhmm: string) => {
+    let inicioIso = '';
+    let finIso = '';
+    setPreviewRows((prev) => {
+      const row = prev[index];
+      if (!row) return prev;
+      const ymd = isoToYmdLocal(row.fecha_hora_inicio);
+      const { duracionMinutos } = getRangoHorarioForYmd(ymd);
+      inicioIso = isoFromYmdAndHhmm(ymd, hhmm);
+      finIso = new Date(new Date(inicioIso).getTime() + duracionMinutos * 60 * 1000).toISOString();
+      const next = [...prev];
+      next[index] = {
+        ...row,
+        fecha_hora_inicio: inicioIso,
+        fecha_hora_fin: finIso,
+        ok: true,
+        mensaje: null,
+      };
+      return next;
+    });
+    if (inicioIso && finIso) void revalidarUnaFilaPreview(index, inicioIso, finIso);
+  };
+
+  const handleConfirmarRecurrencia = () => {
+    if (previewRows.length === 0) {
+      reactToastify.error('No hay ocurrencias para crear', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    if (previewSlotValidatingIndex !== null) {
+      return;
+    }
+    if (!previewRows.every((r) => r.ok)) {
+      reactToastify.error('Hay horarios no disponibles; revisá la vista previa', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    if (recurrenciaFrecuencia === 'no') {
+      reactToastify.error('Seleccioná una frecuencia de repetición', { position: 'top-right', autoClose: 3000 });
+      return;
+    }
+    const freq: FrecuenciaRecurrencia = recurrenciaFrecuencia;
+    const inferMensual =
+      freq === 'mensual' && previewRows[0] ? inferSerieMensualDesdeInicio(previewRows[0].fecha_hora_inicio) : null;
+    const payload: CreateRecurrenciaPayload = {
+      profesional_id: createFormData.profesional_id,
+      paciente_id: createFormData.paciente_id,
+      motivo: createFormData.motivo,
+      permiso_fuera_agenda: false,
+      serie: {
+        frecuencia: freq,
+        mensual_modo: freq === 'mensual' ? 'nth_weekday' : null,
+        dia_semana: inferMensual ? inferMensual.dia_semana : null,
+        semana_del_mes: inferMensual ? inferMensual.semana_del_mes : null,
+        fecha_fin: null,
+        max_ocurrencias: previewRows.length,
+      },
+      ocurrencias: previewRows.map((r) => ({
+        fecha_hora_inicio: r.fecha_hora_inicio,
+        fecha_hora_fin: r.fecha_hora_fin,
+      })),
+    };
+    createRecurrenciaMutation.mutate(payload);
   };
 
   const handleCancelSubmit = async () => {
@@ -3238,26 +3773,7 @@ export default function AdminTurnos() {
         onOpenChange={(open) => {
           setShowCreateModal(open);
           if (!open) {
-            setCreateFormData({
-              profesional_id: '',
-              paciente_id: '',
-              fecha_hora_inicio: '',
-              fecha_hora_fin: '',
-              estado: 'pendiente',
-              motivo: '',
-            });
-            setCreateFecha(format(new Date(), 'yyyy-MM-dd'));
-            setCreateHoraInicio('09:00');
-            setCreateHoraFin('09:30');
-            setCreateHoraInicioManual(false);
-            setCreateHoraFinManual(false);
-            setCreateDatePickerOpen(false);
-            setCreateDatePickerAnchor(null);
-            setPacienteSearchInput('');
-            setPacienteSearchResults([]);
-            setPacienteFound(null);
-            setShowQuickCreatePaciente(false);
-            setQuickCreatePaciente({ dni: '', nombre: '', apellido: '', telefono: '', email: '' });
+            resetCreateTurnoModalState();
           }
         }}
       >
@@ -3269,20 +3785,159 @@ export default function AdminTurnos() {
               </div>
               <div>
                 <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  Nuevo Turno
+                  {createRecurrenciaStep === 'preview' ? 'Vista previa — turnos recurrentes' : 'Nuevo Turno'}
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
-                  Crear un nuevo turno médico
+                  {createRecurrenciaStep === 'preview'
+                    ? 'Revisá las fechas y confirmá para crear la serie.'
+                    : 'Crear un nuevo turno médico'}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5">
+          <div ref={createModalScrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5">
             {!profesionalFilter ? (
               <p className="text-[#6B7280] font-['Inter'] text-[15px] bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] px-4 py-3">
                 Seleccione un profesional en el filtro de la página para crear turnos en su agenda.
               </p>
+            ) : createRecurrenciaStep === 'preview' ? (
+              <TooltipProvider delayDuration={200}>
+              <div className="space-y-6 font-['Inter']">
+                <div className="space-y-6">
+                  {previewRowsPorMes.map((grupo) => (
+                    <div key={grupo.key} className="space-y-2">
+                      <h3 className="text-[15px] font-semibold text-[#111827] font-['Poppins'] border-b border-[#E5E7EB] pb-2 mb-0">
+                        {grupo.label}
+                      </h3>
+                      <div className="rounded-[12px] border border-[#E5E7EB] bg-white overflow-hidden divide-y divide-[#E5E7EB]">
+                        {grupo.items.map(({ row, idx }) => {
+                          const ymd = isoToYmdLocal(row.fecha_hora_inicio);
+                          const hh = isoToHhMmLocal(row.fecha_hora_inicio);
+                          let opcionesHoraConEstado = getPreviewOpcionesHoraConEstado(idx, ymd);
+                          if (opcionesHoraConEstado.length > 0 && hh && !opcionesHoraConEstado.some((o) => o.value === hh)) {
+                            opcionesHoraConEstado = [
+                              ...opcionesHoraConEstado,
+                              { value: hh, label: hh, bloqueado: true, ocupado: false },
+                            ].sort((a, b) => a.value.localeCompare(b.value));
+                          }
+                          const selectHoraValue = (() => {
+                            const opt = opcionesHoraConEstado.find((o) => o.value === hh);
+                            if (opt && !opt.bloqueado) return hh;
+                            const first = opcionesHoraConEstado.find((o) => !o.bloqueado);
+                            return first?.value ?? hh;
+                          })();
+                          return (
+                            <div
+                              key={`pv-${idx}`}
+                              className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-[minmax(200px,1.2fr)_minmax(88px,110px)_minmax(0,1fr)_40px] sm:items-stretch sm:gap-x-4 bg-[#FAFBFC]"
+                            >
+                              <div className="min-w-0 w-full">
+                                <DatePicker
+                                  id={`preview-fecha-${idx}`}
+                                  dense
+                                  directInputWhenEmpty={false}
+                                  allowClear={false}
+                                  isDateDisabled={previewDateIsDisabled}
+                                  disabled={previewSlotValidatingIndex === idx}
+                                  value={isoToYmdLocal(row.fecha_hora_inicio)}
+                                  onChange={(d) => updatePreviewFecha(idx, d)}
+                                  min={previewDateMin}
+                                  max={previewDateMax}
+                                  scrollContainerRef={createModalScrollRef}
+                                  className="min-w-0 w-full"
+                                />
+                              </div>
+                              {opcionesHoraConEstado.length === 0 ? (
+                                <div className="flex h-9 min-h-9 max-h-9 w-full min-w-0 max-w-[110px] items-center rounded-[8px] border-[1.5px] border-[#D1D5DB] bg-[#F9FAFB] px-2 font-['Inter'] text-[13px] tabular-nums text-[#6B7280] sm:mx-0">
+                                  {hh}
+                                </div>
+                              ) : (
+                                <Select
+                                  value={selectHoraValue}
+                                  onValueChange={(v) => updatePreviewHora(idx, v)}
+                                  disabled={previewSlotValidatingIndex === idx}
+                                >
+                                  <SelectTrigger className="box-border h-9 min-h-0 max-h-9 w-full min-w-0 max-w-[110px] !min-h-9 border-[#D1D5DB] rounded-[8px] px-2 py-0 font-['Inter'] text-[13px] leading-none [&>svg]:h-4 [&>svg]:w-4 [&>span]:tabular-nums">
+                                    <SelectValue>
+                                      <span className="tabular-nums">{selectHoraValue}</span>
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-[min(14rem,50vh)] text-left [&_button]:text-left">
+                                    {opcionesHoraConEstado.map((opt) => (
+                                      <SelectItem
+                                        key={opt.value}
+                                        value={opt.value}
+                                        textValue={opt.value}
+                                        disabled={opt.bloqueado}
+                                        className={
+                                          opt.bloqueado
+                                            ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#9CA3AF] bg-[#F3F4F6] cursor-not-allowed opacity-70'
+                                            : opt.ocupado
+                                              ? 'text-[13px] font-[\'Inter\'] text-left pl-2 text-[#6B7280] bg-[#F3F4F6] data-[highlighted]:bg-[#E5E7EB]'
+                                              : 'text-[13px] font-[\'Inter\'] text-left pl-2 data-[highlighted]:bg-[#F3F4F6]'
+                                        }
+                                      >
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              <div className="min-h-9 flex min-w-0 items-center">
+                                {previewSlotValidatingIndex === idx ? (
+                                  <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#6B7280]">
+                                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin stroke-[2]" />
+                                    Comprobando…
+                                  </span>
+                                ) : row.ok ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex max-w-full cursor-default items-center rounded-full bg-emerald-50 px-2.5 py-1 text-left text-[12px] font-medium leading-snug text-[#065F46]">
+                                        {pacienteFound ? 'Válido para el paciente' : 'Válido en la agenda'}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs text-[13px]">
+                                      {pacienteFound
+                                        ? `Podés usar este horario para el turno de ${formatDisplayText(pacienteFound.nombre)} ${formatDisplayText(pacienteFound.apellido)}.`
+                                        : 'El horario encaja con la agenda para sumarlo a la serie.'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex max-w-full cursor-default items-center rounded-full bg-amber-50 px-2.5 py-1 text-left text-[12px] font-medium leading-snug text-[#B45309]">
+                                        Conflicto de agenda
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs text-[13px]">
+                                      {row.mensaje || 'El horario no está disponible u otro turno lo ocupa.'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-end sm:justify-center">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 shrink-0 text-[#6B7280] hover:text-[#DC2626]"
+                                  disabled={previewSlotValidatingIndex === idx}
+                                  onClick={() => setPreviewQuitarIndex(idx)}
+                                  aria-label="Quitar fecha"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              </TooltipProvider>
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-4">
@@ -3524,6 +4179,37 @@ export default function AdminTurnos() {
                   </div>
                 </div>
 
+                <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-4 space-y-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-[15px] font-semibold text-[#111827] font-['Inter'] shrink-0">Repetir</span>
+                    <span className="text-[12px] text-[#6B7280] font-['Inter'] leading-snug min-w-0 flex-1">
+                      — Se generan como máximo 6 meses hacia adelante. En el siguiente paso verás las fechas y podrás
+                      editarlas o quitarlas.
+                    </span>
+                  </div>
+                  <Select
+                    value={recurrenciaFrecuencia}
+                    onValueChange={(v) => setRecurrenciaFrecuencia(v as 'no' | 'semanal' | 'quincenal' | 'mensual')}
+                  >
+                    <SelectTrigger className="h-[48px] border-[#D1D5DB] rounded-[10px] font-['Inter']">
+                      <SelectValue placeholder="Frecuencia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="no">No repetir (un solo turno)</SelectItem>
+                      <SelectItem value="semanal">Semanal</SelectItem>
+                      <SelectItem value="quincenal">Quincenal</SelectItem>
+                      <SelectItem value="mensual">Mensual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {recurrenciaFrecuencia === 'mensual' ? (
+                    <p className="text-[12px] text-[#6B7280] font-['Inter'] leading-snug mb-0">
+                      El mes siguiente se repite el <strong className="font-medium text-[#374151]">mismo día de la semana</strong> en la
+                      misma <strong className="font-medium text-[#374151]">semana ordinal del mes</strong> (1.ª–4.ª o última) que la
+                      fecha y hora del turno de arriba — por ejemplo un martes ~día 14 → los próximos meses el martes equivalente.
+                    </p>
+                  ) : null}
+                </div>
+
                 <div className="space-y-3">
                   <Label htmlFor="create-paciente-dni" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                     Paciente
@@ -3723,33 +4409,88 @@ export default function AdminTurnos() {
             <div className="flex gap-3 max-lg:flex-col max-lg:w-full">
               <Button
                 variant="outline"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  if (createRecurrenciaStep === 'preview') setCreateRecurrenciaStep('datos');
+                  else {
+                    resetCreateTurnoModalState();
+                    setShowCreateModal(false);
+                  }
+                }}
                 className="h-[48px] max-lg:h-10 px-6 rounded-[12px] border-[1.5px] border-[#D1D5DB] font-medium font-['Inter'] text-[15px] max-lg:text-[14px] hover:bg-white hover:border-[#9CA3AF] transition-all duration-200"
               >
-                Cancelar
+                {createRecurrenciaStep === 'preview' ? 'Volver' : 'Cancelar'}
               </Button>
-              <Button
-                onClick={handleCreate}
-                disabled={
-                  isSubmitting ||
-                  !profesionalFilter ||
-                  (!(createHoraInicioManual || createHoraFinManual) && diaCompletamenteBloqueadoCreate) ||
-                  !createFormData.paciente_id
-                }
-                className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
-                    Guardando...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="mr-2 h-5 w-5 stroke-[2]" />
-                    Crear Turno
-                  </>
-                )}
-              </Button>
+              {createRecurrenciaStep === 'preview' ? (
+                <Button
+                  onClick={handleConfirmarRecurrencia}
+                  disabled={
+                    createRecurrenciaMutation.isPending ||
+                    previewRows.length === 0 ||
+                    !profesionalFilter ||
+                    !previewSerieConfirmable
+                  }
+                  className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] disabled:opacity-50"
+                >
+                  {createRecurrenciaMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Repeat className="mr-2 h-5 w-5 stroke-[2]" />
+                      Confirmar serie
+                    </>
+                  )}
+                </Button>
+              ) : recurrenciaFrecuencia !== 'no' ? (
+                <Button
+                  onClick={() => void handleIrAPreviewRecurrencia()}
+                  disabled={
+                    previewRecurrenciaLoading ||
+                    isSubmitting ||
+                    !profesionalFilter ||
+                    (!(createHoraInicioManual || createHoraFinManual) && diaCompletamenteBloqueadoCreate) ||
+                    !pacienteSeleccionValida
+                  }
+                  className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {previewRecurrenciaLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <Repeat className="mr-2 h-5 w-5 stroke-[2]" />
+                      Siguiente: revisar ocurrencias
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleCreate}
+                  disabled={
+                    isSubmitting ||
+                    !profesionalFilter ||
+                    (!(createHoraInicioManual || createHoraFinManual) && diaCompletamenteBloqueadoCreate) ||
+                    !pacienteSeleccionValida
+                  }
+                  className="h-[48px] max-lg:h-10 px-8 rounded-[12px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/30 hover:shadow-xl hover:shadow-[#2563eb]/40 hover:scale-[1.02] font-semibold font-['Inter'] text-[15px] max-lg:text-[14px] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin stroke-[2.5]" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-5 w-5 stroke-[2]" />
+                      Crear Turno
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </DialogContent>
@@ -3836,6 +4577,26 @@ export default function AdminTurnos() {
         description={<>¿Estás seguro de que deseas eliminar el turno de <span className="font-semibold text-[#374151]">{formatDisplayText(turnoToDelete?.paciente_nombre)} {formatDisplayText(turnoToDelete?.paciente_apellido)}</span>? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDeleteTurno}
         isLoading={deleteMutation.isPending}
+      />
+
+      <ConfirmDeleteModal
+        open={previewQuitarIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewQuitarIndex(null);
+        }}
+        title="Quitar esta fecha"
+        description={
+          <>
+            Si preferís <strong className="font-semibold text-[#374151]">cambiar</strong> este turno en lugar de sacarlo, podés elegir otra fecha u hora en la fila. ¿Querés quitarlo de todos modos?
+          </>
+        }
+        confirmLabel="Quitar"
+        onConfirm={() => {
+          if (previewQuitarIndex === null) return;
+          const i = previewQuitarIndex;
+          setPreviewRows((prev) => prev.filter((_, j) => j !== i));
+          setPreviewQuitarIndex(null);
+        }}
       />
 
       {/* Modal Cancelar Turno */}
