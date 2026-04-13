@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, isBefore, startOfDay, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,8 @@ import { hasPermission } from '@/utils/permissions';
 import { formatDisplayText } from '@/lib/utils';
 import { getTurnosListState, setTurnosListState } from '@/utils/storage';
 import { CreateAgendaModal, GestionarAgendaModal } from '@/pages/Agendas/modals';
+import { useDocumentVisibility } from '@/hooks/use-document-visibility';
+import { getAgendaRefetchIntervalMs } from '@/lib/agenda-refetch';
 
 const estadoOptions = [
   { value: 'activos', label: 'Todos (excepto cancelados)' },
@@ -262,9 +264,51 @@ function computeAgendaSlotsForDate(
   }));
 }
 
+/** Sincroniza el estado del turno en el cache de React Query antes de limpiar `pendingEstado`, para no parpadear (p. ej. confirmado → pendiente → confirmado) por carrera refetch/polling. */
+function patchTurnoEstadoInTurnosQueries(
+  queryClient: QueryClient,
+  turnoId: string,
+  estado: Turno['estado']
+) {
+  queryClient.setQueriesData({ queryKey: ['turnos'] }, (old: unknown) => {
+    if (old == null) return old;
+    if (Array.isArray(old)) {
+      return (old as Turno[]).map((t) => (t.id === turnoId ? { ...t, estado } : t));
+    }
+    if (typeof old === 'object' && 'data' in old && Array.isArray((old as { data: unknown }).data)) {
+      const o = old as { data: Turno[]; [key: string]: unknown };
+      return {
+        ...o,
+        data: o.data.map((t) => (t.id === turnoId ? { ...t, estado } : t)),
+      };
+    }
+    return old;
+  });
+}
+
 export default function AdminTurnos() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isTabVisible = useDocumentVisibility();
+  const agendaPollMs = getAgendaRefetchIntervalMs();
+  /** Polling solo con pestaña visible; ver docs/agenda-actualizacion-tiempo-real.md */
+  const agendaRefetchInterval = isTabVisible ? agendaPollMs : false;
+
+  const wasTabHiddenRef = useRef(
+    typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  );
+  useEffect(() => {
+    const onVis = () => {
+      const hidden = document.visibilityState === 'hidden';
+      if (!hidden && wasTabHiddenRef.current) {
+        queryClient.invalidateQueries({ queryKey: ['turnos'] });
+      }
+      wasTabHiddenRef.current = hidden;
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [queryClient]);
+
   const storedState = useRef(getTurnosListState());
   const [estadoFilter, setEstadoFilter] = useState(() => storedState.current.estado);
   const [profesionalFilter, setProfesionalFilter] = useState(() => storedState.current.profesional_id);
@@ -602,6 +646,8 @@ export default function AdminTurnos() {
     queryKey: ['turnos', filters],
     queryFn: () => turnosService.getAllPaginated(filters as unknown as Parameters<typeof turnosService.getAllPaginated>[0]),
     enabled: Boolean(profesionalFilter) && Boolean(fechaFilter),
+    refetchInterval: agendaRefetchInterval,
+    refetchOnWindowFocus: true,
   });
 
   const filteredTurnos = paginatedTurnos?.data ?? [];
@@ -629,6 +675,8 @@ export default function AdminTurnos() {
     queryKey: ['turnos', 'create-day', filtersCreateDay],
     queryFn: () => turnosService.getAll(filtersCreateDay!),
     enabled: Boolean(showCreateModal && filtersCreateDay),
+    refetchInterval: showCreateModal && isTabVisible ? agendaPollMs : false,
+    refetchOnWindowFocus: true,
   });
 
   // Todas las agendas (para saber qué profesionales tienen agenda y pueden ser elegidos en Turnos)
@@ -1359,13 +1407,11 @@ export default function AdminTurnos() {
     },
   });
 
-  // Update mutation (cambiar estado u otros campos)
+  // Update mutation (cambiar estado u otros campos). La invalidación y el clear de UI optimista van en handleUpdateEstado
+  // para esperar el refetch y no parpadear pendiente → nuevo estado.
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateTurnoData }) =>
       turnosService.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['turnos'] });
-    },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } } };
       reactToastify.error(err.response?.data?.message || 'Error al actualizar estado', {
@@ -1604,21 +1650,35 @@ export default function AdminTurnos() {
     hasPermission(user, 'agenda.excepciones.crear') || hasPermission(user, 'agenda.crear');
 
   const [pendingEstado, setPendingEstado] = useState<Record<string, string>>({});
-  const handleUpdateEstado = useCallback((turnoId: string, nuevoEstado: string) => {
-    setPendingEstado((prev) => ({ ...prev, [turnoId]: nuevoEstado }));
-    updateMutation.mutate(
-      { id: turnoId, data: { estado: nuevoEstado as Turno['estado'] } },
-      {
-        onSettled: () => {
-          setPendingEstado((prev) => {
-            const next = { ...prev };
-            delete next[turnoId];
-            return next;
-          });
-        },
-      }
-    );
-  }, [updateMutation]);
+  const handleUpdateEstado = useCallback(
+    (turnoId: string, nuevoEstado: string) => {
+      setPendingEstado((prev) => ({ ...prev, [turnoId]: nuevoEstado }));
+      updateMutation.mutate(
+        { id: turnoId, data: { estado: nuevoEstado as Turno['estado'] } },
+        {
+          onSuccess: async (updatedTurno) => {
+            const estadoFinal = updatedTurno?.estado ?? (nuevoEstado as Turno['estado']);
+            await queryClient.cancelQueries({ queryKey: ['turnos'] });
+            patchTurnoEstadoInTurnosQueries(queryClient, turnoId, estadoFinal);
+            setPendingEstado((prev) => {
+              const next = { ...prev };
+              delete next[turnoId];
+              return next;
+            });
+            await queryClient.invalidateQueries({ queryKey: ['turnos'] });
+          },
+          onError: () => {
+            setPendingEstado((prev) => {
+              const next = { ...prev };
+              delete next[turnoId];
+              return next;
+            });
+          },
+        }
+      );
+    },
+    [updateMutation, queryClient]
+  );
 
   const handleDelete = (turno: Turno) => {
     setTurnoToDelete(turno);
