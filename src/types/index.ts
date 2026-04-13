@@ -12,6 +12,10 @@ export interface User {
   activo: boolean;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
+  /** Solo si rol profesional: id de la fila en `profesionales` (listado usuarios con JOIN) */
+  profesional_id?: string | null;
+  /** Solo profesionales: política admin de recordatorios WhatsApp */
+  recordatorio_whatsapp_permitido_admin?: boolean | null;
   /** Permisos del usuario (del backend). Si existe, tiene prioridad sobre PERMISOS_POR_ROL */
   permisos?: Record<string, boolean>;
 }
@@ -72,6 +76,8 @@ export interface Profesional {
   observaciones?: string;
   recordatorio_activo?: boolean;
   recordatorio_horas_antes?: number;
+  /** Si es false, el administrador deshabilitó los recordatorios WhatsApp para este profesional */
+  recordatorio_whatsapp_permitido_admin?: boolean;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
   // Datos del usuario asociado (vienen del JOIN en el backend)

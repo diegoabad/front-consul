@@ -40,7 +40,10 @@ export interface CreateProfesionalData {
   observaciones?: string;
 }
 
-export interface UpdateProfesionalData extends Partial<CreateProfesionalData> {}
+export interface UpdateProfesionalData extends Partial<CreateProfesionalData> {
+  recordatorio_whatsapp_permitido_admin?: boolean;
+  recordatorio_activo?: boolean;
+}
 
 export interface BlockProfesionalData {
   razon_bloqueo: string;
@@ -49,6 +52,8 @@ export interface BlockProfesionalData {
 export interface RecordatorioConfig {
   recordatorio_activo: boolean;
   recordatorio_horas_antes: number;
+  /** false = deshabilitado por administrador; el profesional no puede reactivarlo */
+  recordatorio_whatsapp_permitido_admin?: boolean;
 }
 
 export const profesionalesService = {
@@ -184,7 +189,13 @@ export const profesionalesService = {
    */
   getRecordatorioConfig: async (id: string): Promise<RecordatorioConfig> => {
     const response = await api.get<ApiResponse<RecordatorioConfig>>(`/profesionales/${id}/recordatorio-config`);
-    return getData(response) ?? { recordatorio_activo: false, recordatorio_horas_antes: 24 };
+    return (
+      getData(response) ?? {
+        recordatorio_activo: false,
+        recordatorio_horas_antes: 24,
+        recordatorio_whatsapp_permitido_admin: true,
+      }
+    );
   },
 
   /**

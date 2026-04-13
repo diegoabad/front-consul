@@ -408,9 +408,11 @@ export default function AdminPacientes() {
   const canActivate = hasPermission(user, 'pacientes.activar');
   const canDeactivate = hasPermission(user, 'pacientes.desactivar');
   const canAsignarProfesionales = user?.rol === 'administrador' || user?.rol === 'secretaria';
-  // El toggle de notif. WhatsApp solo aparece si el profesional tiene recordatorios habilitados
-  // (para admin/secretaria siempre se muestra; para profesional, solo si recordatorio_activo = true)
-  const mostrarToggleNotif = !isProfesional || profesionalLogueado?.recordatorio_activo === true;
+  // Para profesional: solo si el admin permite WhatsApp y tiene recordatorios activos. Admin/secretaria: siempre.
+  const mostrarToggleNotif =
+    !isProfesional ||
+    (profesionalLogueado?.recordatorio_whatsapp_permitido_admin !== false &&
+      profesionalLogueado?.recordatorio_activo === true);
 
   const { data: asignacionesListaData = [], isFetched: asignacionesListaFetched } = useQuery({
     queryKey: ['paciente-asignaciones', pacienteForAsignar?.id],

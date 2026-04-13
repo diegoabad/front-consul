@@ -96,6 +96,9 @@ export function GestionarAgendaModal({
     enabled: open && !!profesionalId,
   });
 
+  /** false solo si el administrador deshabilitó WhatsApp para este profesional */
+  const permitidoRecordatorioWhatsappAdmin = recordatorioConfig?.recordatorio_whatsapp_permitido_admin !== false;
+
   useEffect(() => {
     if (recordatorioConfig) {
       const activo = recordatorioConfig.recordatorio_activo;
@@ -108,6 +111,13 @@ export function GestionarAgendaModal({
   }, [recordatorioConfig]);
 
   const handleGuardarRecordatorio = () => {
+    if (!permitidoRecordatorioWhatsappAdmin) {
+      reactToastify.error(
+        'Los recordatorios WhatsApp no están habilitados para tu cuenta. Contactá al administrador.',
+        { position: 'top-right', autoClose: 4000 }
+      );
+      return;
+    }
     const horas = Number(recordatorioHoras);
     if (isNaN(horas) || horas < 2 || horas > 48) {
       reactToastify.error('Las horas deben ser entre 2 y 48', { position: 'top-right', autoClose: 3000 });
@@ -592,8 +602,9 @@ export function GestionarAgendaModal({
   };
 
   const recordatorioDirty =
-    recordatorioActivo !== savedRecordatorioActivo ||
-    Number(recordatorioHoras) !== Number(savedRecordatorioHoras);
+    permitidoRecordatorioWhatsappAdmin &&
+    (recordatorioActivo !== savedRecordatorioActivo ||
+      Number(recordatorioHoras) !== Number(savedRecordatorioHoras));
 
   // Cerrar con Escape (ref evita que onOpenChange en deps dispare el efecto en cada render del padre)
   const onOpenChangeRef = useRef(onOpenChange);
@@ -1191,20 +1202,40 @@ export function GestionarAgendaModal({
                       </div>
                     ) : (
                       <div className="w-full space-y-4">
+                        {!permitidoRecordatorioWhatsappAdmin && (
+                          <div
+                            role="status"
+                            className="rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950 leading-snug"
+                          >
+                            Los recordatorios por WhatsApp no están habilitados para tu cuenta. Contactá al administrador del consultorio para
+                            solicitar esta función.
+                          </div>
+                        )}
                         {/* Switch activar/desactivar */}
-                        <div className="flex items-center justify-between p-4 rounded-[12px] border border-[#E5E7EB] bg-white">
+                        <div
+                          className={cn(
+                            'flex items-center justify-between p-4 rounded-[12px] border border-[#E5E7EB] bg-white',
+                            !permitidoRecordatorioWhatsappAdmin && 'opacity-60'
+                          )}
+                        >
                           <div>
                             <p className="text-[14px] font-semibold text-[#111827]">Activar recordatorios por WhatsApp</p>
                             <p className="text-[12px] text-[#6B7280] mt-0.5">Enviará mensajes automáticos a los pacientes antes de cada turno</p>
                           </div>
                           <Switch
                             checked={recordatorioActivo}
+                            disabled={!permitidoRecordatorioWhatsappAdmin}
                             onCheckedChange={setRecordatorioActivo}
                           />
                         </div>
 
                         {/* Horas antes */}
-                        <div className={cn('p-4 rounded-[12px] border border-[#E5E7EB] bg-white space-y-3 transition-opacity', !recordatorioActivo && 'opacity-50 pointer-events-none')}>
+                        <div
+                          className={cn(
+                            'p-4 rounded-[12px] border border-[#E5E7EB] bg-white space-y-3 transition-opacity',
+                            (!recordatorioActivo || !permitidoRecordatorioWhatsappAdmin) && 'opacity-50 pointer-events-none'
+                          )}
+                        >
                           <div>
                             <p className="text-[14px] font-semibold text-[#111827]">Horas de anticipación</p>
                             <p className="text-[12px] text-[#6B7280] mt-0.5">Cuántas horas antes del turno se enviará el recordatorio</p>
@@ -1237,7 +1268,12 @@ export function GestionarAgendaModal({
                     </Button>
                     <Button
                       onClick={handleGuardarRecordatorio}
-                      disabled={isSavingRecordatorio || isLoadingRecordatorio || !recordatorioDirty}
+                      disabled={
+                        isSavingRecordatorio ||
+                        isLoadingRecordatorio ||
+                        !recordatorioDirty ||
+                        !permitidoRecordatorioWhatsappAdmin
+                      }
                       className="rounded-[10px] font-['Inter'] bg-[#2563eb] hover:bg-[#1d4ed8] w-full sm:w-auto order-2 disabled:opacity-50"
                     >
                       {isSavingRecordatorio ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

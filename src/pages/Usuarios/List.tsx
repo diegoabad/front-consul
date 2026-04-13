@@ -33,7 +33,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { es } from 'date-fns/locale';
 import { toast as reactToastify } from 'react-toastify';
 import { usuariosService, type CreateUsuarioData, type UpdateUsuarioData } from '@/services/usuarios.service';
-import { profesionalesService } from '@/services/profesionales.service';
+import { profesionalesService, type UpdateProfesionalData } from '@/services/profesionales.service';
 import type { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -79,6 +79,18 @@ function getEstadoBadge(activo: boolean) {
     <Badge className="bg-[#F3F4F6] text-[#4B5563] border-[#D1D5DB] hover:bg-[#E5E7EB] rounded-full px-3 py-1 text-xs font-medium">
       Inactivo
     </Badge>
+  );
+}
+
+/** Logo oficial WhatsApp (glyph), `currentColor` para heredar el color del botón */
+function WhatsAppBrandIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"
+      />
+    </svg>
   );
 }
 
@@ -207,7 +219,9 @@ export default function AdminUsuarios() {
       limit,
     };
     if (effectiveSearch) f.q = effectiveSearch;
-    if (rolFilter !== 'todos') f.rol = rolFilter;
+    if (rolFilter !== 'todos') {
+      f.rol = rolFilter;
+    }
     if (estadoFilter !== 'todos') f.activo = estadoFilter === 'true';
     return f;
   }, [page, limit, effectiveSearch, rolFilter, estadoFilter]);
@@ -430,6 +444,25 @@ export default function AdminUsuarios() {
     },
   });
 
+  const toggleWhatsappProfesionalMutation = useMutation({
+    mutationFn: async ({ profesionalId, permitido }: { profesionalId: string; permitido: boolean }) => {
+      await profesionalesService.update(profesionalId, { recordatorio_whatsapp_permitido_admin: permitido });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['usuarios'] });
+      queryClient.invalidateQueries({ queryKey: ['profesionales'] });
+      queryClient.invalidateQueries({ queryKey: ['recordatorio-config'] });
+      queryClient.invalidateQueries({ queryKey: ['profesional-by-user'] });
+      reactToastify.success('Preferencia de WhatsApp actualizada', { position: 'top-right', autoClose: 2500 });
+    },
+    onError: (err: unknown) => {
+      reactToastify.error(getApiErrorMessage(err as Parameters<typeof getApiErrorMessage>[0], 'No se pudo actualizar'), {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    },
+  });
+
   // Update password mutation
   const handleCreate = async () => {
     if (!createFormData.email || !createFormData.password || !createFormData.nombre || !createFormData.apellido) {
@@ -612,19 +645,22 @@ export default function AdminUsuarios() {
       await usuariosService.update(selectedUsuario.id, editFormData);
       if (selectedUsuario.rol === 'profesional' && editProfesionalId) {
         const monto = parseValorToNumber(editProfesionalData.valor);
-        await profesionalesService.update(editProfesionalId, {
+        const updateProfPayload: UpdateProfesionalData = {
           matricula: editProfesionalData.matricula || undefined,
           especialidad: editProfesionalData.especialidad || undefined,
           tipo_periodo_pago: editProfesionalData.tipo_periodo_pago,
           monto_mensual: monto,
           fecha_inicio_contrato: editProfesionalData.fecha_inicio ? `${editProfesionalData.fecha_inicio}T12:00:00.000Z` : undefined,
-        });
+        };
+        await profesionalesService.update(editProfesionalId, updateProfPayload);
       }
       if (wantChangePassword) {
         await usuariosService.updatePassword(selectedUsuario.id, { new_password: passwordData.new_password });
       }
       queryClient.invalidateQueries({ queryKey: ['usuarios'] });
       queryClient.invalidateQueries({ queryKey: ['profesionales'] });
+      queryClient.invalidateQueries({ queryKey: ['recordatorio-config'] });
+      queryClient.invalidateQueries({ queryKey: ['profesional-by-user'] });
       reactToastify.success('Usuario actualizado correctamente', {
         position: 'top-right',
         autoClose: 3000,
@@ -671,7 +707,8 @@ export default function AdminUsuarios() {
     setEstadoFilter('todos');
   };
 
-  const hasActiveFilters = effectiveSearch || rolFilter !== 'todos' || estadoFilter !== 'todos';
+  const hasActiveFilters =
+    effectiveSearch || rolFilter !== 'todos' || estadoFilter !== 'todos';
   const canCreate = hasPermission(user, 'usuarios.crear');
   const canUpdate = hasPermission(user, 'usuarios.actualizar');
   const canDelete = hasPermission(user, 'usuarios.eliminar');
@@ -690,6 +727,8 @@ export default function AdminUsuarios() {
     usuario.id !== user?.id &&
     !(user?.rol === 'secretaria' && usuario.rol === 'administrador');
 
+  const canToggleWhatsappProfesional = user?.rol === 'administrador';
+
   return (
     <div className="flex-1 flex flex-col space-y-8 max-lg:space-y-4 max-lg:pb-[46px] relative min-h-0">
       {/* Header */}
@@ -699,7 +738,11 @@ export default function AdminUsuarios() {
             Usuarios del Sistema
           </h1>
           <p className="text-base text-[#6B7280] mt-2 font-['Inter']">
-            {isLoading ? 'Cargando...' : totalPages > 0 ? `Mostrando ${(page - 1) * limit + 1}-${Math.min(page * limit, total)} de ${total} usuarios` : `${total} ${total === 1 ? 'usuario' : 'usuarios'}`}
+            {isLoading
+              ? 'Cargando...'
+              : totalPages > 0
+                ? `Mostrando ${(page - 1) * limit + 1}-${Math.min(page * limit, total)} de ${total} usuarios`
+                : `${total} ${total === 1 ? 'usuario' : 'usuarios'}`}
           </p>
         </div>
         {canCreate && (
@@ -716,7 +759,7 @@ export default function AdminUsuarios() {
       {/* Filtros */}
       <Card className="border border-[#E5E7EB] rounded-[16px] shadow-sm">
         <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#9CA3AF] stroke-[2]" />
               <Input
@@ -785,8 +828,8 @@ export default function AdminUsuarios() {
               No hay usuarios
             </h3>
             <p className="text-[#6B7280] mb-6 font-['Inter']">
-              {hasActiveFilters 
-                ? 'No se encontraron usuarios con los filtros aplicados' 
+              {hasActiveFilters
+                ? 'No se encontraron usuarios con los filtros aplicados'
                 : 'Comienza agregando tu primer usuario'}
             </p>
             {!hasActiveFilters && canCreate && (
@@ -812,6 +855,9 @@ export default function AdminUsuarios() {
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Rol
                 </TableHead>
+                <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151] w-[72px] text-center">
+                  WhatsApp
+                </TableHead>
                 <TableHead className="font-['Inter'] font-medium text-[14px] text-[#374151]">
                   Estado
                 </TableHead>
@@ -823,9 +869,11 @@ export default function AdminUsuarios() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-16 text-center">
+                  <TableCell colSpan={5} className="py-16 text-center">
                     <Loader2 className="h-10 w-10 animate-spin mx-auto mb-2 text-[#2563eb]" />
-                    <p className="text-[#6B7280] font-['Inter'] text-sm m-0">Cargando usuarios...</p>
+                    <p className="text-[#6B7280] font-['Inter'] text-sm m-0">
+                      Cargando usuarios...
+                    </p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -847,6 +895,51 @@ export default function AdminUsuarios() {
                     </div>
                   </TableCell>
                   <TableCell>{getRolBadge(usuario.rol)}</TableCell>
+                  <TableCell className="text-center">
+                    {usuario.rol === 'profesional' && usuario.profesional_id && canToggleWhatsappProfesional ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              disabled={toggleWhatsappProfesionalMutation.isPending}
+                              onClick={() => {
+                                const pid = usuario.profesional_id!;
+                                const actualmentePermitido = usuario.recordatorio_whatsapp_permitido_admin !== false;
+                                toggleWhatsappProfesionalMutation.mutate({
+                                  profesionalId: pid,
+                                  permitido: !actualmentePermitido,
+                                });
+                              }}
+                              className={`h-9 w-9 rounded-full ${
+                                usuario.recordatorio_whatsapp_permitido_admin !== false
+                                  ? 'bg-[#25D366]/15 text-[#128C7E] hover:bg-[#25D366]/25'
+                                  : 'bg-[#F3F4F6] text-[#9CA3AF] hover:bg-[#E5E7EB]'
+                              }`}
+                              aria-label={
+                                usuario.recordatorio_whatsapp_permitido_admin !== false
+                                  ? 'Deshabilitar recordatorios por WhatsApp'
+                                  : 'Habilitar recordatorios por WhatsApp'
+                              }
+                            >
+                              <WhatsAppBrandIcon className="h-[18px] w-[18px] shrink-0" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-[#111827] text-white text-xs font-['Inter'] rounded-[8px] px-3 py-2 max-w-[240px]">
+                            <p className="text-white m-0">
+                              {usuario.recordatorio_whatsapp_permitido_admin !== false
+                                ? 'Deshabilitar recordatorios por WhatsApp'
+                                : 'Habilitar recordatorios por WhatsApp'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <span className="text-[#D1D5DB] text-sm">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>{getEstadoBadge(usuario.activo)}</TableCell>
                   <TableCell className="text-right">
                     <TooltipProvider>
@@ -963,7 +1056,7 @@ export default function AdminUsuarios() {
         </Card>
       )}
 
-      {/* FAB móvil: Nuevo Usuario */}
+      {/* FAB móvil: nuevo usuario / profesional */}
       {canCreate && (
         <div className="lg:hidden fixed bottom-6 right-6 z-40">
           <Button
@@ -1130,7 +1223,7 @@ export default function AdminUsuarios() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <Label htmlFor="create-telefono" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
                   <Phone className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
@@ -1624,7 +1717,7 @@ export default function AdminUsuarios() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 grid-cols-2">
               <div className="space-y-3">
                 <Label htmlFor="edit-telefono" className="text-[15px] font-medium text-[#374151] font-['Inter'] flex items-center gap-2">
                   <Phone className="h-4 w-4 text-[#6B7280] stroke-[2]" />
@@ -1792,6 +1885,7 @@ export default function AdminUsuarios() {
                   )}
                 </div>
               </div>
+
               <div className="rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-5 max-md:border-0 max-md:bg-transparent max-md:rounded-none max-md:p-0">
                 <h4 className="text-[15px] font-semibold text-[#374151] font-['Inter'] flex items-center gap-2 mb-4 max-md:mb-3">
                   <CreditCard className="max-md:hidden h-4 w-4 text-[#6B7280] stroke-[2]" />
