@@ -9,14 +9,30 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Proxy de la API al servicio en Render (mismo origen en el navegador → sin CORS).
+# Sustituye la URL por la de tu servicio web en Render (Dashboard → URL del servicio).
+# Debe ir ANTES del fallback SPA.
+[[redirects]]
+  from = "/api/*"
+  to = "https://consul-api.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 # =============================================================================
-# VARIABLE DE ENTORNO OBLIGATORIA (Vite, no React CRA)
+# VITE_API_URL (opcional si usás el proxy de arriba)
 # =============================================================================
-# En Netlify: Site configuration → Environment variables → Add variable
-#   Key:   VITE_API_URL   (exactamente así; con Vite se usa VITE_*, no REACT_APP_*)
-#   Value: https://tu-api-produccion.com/api
+# Sin variable: el front usa origin + "/api" → este proxy → Render.
 #
-# Después: "Trigger deploy" → "Clear cache and deploy site" para que el build
-# use la variable (si ya la habías agregado y seguía yendo a localhost, el
-# clear cache + redeploy suele solucionarlo).
+# Directo a Render (sin proxy): VITE_API_URL=https://TU-SERVICIO.onrender.com
+# (sin /api al final; el build añade /api a la base). En Render: CORS_ORIGIN=https://tu-app.netlify.app
+#
+# Un 404 en OPTIONS en la pestaña Red suele ser URL equivocada (p. ej. API apuntando al dominio
+# del front sin proxy) o proxy `to` mal; no suele ser “CORS roto” en Express.
+#
+# Tras cambiar variables: Clear cache and deploy site.
 # =============================================================================

@@ -7,7 +7,7 @@ import path from 'path'
 const isBuild = process.argv.includes('build');
 const apiUrl = (process.env.VITE_API_URL || process.env.API_URL || '').trim();
 if (isBuild) {
-  console.log('[Vite build] API URL:', apiUrl || '(vacío → el front usará localhost en producción)');
+  console.log('[Vite build] API URL:', apiUrl || '(vacío → en el navegador: origin + /api; proxy Netlify → Render)');
 }
 
 export default defineConfig({
