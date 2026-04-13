@@ -9,12 +9,12 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Proxy de la API al servicio en Render (mismo origen en el navegador → sin CORS).
-# Sustituye la URL por la de tu servicio web en Render (Dashboard → URL del servicio).
-# Debe ir ANTES del fallback SPA.
+# Proxy de la API al servicio en Render (mismo origen → sin CORS).
+# IMPORTANTE: la URL debe ser la del servicio que realmente existe en Render (GET /api/health = 200).
+# Si cambiás de servicio en Render, actualizá también web/public/_redirects (se copia a dist/).
 [[redirects]]
   from = "/api/*"
-  to = "https://consul-api.onrender.com/api/:splat"
+  to = "https://consul-mm-o0qk.onrender.com/api/:splat"
   status = 200
   force = true
 
