@@ -5,6 +5,7 @@
 import { getToken, getUser } from '@/utils/storage';
 
 import { getApiBaseUrl } from '@/lib/api-base-url';
+import { toDisplayString } from '@/lib/utils';
 
 const API_URL = getApiBaseUrl();
 
@@ -38,7 +39,8 @@ function sendToLogs(payload: {
 
 export function setupGlobalErrorLogger() {
   window.onerror = (message, source, lineno, colno, error) => {
-    const mensaje = typeof message === 'string' ? message : String(message);
+    const mensaje =
+      typeof message === 'string' ? message : toDisplayString(message) || 'Error no capturado';
     const stackParts: string[] = [];
     if (error?.stack) {
       stackParts.push(`--- Stack trace ---\n${error.stack}`);
@@ -55,13 +57,22 @@ export function setupGlobalErrorLogger() {
 
   window.addEventListener('unhandledrejection', (event) => {
     const err = event.reason;
-    const mensaje = err?.message ?? (typeof err === 'string' ? err : 'Promise rechazada');
+    const mensaje =
+      err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
+        ? (err as { message: string }).message
+        : typeof err === 'string'
+          ? err
+          : toDisplayString(err) || 'Promise rechazada';
     const stackParts: string[] = [];
-    if (err?.stack) {
-      stackParts.push(`--- Stack trace ---\n${err.stack}`);
+    if (err && typeof err === 'object' && 'stack' in err && typeof (err as { stack: string }).stack === 'string') {
+      stackParts.push(`--- Stack trace ---\n${(err as { stack: string }).stack}`);
     }
-    if (err && typeof err === 'object' && !err.stack) {
-      stackParts.push(`--- Detalle ---\n${JSON.stringify(err, null, 2)}`);
+    if (err && typeof err === 'object' && !('stack' in err && typeof (err as { stack?: unknown }).stack === 'string')) {
+      try {
+        stackParts.push(`--- Detalle ---\n${JSON.stringify(err, null, 2)}`);
+      } catch {
+        stackParts.push(`--- Detalle ---\n${toDisplayString(err)}`);
+      }
     }
     const stack = stackParts.length > 0 ? stackParts.join('\n\n') : null;
     sendToLogs({

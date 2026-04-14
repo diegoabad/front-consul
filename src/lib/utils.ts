@@ -106,3 +106,35 @@ export function normalizeDateOnlyForInput(raw?: string | number | null): string 
 
   return "";
 }
+
+/**
+ * Convierte cualquier valor de error/mensaje de API a string seguro para toasts y UI.
+ * Evita TypeError al pasar objetos a react-toastify o a `String()` con valueOf raro.
+ */
+export function toDisplayString(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "bigint") return String(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => toDisplayString(v)).filter(Boolean).join("; ");
+  }
+  if (typeof value === "object") {
+    try {
+      const m = (value as { message?: unknown }).message;
+      if (typeof m === "string" && m.length > 0) return m;
+      return JSON.stringify(value);
+    } catch {
+      try {
+        return Object.prototype.toString.call(value);
+      } catch {
+        return "Error";
+      }
+    }
+  }
+  try {
+    return String(value);
+  } catch {
+    return "Error desconocido";
+  }
+}

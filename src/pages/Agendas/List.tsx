@@ -31,6 +31,7 @@ import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns
 import { formatTime, formatDiasYHorarios, getDiaSemanaLabel } from './utils';
 import { CreateAgendaModal, GestionarAgendaModal } from './modals';
 import { PAGE_SIZE } from '@/lib/constants';
+import { refetchAgendaRelatedQueries } from '@/utils/refetchAgendaRelatedQueries';
 
 function getEstadoBadge(activo: boolean) {
   return activo ? (
@@ -92,9 +93,9 @@ export default function AdminAgendas() {
   });
   // Mutations
   const deleteAgendaMutation = useMutation({
-    mutationFn: (id: string) => agendaService.deleteAgenda(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    mutationFn: ({ id }: { id: string; profesional_id: string }) => agendaService.deleteAgenda(id),
+    onSuccess: async (_void, { profesional_id }) => {
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesional_id });
       setShowDeleteAgendaModal(false);
       setAgendaToDelete(null);
       reactToastify.success('Configuración de agenda eliminada correctamente', {
@@ -466,7 +467,9 @@ export default function AdminAgendas() {
           profesionalId={profesionalGestionar.id}
           profesionalNombre={profesionalGestionar.nombre}
           profesionalApellido={profesionalGestionar.apellido}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+          onSuccess={async () => {
+            await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalGestionar.id });
+          }}
         />
       )}
                   </div>
@@ -479,7 +482,10 @@ export default function AdminAgendas() {
           if (!open) setEditingAgenda(null);
         }}
         editingAgenda={editingAgenda}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+        onSuccess={async () => {
+          const pid = editingAgenda?.profesional_id;
+          await refetchAgendaRelatedQueries(queryClient, pid ? { profesionalId: pid } : undefined);
+        }}
       />
 
       <ConfirmDeleteModal
@@ -494,7 +500,11 @@ export default function AdminAgendas() {
             </p>
           </>
         ) : ''}
-        onConfirm={() => { if (agendaToDelete) deleteAgendaMutation.mutate(agendaToDelete.id); }}
+        onConfirm={() => {
+          if (agendaToDelete) {
+            deleteAgendaMutation.mutate({ id: agendaToDelete.id, profesional_id: agendaToDelete.profesional_id });
+          }
+        }}
         isLoading={deleteAgendaMutation.isPending}
       />
     </>

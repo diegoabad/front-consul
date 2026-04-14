@@ -54,6 +54,7 @@ import { getTurnosListState, setTurnosListState } from '@/utils/storage';
 import { CreateAgendaModal, GestionarAgendaModal } from '@/pages/Agendas/modals';
 import { useDocumentVisibility } from '@/hooks/use-document-visibility';
 import { getAgendaRefetchIntervalMs } from '@/lib/agenda-refetch';
+import { refetchAgendaRelatedQueries } from '@/utils/refetchAgendaRelatedQueries';
 
 const estadoOptions = [
   { value: 'activos', label: 'Todos (excepto cancelados)' },
@@ -65,7 +66,7 @@ const estadoOptions = [
   { value: 'ausente', label: 'Ausentes' },
 ];
 
-// Opciones para cambiar estado en la grilla (valor backend → etiqueta)
+// Opciones para cambiar estado en la grilla (valor backend �  etiqueta)
 const estadoOpcionesGrilla = [
   { value: 'pendiente', label: 'Pendiente' },
   { value: 'confirmado', label: 'Confirmado' },
@@ -79,14 +80,14 @@ function getEstadoLabel(estado: string): string {
   return opt?.label ?? estado;
 }
 
-/** Formatea DNI con separador de miles (ej: 12345678 → 12.345.678) */
+/** Formatea DNI con separador de miles (ej: 12345678 �  12.345.678) */
 function formatDni(dni: string | number | undefined | null): string {
   if (dni === undefined || dni === null) return '';
   const s = String(dni).replace(/\D/g, '');
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-/** Formatea hora escrita a mano a HH:mm (ej: "9:00" → "09:00", "21:00" → "21:00", "930" → "09:30") */
+/** Formatea hora escrita a mano a HH:mm (ej: "9:00" �  "09:00", "21:00" �  "21:00", "930" �  "09:30") */
 function formatHoraManual(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
@@ -214,7 +215,7 @@ function isoToHhMmLocal(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Igual que api/recurrenciaFechas (UTC): qué ocurrencia del mismo weekday es en el mes (1–5) */
+/** Igual que api/recurrenciaFechas (UTC): qué ocurrencia del mismo weekday es en el mes (1�5) */
 function weekOfMonthUTC(date: Date): number {
   const y = date.getUTCFullYear();
   const m = date.getUTCMonth();
@@ -321,7 +322,7 @@ function computeAgendaSlotsForDate(
   }));
 }
 
-/** Sincroniza el estado del turno en el cache de React Query antes de limpiar `pendingEstado`, para no parpadear (p. ej. confirmado → pendiente → confirmado) por carrera refetch/polling. */
+/** Sincroniza el estado del turno en el cache de React Query antes de limpiar `pendingEstado`, para no parpadear (p. ej. confirmado �  pendiente �  confirmado) por carrera refetch/polling. */
 function patchTurnoEstadoInTurnosQueries(
   queryClient: QueryClient,
   turnoId: string,
@@ -523,8 +524,6 @@ export default function AdminTurnos() {
     }>
   >([]);
   const [previewRecurrenciaLoading, setPreviewRecurrenciaLoading] = useState(false);
-  /** Índice de fila del preview cuyo borrado se está confirmando (null = modal cerrado). */
-  const [previewQuitarIndex, setPreviewQuitarIndex] = useState<number | null>(null);
   /** Fila en la que se está validando disponibilidad tras cambiar fecha/hora (un solo slot a la API). */
   const [previewSlotValidatingIndex, setPreviewSlotValidatingIndex] = useState<number | null>(null);
   const createModalScrollRef = useRef<HTMLDivElement>(null);
@@ -533,13 +532,61 @@ export default function AdminTurnos() {
     () => format(addMonths(startOfDay(new Date(`${createFecha}T12:00:00`)), 6), 'yyyy-MM-dd'),
     [createFecha]
   );
-  /** Todos los slots OK y sin validación en curso → habilita confirmar la serie. */
+
+  /** Turnos del rango de vista previa (debe declararse antes de previewSerieConfirmable). */
+  const filtersPreviewTurnosRange = useMemo(() => {
+    if (!showCreateModal || createRecurrenciaStep !== 'preview' || !createFormData.profesional_id) return null;
+    const fechaInicio = new Date(previewDateMin + 'T00:00:00');
+    const fechaFin = new Date(previewDateMax + 'T23:59:59.999');
+    return {
+      profesional_id: createFormData.profesional_id,
+      fecha_inicio: fechaInicio.toISOString(),
+      fecha_fin: fechaFin.toISOString(),
+    };
+  }, [showCreateModal, createRecurrenciaStep, createFormData.profesional_id, previewDateMin, previewDateMax]);
+  const { data: turnosPreviewRango = [] } = useQuery({
+    queryKey: ['turnos', 'preview-range', filtersPreviewTurnosRange],
+    queryFn: () => turnosService.getAll(filtersPreviewTurnosRange!),
+    enabled: Boolean(filtersPreviewTurnosRange),
+    refetchInterval: showCreateModal && createRecurrenciaStep === 'preview' && isTabVisible ? agendaPollMs : false,
+    refetchOnWindowFocus: true,
+  });
+  const turnosPorYmdPreview = useMemo(() => {
+    const m = new Map<string, Turno[]>();
+    for (const t of turnosPreviewRango) {
+      const k = isoToYmdLocal(t.fecha_hora_inicio);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(t);
+    }
+    return m;
+  }, [turnosPreviewRango]);
+
+  /** Solape con turnos ya persistidos (refuerzo UI si el preview API desincroniza instantes). */
+  const previewTieneConflictoConAgendaExistente = useCallback(
+    (row: { fecha_hora_inicio: string; fecha_hora_fin: string }) => {
+      const ymd = isoToYmdLocal(row.fecha_hora_inicio);
+      const activos = (turnosPorYmdPreview.get(ymd) ?? []).filter(
+        (t) => t.estado !== 'cancelado' && t.estado !== 'completado'
+      );
+      const slotStart = new Date(row.fecha_hora_inicio).getTime();
+      const slotEnd = new Date(row.fecha_hora_fin).getTime();
+      for (const t of activos) {
+        const tStart = new Date(t.fecha_hora_inicio).getTime();
+        const tEnd = new Date(t.fecha_hora_fin).getTime();
+        if (slotStart < tEnd && slotEnd > tStart) return true;
+      }
+      return false;
+    },
+    [turnosPorYmdPreview, createFormData.paciente_id]
+  );
+
+  /** Todos los slots OK y sin validación en curso �  habilita confirmar la serie. */
   const previewSerieConfirmable = useMemo(
     () =>
       previewRows.length > 0 &&
-      previewRows.every((r) => r.ok) &&
+      previewRows.every((r) => r.ok && !previewTieneConflictoConAgendaExistente(r)) &&
       previewSlotValidatingIndex === null,
-    [previewRows, previewSlotValidatingIndex]
+    [previewRows, previewSlotValidatingIndex, previewTieneConflictoConAgendaExistente]
   );
   const previewRowsPorMes = useMemo(() => {
     type PreviewRow = (typeof previewRows)[number];
@@ -575,7 +622,7 @@ export default function AdminTurnos() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Al entrar a Turnos: mes actual en calendario; si se vuelve desde otra pantalla (Agendas, Pacientes…), día = hoy.
+  // Al entrar a Turnos: mes actual en calendario; si se vuelve desde otra pantalla (Agendas, Pacientes⬦), día = hoy.
   // No usar location.key: cambia en navegaciones internas y dejaba el calendario/día desincronizado (ej. siempre marzo).
   // queueMicrotask: leer consul_prev_route después de que DashboardLayout escriba la ruta anterior.
   useEffect(() => {
@@ -690,7 +737,7 @@ export default function AdminTurnos() {
     enabled: puedeConsultarAgenda,
   });
 
-  // Días puntuales del profesional (rango: mes del calendario ± 1 mes) — antes de loadingAgendaYExcepciones
+  // Días puntuales del profesional (rango: mes del calendario ± 1 mes) � antes de loadingAgendaYExcepciones
   const excepcionesDateRange = useMemo(() => {
     const start = startOfMonth(subMonths(calendarViewMonth, 1));
     const end = endOfMonth(addMonths(calendarViewMonth, 1));
@@ -843,34 +890,6 @@ export default function AdminTurnos() {
     refetchOnWindowFocus: true,
   });
 
-  /** Turnos del rango permitido en vista previa de recurrencia (Bloqueado/Ocupado por día). */
-  const filtersPreviewTurnosRange = useMemo(() => {
-    if (!showCreateModal || createRecurrenciaStep !== 'preview' || !createFormData.profesional_id) return null;
-    const fechaInicio = new Date(previewDateMin + 'T00:00:00');
-    const fechaFin = new Date(previewDateMax + 'T23:59:59.999');
-    return {
-      profesional_id: createFormData.profesional_id,
-      fecha_inicio: fechaInicio.toISOString(),
-      fecha_fin: fechaFin.toISOString(),
-    };
-  }, [showCreateModal, createRecurrenciaStep, createFormData.profesional_id, previewDateMin, previewDateMax]);
-  const { data: turnosPreviewRango = [] } = useQuery({
-    queryKey: ['turnos', 'preview-range', filtersPreviewTurnosRange],
-    queryFn: () => turnosService.getAll(filtersPreviewTurnosRange!),
-    enabled: Boolean(filtersPreviewTurnosRange),
-    refetchInterval: showCreateModal && createRecurrenciaStep === 'preview' && isTabVisible ? agendaPollMs : false,
-    refetchOnWindowFocus: true,
-  });
-  const turnosPorYmdPreview = useMemo(() => {
-    const m = new Map<string, Turno[]>();
-    for (const t of turnosPreviewRango) {
-      const k = isoToYmdLocal(t.fecha_hora_inicio);
-      if (!m.has(k)) m.set(k, []);
-      m.get(k)!.push(t);
-    }
-    return m;
-  }, [turnosPreviewRango]);
-
   // Todas las agendas (solo admin, al abrir el desplegable): quién tiene agenda en el listado del filtro
   const { data: todasLasAgendas = [], isLoading: loadingTodasLasAgendas } = useQuery({
     queryKey: ['agendas', 'todos-profesionales'],
@@ -918,7 +937,7 @@ export default function AdminTurnos() {
     enabled: puedeConsultarAgenda,
   });
 
-  /** Bloques que tocan cada día local (evita O(bloques × días) al pintar el calendario). */
+  /** Bloques que tocan cada día local (evita O(bloques � días) al pintar el calendario). */
   const bloquesPorFechaStr = useMemo(() => {
     const m = new Map<string, typeof bloquesDelMes>();
     for (const b of bloquesDelMes) {
@@ -1476,9 +1495,8 @@ export default function AdminTurnos() {
 
   const createExcepcionMutation = useMutation({
     mutationFn: (data: CreateExcepcionAgendaData) => agendaService.createExcepcion(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async (_d, variables) => {
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId: variables.profesional_id });
       setShowDiaPuntualModal(false);
       reactToastify.success('Día puntual habilitado correctamente', { position: 'top-right', autoClose: 3000 });
     },
@@ -1493,9 +1511,12 @@ export default function AdminTurnos() {
 
   const deleteExcepcionMutation = useMutation({
     mutationFn: (id: string) => agendaService.deleteExcepcion(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async () => {
+      if (profesionalFilter) {
+        await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalFilter });
+      } else {
+        await refetchAgendaRelatedQueries(queryClient);
+      }
       setShowDiaPuntualModal(false);
       setDiaPuntualEditId(null);
       reactToastify.success('Fecha especial eliminada correctamente', { position: 'top-right', autoClose: 3000 });
@@ -1512,9 +1533,12 @@ export default function AdminTurnos() {
   const updateExcepcionMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateExcepcionAgendaData }) =>
       agendaService.updateExcepcion(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async () => {
+      if (profesionalFilter) {
+        await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalFilter });
+      } else {
+        await refetchAgendaRelatedQueries(queryClient);
+      }
       setShowDiaPuntualModal(false);
       setDiaPuntualEditId(null);
       reactToastify.success('Día puntual actualizado correctamente', { position: 'top-right', autoClose: 3000 });
@@ -1725,7 +1749,7 @@ export default function AdminTurnos() {
   });
 
   // Update mutation (cambiar estado u otros campos). La invalidación y el clear de UI optimista van en handleUpdateEstado
-  // para esperar el refetch y no parpadear pendiente → nuevo estado.
+  // para esperar el refetch y no parpadear pendiente �  nuevo estado.
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateTurnoData }) =>
       turnosService.update(id, data),
@@ -1834,7 +1858,7 @@ export default function AdminTurnos() {
       });
       return;
     }
-    // Con ingreso manual: si el horario está fuera del rango → mostrar modal de advertencia
+    // Con ingreso manual: si el horario está fuera del rango �  mostrar modal de advertencia
     if (horasManuales && fueraDeRango) {
       setPendingCreateHorarioFueraPayload(payload);
       setShowConfirmHorarioFueraModal(true);
@@ -1979,7 +2003,6 @@ export default function AdminTurnos() {
     setRecurrenciaFrecuencia('no');
     setCreateRecurrenciaStep('datos');
     setPreviewRows([]);
-    setPreviewQuitarIndex(null);
     setPreviewSlotValidatingIndex(null);
   }, []);
 
@@ -2061,6 +2084,8 @@ export default function AdminTurnos() {
       const pacId = createFormData.paciente_id;
       if (!pid || !pacId) return;
       setPreviewSlotValidatingIndex(index);
+      // Dejar que React aplique el nuevo horario de la fila antes de validar (evita comparar con estado viejo).
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
       try {
         const { resultados } = await turnosService.validarSlotsBatch({
           profesional_id: pid,
@@ -2071,7 +2096,7 @@ export default function AdminTurnos() {
         if (!ev) return;
         setPreviewRows((rows) => {
           const r = rows[index];
-          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio) return rows;
+          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio || r.fecha_hora_fin !== fecha_hora_fin) return rows;
           const next = [...rows];
           next[index] = {
             ...next[index],
@@ -2084,7 +2109,7 @@ export default function AdminTurnos() {
       } catch {
         setPreviewRows((rows) => {
           const r = rows[index];
-          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio) return rows;
+          if (!r || r.fecha_hora_inicio !== fecha_hora_inicio || r.fecha_hora_fin !== fecha_hora_fin) return rows;
           const next = [...rows];
           next[index] = {
             ...next[index],
@@ -2259,6 +2284,29 @@ export default function AdminTurnos() {
     });
   };
 
+  /** Si el día listado no tiene franja en agenda ni día puntual, abrir modal para habilitar en lugar del alta de turno. */
+  const handleClickNuevoTurno = useCallback(() => {
+    if (!profesionalFilter || !fechaFilter || diaCompletamenteBloqueadoListado) return;
+    if (loadingAgendaYExcepciones) {
+      reactToastify.info('Esperá a que cargue la agenda del profesional.', {
+        position: 'top-right',
+        autoClose: 2500,
+      });
+      return;
+    }
+    if (!diaSeleccionadoTieneAgenda) {
+      setShowDiaNoHabilitadoModal(true);
+      return;
+    }
+    setShowCreateModal(true);
+  }, [
+    profesionalFilter,
+    fechaFilter,
+    diaCompletamenteBloqueadoListado,
+    loadingAgendaYExcepciones,
+    diaSeleccionadoTieneAgenda,
+  ]);
+
   const profesionalOptions = profesionales.map((prof) => ({
     value: prof.id,
     label: `${formatDisplayText(prof.nombre)} ${formatDisplayText(prof.apellido)} ${prof.especialidad ? `- ${formatDisplayText(prof.especialidad)}` : ''}`,
@@ -2335,7 +2383,7 @@ export default function AdminTurnos() {
 
   return (
     <div className="flex flex-col gap-6 max-lg:gap-3 flex-1 min-h-0">
-      {/* Modal: profesional sin agenda — ¿Querés crearla? */}
+      {/* Modal: profesional sin agenda � ¿Querés crearla? */}
       <Dialog open={showSinAgendaModal} onOpenChange={setShowSinAgendaModal}>
         <DialogContent
           className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl max-lg:max-w-[92vw] max-lg:px-5 flex flex-col justify-center min-h-[280px] py-8 gap-0"
@@ -2391,18 +2439,9 @@ export default function AdminTurnos() {
             <div className="space-y-3 text-[#374151] font-['Inter'] text-[15px] max-lg:text-[14px]">
               <p className="mb-0">
                 {isProfesional
-                  ? 'Este día no tiene horario en tu agenda semanal ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.'
-                  : 'Este día no tiene horario en la agenda semanal de este profesional ni un día puntual configurado. Podés revisar en el listado si hay turnos cargados por error.'}
+                  ? 'Este día no tiene horario en tu agenda semanal ni un día puntual configurado.'
+                  : 'Este día no tiene horario en la agenda semanal de este profesional ni un día puntual configurado.'}
               </p>
-              {fechaFilter ? (
-                <p className="mb-0 font-medium text-[#111827]">
-                  {isLoading
-                    ? 'Cargando turnos...'
-                    : (paginatedTurnos?.total ?? 0) === 0
-                      ? 'No hay turnos registrados para este día.'
-                      : `Hay ${paginatedTurnos?.total ?? 0} turno${(paginatedTurnos?.total ?? 0) === 1 ? '' : 's'} registrados para este día.`}
-                </p>
-              ) : null}
             </div>
           </DialogDescription>
           <DialogFooter className="mt-2 flex-col gap-3 sm:flex-row sm:justify-end">
@@ -2502,7 +2541,7 @@ export default function AdminTurnos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: sobreturno — este horario ya tiene un turno */}
+      {/* Modal: sobreturno � este horario ya tiene un turno */}
       <Dialog open={showSobreturnoModal} onOpenChange={(open) => { if (!open) { setShowSobreturnoModal(false); setPendingCreatePayload(null); } }}>
         <DialogContent
           className="max-w-[480px] rounded-[20px] border border-[#E5E7EB] shadow-2xl gap-2"
@@ -2631,7 +2670,7 @@ export default function AdminTurnos() {
                 <TooltipTrigger asChild>
                   <span className="inline-block max-lg:hidden">
                     <Button
-                      onClick={() => setShowCreateModal(true)}
+                      onClick={handleClickNuevoTurno}
                       disabled={!profesionalFilter || !fechaFilter || diaCompletamenteBloqueadoListado}
                       className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md shadow-[#2563eb]/20 hover:shadow-lg hover:shadow-[#2563eb]/30 transition-all duration-200 rounded-[12px] px-5 py-2.5 h-11 font-medium font-['Inter'] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
                     >
@@ -2645,7 +2684,9 @@ export default function AdminTurnos() {
                     ? 'Seleccione un profesional para crear turnos'
                     : diaCompletamenteBloqueadoListado
                       ? 'El día está completamente bloqueado'
-                      : 'Crear un nuevo turno'}
+                      : !diaSeleccionadoTieneAgenda && !loadingAgendaYExcepciones
+                        ? 'Este día no está en la agenda � abrí para habilitarlo o ver opciones'
+                        : 'Crear un nuevo turno'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -2699,7 +2740,7 @@ export default function AdminTurnos() {
                     >
                       <span className="truncate">{opt.label}</span>
                       {!opt.tieneAgenda && (
-                        <span className="ml-1.5 text-[11px] text-[#6B7280] whitespace-nowrap">— Sin agenda</span>
+                        <span className="ml-1.5 text-[11px] text-[#6B7280] whitespace-nowrap">� Sin agenda</span>
                       )}
                     </SelectItem>
                   ))}
@@ -2783,7 +2824,7 @@ export default function AdminTurnos() {
             <TooltipProvider>
             <div className="grid grid-cols-7 gap-1 text-center">
               {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">
+                <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">
                   {d}
                 </span>
               ))}
@@ -2825,9 +2866,9 @@ export default function AdminTurnos() {
                   return bStart < dayEnd && bEnd > dayStart;
                 });
                 const motivosBloque = bloquesDelDiaTooltip.map((b) => b.motivo).filter((m): m is string => Boolean(m));
-                const textoBloqueado = motivosBloque.length > 0 ? `Bloqueado — ${motivosBloque.join(' · ')}` : 'Bloqueado';
+                const textoBloqueado = motivosBloque.length > 0 ? `Bloqueado � ${motivosBloque.join(' · ')}` : 'Bloqueado';
                 const excepcionDelDia = excepcionesDelRango.find((e) => e.fecha && e.fecha.slice(0, 10) === dateStr);
-                const textoDiaPuntual = excepcionDelDia?.observaciones ? `Día puntual — ${excepcionDelDia.observaciones}` : 'Día puntual';
+                const textoDiaPuntual = excepcionDelDia?.observaciones ? `Día puntual � ${excepcionDelDia.observaciones}` : 'Día puntual';
 
                 const wrapperClassName = recuadroBloqueado
                   ? 'rounded-[10px] bg-gray-100 border border-gray-400 min-h-[36px] flex items-center justify-center'
@@ -3233,7 +3274,7 @@ export default function AdminTurnos() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => setShowCreateModal(true)}
+                onClick={handleClickNuevoTurno}
                 disabled={!profesionalFilter || !fechaFilter || diaCompletamenteBloqueadoListado}
                 aria-label="Nuevo turno"
                 className="lg:hidden fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-lg shadow-[#2563eb]/40 hover:shadow-xl hover:scale-105 transition-all duration-200 p-0 disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
@@ -3247,7 +3288,9 @@ export default function AdminTurnos() {
                   ? 'Seleccione un profesional para crear turnos'
                   : diaCompletamenteBloqueadoListado
                     ? 'El día está bloqueado'
-                    : 'Nuevo turno'}
+                    : !diaSeleccionadoTieneAgenda && !loadingAgendaYExcepciones
+                      ? 'Día sin agenda � tocá para habilitarlo o ver opciones'
+                      : 'Nuevo turno'}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -3284,7 +3327,7 @@ export default function AdminTurnos() {
               <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151]">
                 {(() => {
                   const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                  return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
+                  return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '�';
                 })()}
               </div>
             </div>
@@ -3338,7 +3381,7 @@ export default function AdminTurnos() {
                       </div>
                       <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                         {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                          <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                          <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">{d}</span>
                         ))}
                         {(() => {
                           const monthStart = bloqueDatePickerDesdeMonth;
@@ -3441,7 +3484,7 @@ export default function AdminTurnos() {
                       </div>
                       <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                         {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                          <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                          <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">{d}</span>
                         ))}
                         {(() => {
                           const monthStart = bloqueDatePickerHastaMonth;
@@ -3671,7 +3714,7 @@ export default function AdminTurnos() {
                 <div className="h-[52px] max-lg:h-9 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[13px] text-[#374151]">
                   {(() => {
                     const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                    return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
+                    return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '�';
                   })()}
                 </div>
               </div>
@@ -3683,7 +3726,7 @@ export default function AdminTurnos() {
                 </Label>
                 {diaPuntualEditId ? (
                   <div className="h-[52px] max-lg:h-9 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F3F4F6] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[13px] text-[#6B7280] cursor-not-allowed">
-                    {diaPuntualForm.fecha ? format(new Date(diaPuntualForm.fecha + 'T12:00:00'), "EEEE d 'de' MMMM yyyy", { locale: es }) : '—'}
+                    {diaPuntualForm.fecha ? format(new Date(diaPuntualForm.fecha + 'T12:00:00'), "EEEE d 'de' MMMM yyyy", { locale: es }) : '�'}
                   </div>
                 ) : (
                   <div className="h-[52px] max-lg:h-9 w-full [&_button]:h-full [&_button]:min-h-0 [&>div]:w-full flex">
@@ -3858,7 +3901,7 @@ export default function AdminTurnos() {
           }
         }}
       >
-        <DialogContent className="max-w-[900px] w-[95vw] max-lg:max-h-[85vh] max-lg:h-[85vh] max-h-[90vh] rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
+        <DialogContent className="max-w-[900px] w-[95vw] h-fit max-h-[90vh] max-lg:max-h-[85vh] min-h-0 rounded-[20px] p-0 border border-[#E5E7EB] shadow-2xl flex flex-col overflow-hidden">
           <DialogHeader className="px-8 max-lg:px-4 pt-8 max-lg:pt-4 pb-6 max-lg:pb-4 border-b border-[#E5E7EB] bg-gradient-to-b from-white to-[#F9FAFB] flex-shrink-0 mb-0">
             <div className="flex items-center gap-4">
               <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center shadow-lg shadow-[#2563eb]/20 max-lg:hidden">
@@ -3866,7 +3909,7 @@ export default function AdminTurnos() {
               </div>
               <div>
                 <DialogTitle className="text-[28px] max-lg:text-[22px] font-bold text-[#111827] font-['Poppins'] leading-tight mb-0">
-                  {createRecurrenciaStep === 'preview' ? 'Vista previa — turnos recurrentes' : 'Nuevo Turno'}
+                  {createRecurrenciaStep === 'preview' ? 'Vista previa � turnos recurrentes' : 'Nuevo Turno'}
                 </DialogTitle>
                 <DialogDescription className="text-base text-[#6B7280] font-['Inter'] mt-1 mb-0">
                   {createRecurrenciaStep === 'preview'
@@ -3877,7 +3920,10 @@ export default function AdminTurnos() {
             </div>
           </DialogHeader>
 
-          <div ref={createModalScrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5">
+          <div
+            ref={createModalScrollRef}
+            className="min-h-0 overflow-y-auto overflow-x-hidden px-8 max-lg:px-4 py-6 max-lg:py-4 space-y-5 max-h-[calc(90vh-12rem)] max-lg:max-h-[calc(85vh-12rem)]"
+          >
             {!profesionalFilter ? (
               <p className="text-[#6B7280] font-['Inter'] text-[15px] bg-[#F9FAFB] border border-[#E5E7EB] rounded-[10px] px-4 py-3">
                 Seleccione un profesional en el filtro de la página para crear turnos en su agenda.
@@ -3969,9 +4015,9 @@ export default function AdminTurnos() {
                                 {previewSlotValidatingIndex === idx ? (
                                   <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#6B7280]">
                                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin stroke-[2]" />
-                                    Comprobando…
+                                    Comprobando⬦
                                   </span>
-                                ) : row.ok ? (
+                                ) : row.ok && !previewTieneConflictoConAgendaExistente(row) ? (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <span className="inline-flex max-w-full cursor-default items-center rounded-full bg-emerald-50 px-2.5 py-1 text-left text-[12px] font-medium leading-snug text-[#065F46]">
@@ -3992,7 +4038,10 @@ export default function AdminTurnos() {
                                       </span>
                                     </TooltipTrigger>
                                     <TooltipContent side="top" className="max-w-xs text-[13px]">
-                                      {row.mensaje || 'El horario no está disponible u otro turno lo ocupa.'}
+                                      {row.mensaje ||
+                                        (previewTieneConflictoConAgendaExistente(row)
+                                          ? 'Ese horario ya tiene un turno en la agenda.'
+                                          : 'El horario no está disponible u otro turno lo ocupa.')}
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
@@ -4004,7 +4053,7 @@ export default function AdminTurnos() {
                                   size="icon"
                                   className="h-9 w-9 shrink-0 text-[#6B7280] hover:text-[#DC2626]"
                                   disabled={previewSlotValidatingIndex === idx}
-                                  onClick={() => setPreviewQuitarIndex(idx)}
+                                  onClick={() => setPreviewRows((prev) => prev.filter((_, j) => j !== idx))}
                                   aria-label="Quitar fecha"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -4029,7 +4078,7 @@ export default function AdminTurnos() {
                     <div className="h-[52px] max-lg:h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[16px] max-lg:text-[14px] text-[#374151] w-full">
                       {(() => {
                         const p = profesionales.find((pr) => pr.id === profesionalFilter);
-                        return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '—';
+                        return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : '�';
                       })()}
                     </div>
                   </div>
@@ -4083,7 +4132,7 @@ export default function AdminTurnos() {
                           </div>
                           <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
                             {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+                              <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">{d}</span>
                             ))}
                             {(() => {
                               const monthStart = createDatePickerMonth;
@@ -4264,7 +4313,7 @@ export default function AdminTurnos() {
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <span className="text-[15px] font-semibold text-[#111827] font-['Inter'] shrink-0">Repetir</span>
                     <span className="text-[12px] text-[#6B7280] font-['Inter'] leading-snug min-w-0 flex-1">
-                      — Se generan como máximo 6 meses hacia adelante. En el siguiente paso verás las fechas y podrás
+                      � Se generan como máximo 6 meses hacia adelante. En el siguiente paso verás las fechas y podrás
                       editarlas o quitarlas.
                     </span>
                   </div>
@@ -4285,8 +4334,8 @@ export default function AdminTurnos() {
                   {recurrenciaFrecuencia === 'mensual' ? (
                     <p className="text-[12px] text-[#6B7280] font-['Inter'] leading-snug mb-0">
                       El mes siguiente se repite el <strong className="font-medium text-[#374151]">mismo día de la semana</strong> en la
-                      misma <strong className="font-medium text-[#374151]">semana ordinal del mes</strong> (1.ª–4.ª o última) que la
-                      fecha y hora del turno de arriba — por ejemplo un martes ~día 14 → los próximos meses el martes equivalente.
+                      misma <strong className="font-medium text-[#374151]">semana ordinal del mes</strong> (1.ª�4.ª o última) que la
+                      fecha y hora del turno de arriba � por ejemplo un martes ~día 14 �  los próximos meses el martes equivalente.
                     </p>
                   ) : null}
                 </div>
@@ -4319,7 +4368,7 @@ export default function AdminTurnos() {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between gap-2 h-[52px] px-4 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB]">
                             <span className="font-['Inter'] text-[15px] text-[#374151]">
-                              DNI <strong>{formatDni(quickCreatePaciente.dni)}</strong> — no registrado. Completá los datos para crear el paciente:
+                              DNI <strong>{formatDni(quickCreatePaciente.dni)}</strong> � no registrado. Completá los datos para crear el paciente:
                             </span>
                             <Button
                               type="button"
@@ -4454,7 +4503,7 @@ export default function AdminTurnos() {
                                 >
                                   <span>
                                     {formatDisplayText(p.nombre)} {formatDisplayText(p.apellido)}
-                                    {p.dni ? ` — DNI: ${formatDni(p.dni)}` : ''}
+                                    {p.dni ? ` � DNI: ${formatDni(p.dni)}` : ''}
                                   </span>
                                 </button>
                               )) : (
@@ -4624,7 +4673,7 @@ export default function AdminTurnos() {
                   <div className="h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 flex items-center font-['Inter'] text-[15px] text-[#374151]">
                     {(() => {
                       const p = profesionales.find((pr) => pr.id === selectedTurno.profesional_id);
-                      return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : (selectedTurno.profesional_nombre ? `${formatDisplayText(selectedTurno.profesional_nombre)} ${formatDisplayText(selectedTurno.profesional_apellido || '')}` : '—');
+                      return p ? `${formatDisplayText(p.nombre)} ${formatDisplayText(p.apellido)}${p.especialidad ? ` - ${formatDisplayText(p.especialidad)}` : ''}` : (selectedTurno.profesional_nombre ? `${formatDisplayText(selectedTurno.profesional_nombre)} ${formatDisplayText(selectedTurno.profesional_apellido || '')}` : '�');
                     })()}
                   </div>
                 </div>
@@ -4632,7 +4681,7 @@ export default function AdminTurnos() {
                 <div className="space-y-2">
                   <Label className="text-[14px] font-medium text-[#374151] font-['Inter']">Motivo</Label>
                   <div className="min-h-10 border-[1.5px] border-[#E5E7EB] rounded-[10px] bg-[#F9FAFB] px-4 py-2.5 font-['Inter'] text-[15px] text-[#374151]">
-                    {selectedTurno.motivo || '—'}
+                    {selectedTurno.motivo || '�'}
                   </div>
                 </div>
               </>
@@ -4658,26 +4707,6 @@ export default function AdminTurnos() {
         description={<>¿Estás seguro de que deseas eliminar el turno de <span className="font-semibold text-[#374151]">{formatDisplayText(turnoToDelete?.paciente_nombre)} {formatDisplayText(turnoToDelete?.paciente_apellido)}</span>? Esta acción no se puede deshacer.</>}
         onConfirm={handleConfirmDeleteTurno}
         isLoading={deleteMutation.isPending}
-      />
-
-      <ConfirmDeleteModal
-        open={previewQuitarIndex !== null}
-        onOpenChange={(open) => {
-          if (!open) setPreviewQuitarIndex(null);
-        }}
-        title="Quitar esta fecha"
-        description={
-          <>
-            Si preferís <strong className="font-semibold text-[#374151]">cambiar</strong> este turno en lugar de sacarlo, podés elegir otra fecha u hora en la fila. ¿Querés quitarlo de todos modos?
-          </>
-        }
-        confirmLabel="Quitar"
-        onConfirm={() => {
-          if (previewQuitarIndex === null) return;
-          const i = previewQuitarIndex;
-          setPreviewRows((prev) => prev.filter((_, j) => j !== i));
-          setPreviewQuitarIndex(null);
-        }}
       />
 
       {/* Modal Cancelar Turno */}
@@ -4768,17 +4797,25 @@ export default function AdminTurnos() {
           profesionalId={profesionalLogueado.id}
           profesionalNombre={profesionalLogueado.nombre ?? ''}
           profesionalApellido={profesionalLogueado.apellido ?? ''}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+          onSuccess={async () => {
+            await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalLogueado.id });
+          }}
         />
       )}
       <CreateAgendaModal
         open={showCreateAgendaModalFromTurnos}
         onOpenChange={(open) => {
           setShowCreateAgendaModalFromTurnos(open);
-          if (!open) queryClient.invalidateQueries({ queryKey: ['agendas'] });
+          if (!open) {
+            const pid = profesionalLogueado?.id ?? profesionalFilter;
+            if (pid) void refetchAgendaRelatedQueries(queryClient, { profesionalId: pid });
+          }
         }}
         presetProfesionalId={profesionalLogueado?.id ?? profesionalFilter ?? ''}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['agendas'] })}
+        onSuccess={async () => {
+          const pid = profesionalLogueado?.id ?? profesionalFilter;
+          await refetchAgendaRelatedQueries(queryClient, pid ? { profesionalId: pid } : undefined);
+        }}
       />
     </div>
   );

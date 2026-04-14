@@ -2,15 +2,35 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { getToken, getUser } from '@/utils/storage';
 
 import { getApiBaseUrl } from '@/lib/api-base-url';
+import { toDisplayString } from '@/lib/utils';
 
 const API_URL = getApiBaseUrl();
+
+function normalizeCaughtError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  const msg = toDisplayString(error) || 'Error desconocido';
+  const e = new Error(msg);
+  if (
+    error &&
+    typeof error === 'object' &&
+    'stack' in error &&
+    typeof (error as { stack: unknown }).stack === 'string'
+  ) {
+    e.stack = (error as { stack: string }).stack;
+  }
+  e.name = 'Error';
+  return e;
+}
 
 /** Construye el detalle completo del error para guardar en stack (visible en pestaña Detalle del modal de logs) */
 function buildErrorDetail(error: Error | null, errorInfo: ErrorInfo | null): string {
   const parts: string[] = [];
   const err = error ?? new Error('Error sin instancia');
   const name = err?.name || 'Error';
-  const message = err?.message || String(err) || 'Sin mensaje';
+  let message = typeof err?.message === 'string' ? err.message : '';
+  if (!message) {
+    message = toDisplayString(err) || 'Sin mensaje';
+  }
   parts.push(`${name}: ${message}`);
 
   // Stack trace del error (crítico para depurar)
@@ -76,8 +96,8 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = { hasError: false, error: null, errorInfo: null };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: unknown): Partial<State> {
+    return { hasError: true, error: normalizeCaughtError(error) };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {

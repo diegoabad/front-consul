@@ -1,4 +1,5 @@
-import api from './api';
+import api, { getData } from './api';
+import type { ApiResponse } from '@/types';
 
 export type EstadoRecordatorio = 'enviado' | 'pendiente' | 'fallido' | 'sin_numero' | 'anulado' | 'todos';
 
@@ -60,10 +61,14 @@ export const recordatoriosService = {
     if (filters.page) params.set('page', String(filters.page));
     if (filters.limit) params.set('limit', String(filters.limit));
 
-    const res = await api.get<{ success: boolean; data: RecordatoriosResponse }>(
+    const response = await api.get<ApiResponse<RecordatoriosResponse>>(
       `/recordatorios?${params.toString()}`
     );
-    return res.data.data;
+    const data = getData(response);
+    if (!data) {
+      return { recordatorios: [], total: 0, page: 1, limit: 20, totalPages: 0 };
+    }
+    return data;
   },
 
   enviarManual: async (turnoId: string): Promise<void> => {

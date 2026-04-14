@@ -4,6 +4,7 @@ import type { ApiResponse } from '@/types';
 import { getApiBaseUrl } from '@/lib/api-base-url';
 import { getToken, clearAuth } from '@/utils/storage';
 import { showApiErrorToast } from '@/utils/apiErrorToast';
+import { toDisplayString } from '@/lib/utils';
 
 // Vite: VITE_API_URL. En Netlify suele bastar https://TU-API.onrender.com (sin /api; lo añade getApiBaseUrl).
 const API_URL = getApiBaseUrl();
@@ -38,7 +39,10 @@ api.interceptors.response.use(
   },
   (error) => {
     // Manejar errores y mostrar toast
-    const errorMessage = error.response?.data?.message || error.message || 'Error en la solicitud';
+    const errorMessage =
+      toDisplayString(error.response?.data?.message) ||
+      toDisplayString(error.message) ||
+      'Error en la solicitud';
     const requestUrl = error.config?.url || '';
     const isLoginEndpoint = requestUrl.includes('/auth/login');
 

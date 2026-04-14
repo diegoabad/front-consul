@@ -1500,7 +1500,7 @@ export default function AdminUsuarios() {
           </div>
           <div className="grid grid-cols-7 gap-1 text-center">
             {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+              <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">{d}</span>
             ))}
             {(() => {
               const monthStart = contratoDatePickerMonth;
@@ -1584,7 +1584,7 @@ export default function AdminUsuarios() {
           </div>
           <div className="grid grid-cols-7 gap-1 text-center">
             {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-              <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">{d}</span>
+              <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] py-1">{d}</span>
             ))}
             {(() => {
               const monthStart = editDisplayMonth;

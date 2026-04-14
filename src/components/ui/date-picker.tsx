@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type RefObject } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -87,7 +87,7 @@ export function DatePicker({
   max,
   open: openProp,
   onOpenChange,
-  scrollContainerRef,
+  scrollContainerRef: _scrollContainerRef,
   inline = false,
   allowedDaysOfWeek,
   disabled = false,
@@ -148,15 +148,40 @@ export function DatePicker({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open, setOpen]);
 
-  useEffect(() => {
-    if (inline || !open || !scrollContainerRef?.current || !containerRef.current) return;
-    const el = scrollContainerRef.current;
-    const updatePosition = () => {
-      if (containerRef.current) setAnchor(containerRef.current.getBoundingClientRect());
+  /**
+   * Popover en portal con position:fixed. Los eventos scroll no suben al window cuando el scroll
+   * es en un div interno del modal, así que sincronizamos el ancla en cada frame mientras está abierto
+   * (barato si el rect no cambia gracias a la comparación).
+   */
+  useLayoutEffect(() => {
+    if (inline || !open) return;
+
+    let cancelled = false;
+    let rafId = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const el = containerRef.current;
+      if (el) {
+        const next = el.getBoundingClientRect();
+        setAnchor((prev) => {
+          if (!prev) return next;
+          const same =
+            Math.round(prev.top) === Math.round(next.top) &&
+            Math.round(prev.left) === Math.round(next.left) &&
+            Math.round(prev.width) === Math.round(next.width) &&
+            Math.round(prev.height) === Math.round(next.height);
+          return same ? prev : next;
+        });
+      }
+      rafId = requestAnimationFrame(tick);
     };
-    el.addEventListener('scroll', updatePosition, true);
-    return () => el.removeEventListener('scroll', updatePosition, true);
-  }, [inline, open, scrollContainerRef]);
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [inline, open]);
 
   const updateAnchor = () => {
     if (containerRef.current && !inline) {
@@ -217,9 +242,9 @@ export function DatePicker({
       data-date-picker-portal
       onPointerDown={(e) => e.stopPropagation()}
       className={cn(
-        'bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto',
+        'bg-white border border-[#E5E7EB] rounded-[16px] shadow-xl p-3 pointer-events-auto h-fit max-h-none',
         popoverWide ? 'min-w-[280px] max-w-[320px]' : 'min-w-[252px] max-w-[308px]',
-        inline ? 'absolute top-full left-0 right-0 mt-2 z-50 w-full' : 'z-[9999]'
+        inline ? 'absolute top-full left-0 right-0 mt-2 z-50 w-full max-w-[min(100%,308px)] self-start' : 'z-[9999]'
       )}
       style={inline || !anchor ? undefined : {
         position: 'fixed',
@@ -293,9 +318,9 @@ export function DatePicker({
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-0.5 text-center min-h-[196px]">
+            <div className="grid grid-cols-7 auto-rows-min gap-x-0.5 gap-y-1 text-center content-start">
               {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((d) => (
-                <span key={d} className="text-[11px] font-medium text-[#6B7280] font-['Inter'] py-1">
+                <span key={d} className="text-[13px] font-semibold text-black font-['Inter'] leading-none py-0.5">
                   {d}
                 </span>
               ))}
@@ -328,7 +353,7 @@ export function DatePicker({
                         setAnchor(null);
                       }}
                       className={cn(
-                        'h-8 rounded-[8px] text-[12px] font-medium font-[\'Inter\'] transition-all',
+                        'inline-flex h-8 max-h-8 min-h-[2rem] w-full shrink-0 items-center justify-center rounded-[8px] text-[12px] font-medium font-[\'Inter\'] leading-none transition-all',
                         isSelected && 'bg-[#2563eb] text-white hover:bg-[#1d4ed8]',
                         isDisabled && 'opacity-40 cursor-not-allowed pointer-events-none',
                         !isSelected && !isDisabled && !isCurrentMonth && 'text-[#9CA3AF] hover:bg-[#F3F4F6] cursor-pointer',

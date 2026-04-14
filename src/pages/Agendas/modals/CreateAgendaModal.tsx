@@ -32,6 +32,7 @@ import { toast as reactToastify } from 'react-toastify';
 import { DIAS_SEMANA, formatTime, getDiaSemanaLabel, horariosSeSolapan } from '../utils';
 import { startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { refetchAgendaRelatedQueries } from '@/utils/refetchAgendaRelatedQueries';
 
 export interface CreateAgendaModalProps {
   open: boolean;
@@ -117,6 +118,19 @@ export function CreateAgendaModal({
     [todasLasAgendas, todasLasExcepciones]
   );
 
+  const profesionalIdElegido = agendaForm.profesional_id || effectivePresetProfesionalId || '';
+  /** Solo filas de configuracion_agenda (no cuenta solo excepciones): si no hay ninguna, puede elegirse cualquier fecha de inicio. */
+  const yaTieneConfiguracionSemanal = useMemo(
+    () => (profesionalIdElegido ? todasLasAgendas.some((a) => a.profesional_id === profesionalIdElegido) : false),
+    [todasLasAgendas, profesionalIdElegido]
+  );
+  /** Primera configuración de ese profesional → sin mínimo; si ya hay configs o se edita una fila → desde hoy. */
+  const minVigenciaDesde = useMemo(() => {
+    if (editingAgenda) return format(new Date(), 'yyyy-MM-dd');
+    if (!yaTieneConfiguracionSemanal) return undefined;
+    return format(new Date(), 'yyyy-MM-dd');
+  }, [editingAgenda, yaTieneConfiguracionSemanal]);
+
   useEffect(() => {
     if (!open) return;
     if (effectivePresetProfesionalId) {
@@ -148,8 +162,9 @@ export function CreateAgendaModal({
   const updateAgendaMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateAgendaData> }) =>
       agendaService.updateAgenda(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async () => {
+      const pid = agendaForm.profesional_id || editingAgenda?.profesional_id || effectivePresetProfesionalId;
+      await refetchAgendaRelatedQueries(queryClient, pid ? { profesionalId: pid } : undefined);
       onOpenChange(false);
       onSuccess?.();
       reactToastify.success('Configuración de agenda actualizada correctamente', { position: 'top-right', autoClose: 3000 });
@@ -189,7 +204,7 @@ export function CreateAgendaModal({
           agendaForm.duracion_turno_minutos ?? 30,
           undefined
         );
-        queryClient.invalidateQueries({ queryKey: ['agendas'] });
+        await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalId });
         reactToastify.success('Listo. Podés usar el botón "Habilitar" en Turnos para agregar los días que atienda.', {
           position: 'top-right',
           autoClose: 5000,
@@ -245,7 +260,7 @@ export function CreateAgendaModal({
         }
       }
       if (creados > 0 || actualizados > 0) {
-        queryClient.invalidateQueries({ queryKey: ['agendas'] });
+        await refetchAgendaRelatedQueries(queryClient, { profesionalId: profesionalId });
         const mensajes: string[] = [];
         if (creados > 0) mensajes.push(creados === 1 ? '1 día creado' : `${creados} días creados`);
         if (actualizados > 0) mensajes.push(actualizados === 1 ? '1 día actualizado' : `${actualizados} días actualizados`);
@@ -394,17 +409,28 @@ export function CreateAgendaModal({
 
               <div className="flex flex-col gap-4 w-full">
                 <div className="flex flex-col sm:flex-row gap-4 w-full sm:gap-4">
-                  <div className="space-y-2 w-full flex-1 min-w-0">
+                  <div className="relative z-[100] space-y-2 w-full flex-1 min-w-0 overflow-visible">
                     <Label htmlFor="agenda-vigencia-desde" className="text-[15px] font-medium text-[#374151] font-['Inter']">
                       Vigente desde
                     </Label>
                     <DatePicker
                       id="agenda-vigencia-desde"
-                      value={agendaForm.vigencia_desde ?? format(new Date(), 'yyyy-MM-dd')}
-                      onChange={(v) => setAgendaForm({ ...agendaForm, vigencia_desde: v })}
+                      value={
+                        agendaForm.vigencia_desde && /^\d{4}-\d{2}-\d{2}$/.test(agendaForm.vigencia_desde)
+                          ? agendaForm.vigencia_desde
+                          : format(new Date(), 'yyyy-MM-dd')
+                      }
+                      onChange={(v) =>
+                        setAgendaForm({
+                          ...agendaForm,
+                          vigencia_desde: v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : format(new Date(), 'yyyy-MM-dd'),
+                        })
+                      }
                       placeholder="Elegir fecha"
                       className="h-[52px] w-full text-[#374151] justify-start pl-3"
-                      min={format(new Date(), 'yyyy-MM-dd')}
+                      min={minVigenciaDesde}
+                      allowClear={false}
+                      showMonthYearSelects={minVigenciaDesde === undefined}
                       inline
                     />
                   </div>

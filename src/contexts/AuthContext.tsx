@@ -10,6 +10,7 @@ import {
   clearAuth,
   hasActiveSession 
 } from '@/utils/storage';
+import { toDisplayString } from '@/lib/utils';
 
 interface AuthContextType {
   user: User | null;
@@ -97,9 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Un solo toast: mensaje del backend, o "credenciales" si 401, o "conexión" si falló la red
       const backendMessage = error.response?.data?.message;
       const isNetworkError = !error.response; // timeout, CORS, servidor inalcanzable (ej. localhost en prod)
-      const friendlyMessage = backendMessage
-        || (isNetworkError ? 'Error de conexión. Verifica tu conexión o intenta en unos segundos.' : 'Tu email o contraseña están incorrectos. Por favor, verifica tus credenciales e intenta nuevamente.');
-      
+      const fromBackend = toDisplayString(backendMessage);
+      const friendlyMessage =
+        fromBackend ||
+        (isNetworkError
+          ? 'Error de conexión. Verifica tu conexión o intenta en unos segundos.'
+          : 'Tu email o contraseña están incorrectos. Por favor, verifica tus credenciales e intenta nuevamente.');
+
       reactToastify.error(friendlyMessage, {
         position: 'top-right',
         autoClose: 4000,

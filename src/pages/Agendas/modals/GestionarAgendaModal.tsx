@@ -35,6 +35,7 @@ import { formatDisplayText, cn } from '@/lib/utils';
 import { toast as reactToastify } from 'react-toastify';
 import { startOfMonth, endOfMonth, addMonths, subMonths, addDays, subDays } from 'date-fns';
 import { DIAS_SEMANA, formatTime, formatDiasYHorarios, formatFechaSafe } from '../utils';
+import { refetchAgendaRelatedQueries } from '@/utils/refetchAgendaRelatedQueries';
 
 export interface GestionarAgendaModalProps {
   open: boolean;
@@ -207,6 +208,9 @@ export function GestionarAgendaModal({
     queryFn: () => agendaService.getAllAgenda({ profesional_id: profesionalId, vigente: false }),
     enabled: open && Boolean(profesionalId),
   });
+
+  /** Sin ninguna fila de configuración aún: primera carga de agenda → se puede elegir cualquier fecha de inicio. */
+  const esPrimeraConfiguracionAgenda = agendasDelProfesionalConHistorico.length === 0;
 
   const { data: excepcionesDelProfesional = [], isLoading: loadingExcepcionesGestionar } = useQuery({
     queryKey: ['excepciones', profesionalId, excepcionesDateRange.fecha_desde, excepcionesDateRange.fecha_hasta],
@@ -423,8 +427,7 @@ export function GestionarAgendaModal({
           });
         }
       }
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId });
       setEditingFutureVigencia(null);
       setHorariosEnModoEdicion(false);
       reactToastify.success('Vigencia actualizada.', { position: 'top-right', autoClose: 3000 });
@@ -459,8 +462,7 @@ export function GestionarAgendaModal({
           // Si falla actualizar la anterior, no mostramos error al usuario
         }
       }
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId });
       setVigenciaFuturaABorrar(null);
       reactToastify.success('Vigencia eliminada.', { position: 'top-right', autoClose: 3000 });
       onSuccess?.();
@@ -473,16 +475,17 @@ export function GestionarAgendaModal({
   };
 
   useEffect(() => {
-    if (horariosEnModoEdicion && minFechaNuevoPeriodo) {
-      setVigenciaDesdeGuardar((prev) => (!prev || prev < minFechaNuevoPeriodo ? minFechaNuevoPeriodo : prev));
-    }
-  }, [horariosEnModoEdicion, minFechaNuevoPeriodo]);
+    if (!horariosEnModoEdicion || esPrimeraConfiguracionAgenda || loadingAgendasGestionar) return;
+    setVigenciaDesdeGuardar((prev) => {
+      const validPrev = prev && /^\d{4}-\d{2}-\d{2}$/.test(prev) ? prev : minFechaNuevoPeriodo;
+      return validPrev < minFechaNuevoPeriodo ? minFechaNuevoPeriodo : validPrev;
+    });
+  }, [horariosEnModoEdicion, minFechaNuevoPeriodo, esPrimeraConfiguracionAgenda, loadingAgendasGestionar]);
 
   const createExcepcionMutation = useMutation({
     mutationFn: (data: CreateExcepcionAgendaData) => agendaService.createExcepcion(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async () => {
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId });
       setShowExcepcionModal(false);
       setExcepcionForm((f) => ({ ...f, fecha: format(new Date(), 'yyyy-MM-dd'), hora_inicio: '09:00', hora_fin: '13:00', observaciones: '' }));
       reactToastify.success('Día puntual agregado.', { position: 'top-right', autoClose: 3000 });
@@ -495,9 +498,8 @@ export function GestionarAgendaModal({
 
   const deleteExcepcionMutation = useMutation({
     mutationFn: (id: string) => agendaService.deleteExcepcion(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['excepciones'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
+    onSuccess: async () => {
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId });
       setShowDeleteExcepcionModal(false);
       setExcepcionToDelete(null);
       reactToastify.success('Día puntual eliminado.', { position: 'top-right', autoClose: 3000 });
@@ -587,8 +589,7 @@ export function GestionarAgendaModal({
         }
         // sin días fijos: backend ya creó placeholder con horarios []; no crear filas extra
       }
-      queryClient.invalidateQueries({ queryKey: ['agendas'] });
-      queryClient.invalidateQueries({ queryKey: ['agendas', profesionalId, 'historico'] });
+      await refetchAgendaRelatedQueries(queryClient, { profesionalId });
       setShowConfirmGuardarHorariosModal(false);
       setHorariosEnModoEdicion(false);
       reactToastify.success('Horarios guardados.', { position: 'top-right', autoClose: 3000 });
@@ -828,7 +829,11 @@ export function GestionarAgendaModal({
                           onClick={() => {
                             setEditingFutureVigencia(null);
                             setHorariosSemanaForm(DIAS_SEMANA.map((d) => ({ dia_semana: d.value, atiende: false, hora_inicio: '09:00', hora_fin: '18:00' })));
-                            setVigenciaDesdeGuardar('');
+                            setVigenciaDesdeGuardar(
+                              esPrimeraConfiguracionAgenda
+                                ? format(new Date(), 'yyyy-MM-dd')
+                                : minFechaNuevoPeriodo
+                            );
                             setDuracionNuevoRango(30);
                             setDiasFijosNuevoRango(true);
                             setFechaPuntualNuevoRango(format(new Date(), 'yyyy-MM-dd'));
@@ -859,13 +864,17 @@ export function GestionarAgendaModal({
                                 className="h-[52px] w-full border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px] bg-[#F9FAFB]"
                               />
                             ) : (
-                              <div className="w-full [&_button]:w-full [&_button]:h-[52px]">
+                              <div className="relative z-[100] w-full overflow-visible">
                                 <DatePicker
-                                  value={vigenciaDesdeGuardar}
-                                  onChange={(v) => setVigenciaDesdeGuardar(v || format(new Date(), 'yyyy-MM-dd'))}
+                                  value={vigenciaDesdeGuardar && /^\d{4}-\d{2}-\d{2}$/.test(vigenciaDesdeGuardar) ? vigenciaDesdeGuardar : format(new Date(), 'yyyy-MM-dd')}
+                                  onChange={(v) =>
+                                    setVigenciaDesdeGuardar(v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : format(new Date(), 'yyyy-MM-dd'))
+                                  }
                                   placeholder="Elegir fecha"
                                   className="h-[52px] w-full text-[#374151] justify-start pl-3 border-[1.5px] border-[#D1D5DB] rounded-[10px] font-['Inter'] text-[16px]"
-                                  min={minFechaNuevoPeriodo}
+                                  min={esPrimeraConfiguracionAgenda ? undefined : minFechaNuevoPeriodo}
+                                  allowClear={false}
+                                  showMonthYearSelects={esPrimeraConfiguracionAgenda}
                                   inline
                                 />
                               </div>
